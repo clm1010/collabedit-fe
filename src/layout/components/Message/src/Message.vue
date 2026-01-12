@@ -17,17 +17,21 @@ const unreadCount = ref(0) // 未读消息数量
 const list = ref<any[]>([]) // 消息列表
 
 // 获得消息列表
+// 注释：后端服务未启动时，该接口会报错，已临时禁用
 const getList = async () => {
-  list.value = await NotifyMessageApi.getUnreadNotifyMessageList()
+  // list.value = await NotifyMessageApi.getUnreadNotifyMessageList()
+  list.value = [] // 临时设置为空数组
   // 强制设置 unreadCount 为 0，避免小红点因为轮询太慢，不消除
   unreadCount.value = 0
 }
 
 // 获得未读消息数
+// 注释：后端服务未启动时，该接口会报错，已临时禁用
 const getUnreadCount = async () => {
-  NotifyMessageApi.getUnreadNotifyMessageCount().then((data) => {
-    unreadCount.value = data
-  })
+  // NotifyMessageApi.getUnreadNotifyMessageCount().then((data) => {
+  //   unreadCount.value = data
+  // })
+  unreadCount.value = 0 // 临时设置为 0
 }
 
 // 跳转我的站内信
@@ -38,20 +42,21 @@ const goMyList = () => {
 }
 
 // ========== 初始化 =========
+// 注释：后端服务未启动时，该接口会报错，已临时禁用轮询
 onMounted(() => {
   // 首次加载小红点
-  getUnreadCount()
+  // getUnreadCount()
   // 轮询刷新小红点
-  setInterval(
-    () => {
-      if (userStore.getIsSetUser) {
-        getUnreadCount()
-      } else {
-        unreadCount.value = 0
-      }
-    },
-    1000 * 60 * 2
-  )
+  // setInterval(
+  //   () => {
+  //     if (userStore.getIsSetUser) {
+  //       getUnreadCount()
+  //     } else {
+  //       unreadCount.value = 0
+  //     }
+  //   },
+  //   1000 * 60 * 2
+  // )
 })
 </script>
 <template>

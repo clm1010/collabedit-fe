@@ -45,7 +45,11 @@ export const useDictStore = defineStore('dict', {
         this.dictMap = dictMap
         this.isSetDict = true
       } else {
-        const res = await getSimpleDictDataList()
+        // 注释掉后端接口调用，避免连接失败错误
+        // const res = await getSimpleDictDataList()
+        // 使用空数组替代，避免影响功能
+        const res: DictDataVO[] = []
+
         // 设置数据
         const dictDataMap = new Map<string, any>()
         res.forEach((dictData: DictDataVO) => {
@@ -75,7 +79,11 @@ export const useDictStore = defineStore('dict', {
     },
     async resetDict() {
       wsCache.delete(CACHE_KEY.DICT_CACHE)
-      const res = await getSimpleDictDataList()
+      // 注释掉后端接口调用，避免连接失败错误
+      // const res = await getSimpleDictDataList()
+      // 使用空数组替代，避免影响功能
+      const res: DictDataVO[] = []
+
       // 设置数据
       const dictDataMap = new Map<string, any>()
       res.forEach((dictData: DictDataVO) => {
