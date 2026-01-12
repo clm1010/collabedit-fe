@@ -42,7 +42,7 @@ const service: AxiosInstance = axios.create({
   withCredentials: false, // 禁用 Cookie 等信息
   // 自定义参数序列化函数
   paramsSerializer: (params) => {
-    return qs.stringify(params, { allowDots: true })
+    return qs.stringify(params, { allowDots: true, arrayFormat: 'repeat' })
   }
 })
 

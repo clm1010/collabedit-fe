@@ -1,0 +1,555 @@
+<template>
+  <div class="export-toolbar">
+    <!-- 预览 HTML -->
+    <div class="toolbar-group">
+      <el-tooltip content="HTML 预览" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="previewHtml">
+          <Icon icon="mdi:language-html5" class="btn-icon-large" />
+          <span class="btn-text">HTML 预览</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <!-- 导出 HTML -->
+    <div class="toolbar-group">
+      <el-tooltip content="导出 HTML" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="exportHtml">
+          <Icon icon="mdi:file-code-outline" class="btn-icon-large" />
+          <span class="btn-text">导出 HTML</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <!-- 导出 Word -->
+    <div class="toolbar-group">
+      <el-tooltip content="导出 Word" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="exportWord">
+          <Icon icon="mdi:file-word-outline" class="btn-icon-large" />
+          <span class="btn-text">导出 Word</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- 导出 PDF -->
+    <div class="toolbar-group">
+      <el-tooltip content="导出 PDF" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="exportPdf">
+          <Icon icon="mdi:file-pdf-box" class="btn-icon-large" />
+          <span class="btn-text">导出 PDF</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <!-- 导出纯文本 -->
+    <div class="toolbar-group">
+      <el-tooltip content="导出纯文本" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="exportText">
+          <Icon icon="mdi:file-document-outline" class="btn-icon-large" />
+          <span class="btn-text">导出纯文本</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- 打印 -->
+    <div class="toolbar-group">
+      <el-tooltip content="打印" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="printDocument">
+          <Icon icon="mdi:printer-outline" class="btn-icon-large" />
+          <span class="btn-text">打印</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <!-- 打印预览 -->
+    <div class="toolbar-group">
+      <el-tooltip content="打印预览" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="printPreview">
+          <Icon icon="mdi:printer-eye" class="btn-icon-large" />
+          <span class="btn-text">打印预览</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- 分享 -->
+    <div class="toolbar-group">
+      <el-popover placement="bottom" :width="200" trigger="click">
+        <template #reference>
+          <span>
+            <el-tooltip content="分享文档" placement="bottom" :show-after="500">
+              <button class="toolbar-btn-large">
+                <Icon icon="mdi:share-variant-outline" class="btn-icon-large" />
+                <span class="btn-text">分享</span>
+              </button>
+            </el-tooltip>
+          </span>
+        </template>
+        <div class="share-panel">
+          <div class="share-option" @click="copyShareLink">
+            <Icon icon="mdi:link-variant" />
+            <span>复制链接</span>
+          </div>
+          <div class="share-option" @click="shareToEmail">
+            <Icon icon="mdi:email-outline" />
+            <span>发送邮件</span>
+          </div>
+          <div class="share-option" @click="generateQrCode">
+            <Icon icon="mdi:qrcode" />
+            <span>生成二维码</span>
+          </div>
+        </div>
+      </el-popover>
+    </div>
+
+    <!-- HTML 预览对话框 -->
+    <el-dialog
+      v-model="htmlPreviewVisible"
+      title="HTML 预览"
+      width="80%"
+      top="5vh"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="preview-tabs">
+        <el-radio-group v-model="previewMode" size="small">
+          <el-radio-button value="preview">预览</el-radio-button>
+          <el-radio-button value="source">源代码</el-radio-button>
+        </el-radio-group>
+      </div>
+      <div class="preview-container">
+        <div v-if="previewMode === 'preview'" class="html-preview" v-html="previewContent"></div>
+        <div v-else class="html-source">
+          <pre><code>{{ formattedHtml }}</code></pre>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="copyHtml" type="primary" plain>
+            <Icon icon="mdi:content-copy" class="mr-1" /> 复制 HTML
+          </el-button>
+          <el-button @click="downloadHtml" type="success" plain>
+            <Icon icon="mdi:download" class="mr-1" /> 下载 HTML
+          </el-button>
+          <el-button @click="htmlPreviewVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+// @ts-nocheck - 忽略 Tiptap 扩展类型问题
+import { ref, computed } from 'vue'
+import { Icon } from '@/components/Icon'
+import { ElMessage } from 'element-plus'
+import { useEditor } from './useEditor'
+
+// 获取编辑器实例
+const editor = useEditor()
+
+// 对话框状态
+const htmlPreviewVisible = ref(false)
+const previewMode = ref<'preview' | 'source'>('preview')
+const previewContent = ref('')
+
+// 格式化 HTML
+const formattedHtml = computed(() => {
+  if (!previewContent.value) return ''
+  return previewContent.value
+    .replace(/></g, '>\n<')
+    .replace(/(<\/?[^>]+>)/g, '\n$1')
+    .split('\n')
+    .filter((line) => line.trim())
+    .join('\n')
+})
+
+// 生成完整 HTML
+const generateFullHtml = () => {
+  if (!editor.value) return ''
+
+  const content = editor.value.getHTML()
+  const title = '文档'
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      line-height: 1.8;
+      color: #333;
+      background: #fff;
+    }
+    h1 { font-size: 2em; margin: 0.67em 0; font-weight: 700; }
+    h2 { font-size: 1.5em; margin-top: 1.5em; font-weight: 600; }
+    h3 { font-size: 1.25em; margin-top: 1.2em; font-weight: 600; }
+    p { margin: 1em 0; }
+    ul, ol { padding-left: 2em; margin: 1em 0; }
+    blockquote { border-left: 4px solid #2563eb; padding-left: 1em; margin: 1em 0; color: #666; }
+    code { background: #f3f4f6; padding: 0.2em 0.4em; border-radius: 4px; }
+    pre { background: #1f2937; color: #f9fafb; padding: 1em; border-radius: 8px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px 12px; }
+    th { background: #f9fafb; font-weight: 600; }
+    a { color: #2563eb; text-decoration: underline; }
+    img { max-width: 100%; height: auto; }
+    mark { background: #fef08a; }
+  </style>
+</head>
+<body>${content}</body>
+</html>`
+}
+
+// HTML 预览
+const previewHtml = () => {
+  if (!editor.value) {
+    ElMessage.warning('编辑器未就绪')
+    return
+  }
+  previewContent.value = editor.value.getHTML()
+  previewMode.value = 'preview'
+  htmlPreviewVisible.value = true
+}
+
+// 导出 HTML
+const exportHtml = () => {
+  const html = generateFullHtml()
+  downloadFile(html, '文档.html', 'text/html')
+  ElMessage.success('HTML 已导出')
+}
+
+// 导出 Word (使用 HTML 格式)
+const exportWord = () => {
+  if (!editor.value) return
+
+  const content = editor.value.getHTML()
+  const htmlContent = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office"
+          xmlns:w="urn:schemas-microsoft-com:office:word"
+          xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: '宋体', SimSun; font-size: 12pt; line-height: 1.5; }
+        h1 { font-size: 22pt; font-weight: bold; }
+        h2 { font-size: 16pt; font-weight: bold; }
+        h3 { font-size: 14pt; font-weight: bold; }
+        p { margin: 0.5em 0; }
+        table { border-collapse: collapse; width: 100%; }
+        td, th { border: 1px solid #000; padding: 4px 8px; }
+      </style>
+    </head>
+    <body>${content}</body>
+    </html>
+  `
+  downloadFile(htmlContent, '文档.doc', 'application/msword')
+  ElMessage.success('Word 文档已导出')
+}
+
+// 导出 PDF
+const exportPdf = () => {
+  if (!editor.value) return
+
+  const html = generateFullHtml()
+  const printWindow = window.open('', '_blank')
+
+  if (!printWindow) {
+    ElMessage.error('无法打开打印窗口，请检查浏览器是否阻止弹窗')
+    return
+  }
+
+  printWindow.document.write(html)
+  printWindow.document.close()
+
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.print()
+      printWindow.onafterprint = () => printWindow.close()
+    }, 250)
+  }
+
+  ElMessage.success('请在打印对话框中选择"另存为 PDF"')
+}
+
+// 导出纯文本
+const exportText = () => {
+  if (!editor.value) return
+
+  const text = editor.value.getText()
+  downloadFile(text, '文档.txt', 'text/plain')
+  ElMessage.success('纯文本已导出')
+}
+
+// 复制 HTML
+const copyHtml = async () => {
+  try {
+    const html = generateFullHtml()
+    await navigator.clipboard.writeText(html)
+    ElMessage.success('HTML 已复制到剪贴板')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
+}
+
+// 下载 HTML
+const downloadHtml = () => {
+  const html = generateFullHtml()
+  downloadFile(html, '文档.html', 'text/html')
+  ElMessage.success('HTML 已下载')
+}
+
+// 打印文档
+const printDocument = () => {
+  if (!editor.value) return
+
+  const html = generateFullHtml()
+  const printWindow = window.open('', '_blank')
+
+  if (!printWindow) {
+    ElMessage.error('无法打开打印窗口')
+    return
+  }
+
+  printWindow.document.write(html)
+  printWindow.document.close()
+
+  printWindow.onload = () => {
+    printWindow.print()
+  }
+}
+
+// 打印预览
+const printPreview = () => {
+  if (!editor.value) return
+
+  const html = generateFullHtml()
+  const previewWindow = window.open('', '_blank')
+
+  if (!previewWindow) {
+    ElMessage.error('无法打开预览窗口')
+    return
+  }
+
+  previewWindow.document.write(html)
+  previewWindow.document.close()
+}
+
+// 复制分享链接
+const copyShareLink = async () => {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    ElMessage.success('链接已复制')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
+}
+
+// 发送邮件
+const shareToEmail = () => {
+  const subject = encodeURIComponent('文档分享')
+  const body = encodeURIComponent(`请查看文档：${window.location.href}`)
+  window.open(`mailto:?subject=${subject}&body=${body}`)
+}
+
+// 生成二维码（简单提示）
+const generateQrCode = () => {
+  ElMessage.info('二维码功能开发中')
+}
+
+// 下载文件工具函数
+const downloadFile = (content: string, filename: string, mimeType: string) => {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+</script>
+
+<style lang="scss" scoped>
+.export-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #e0e0e0;
+  margin: 0 8px;
+}
+
+.toolbar-btn-large {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #333;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #e8f0fe;
+    color: #1a73e8;
+  }
+
+  .btn-icon-large {
+    font-size: 22px;
+  }
+
+  .btn-text {
+    font-size: 11px;
+  }
+}
+
+.share-panel {
+  .share-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: #f5f5f5;
+    }
+
+    span {
+      font-size: 13px;
+    }
+  }
+}
+
+.preview-tabs {
+  margin-bottom: 16px;
+}
+
+.preview-container {
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.html-preview {
+  padding: 24px;
+  background: #fff;
+
+  :deep(h1) {
+    font-size: 2em;
+    font-weight: 700;
+    margin: 0.67em 0;
+  }
+
+  :deep(h2) {
+    font-size: 1.5em;
+    font-weight: 600;
+    margin-top: 1.5em;
+  }
+
+  :deep(h3) {
+    font-size: 1.25em;
+    font-weight: 600;
+  }
+
+  :deep(p) {
+    margin: 1em 0;
+    line-height: 1.8;
+  }
+
+  :deep(ul),
+  :deep(ol) {
+    padding-left: 2em;
+    margin: 1em 0;
+  }
+
+  :deep(blockquote) {
+    border-left: 4px solid #2563eb;
+    padding-left: 1em;
+    margin: 1em 0;
+    color: #666;
+  }
+
+  :deep(code) {
+    background: #f3f4f6;
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+  }
+
+  :deep(pre) {
+    background: #1f2937;
+    color: #f9fafb;
+    padding: 1em;
+    border-radius: 8px;
+  }
+
+  :deep(table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+  }
+
+  :deep(th),
+  :deep(td) {
+    border: 1px solid #e5e7eb;
+    padding: 8px 12px;
+  }
+
+  :deep(th) {
+    background: #f9fafb;
+  }
+}
+
+.html-source {
+  background: #1f2937;
+  padding: 16px;
+
+  pre {
+    margin: 0;
+    color: #f9fafb;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+</style>

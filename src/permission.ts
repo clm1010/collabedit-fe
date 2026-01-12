@@ -60,17 +60,46 @@ const whiteList = [
 router.beforeEach(async (to, from, next) => {
   start()
   loadStart()
+
+  // ===== 临时跳过登录验证（开发调试用） =====
+  // 修复：跳过登录但仍然需要加载路由
+  const permissionStore = usePermissionStoreWithOut()
+  const dictStore = useDictStoreWithOut()
+
+  // 初始化字典（忽略错误，避免因后端未连接而阻塞）
+  if (!dictStore.getIsSetDict) {
+    try {
+      await dictStore.setDictMap()
+    } catch (error) {
+      console.warn('字典初始化失败（开发环境忽略）:', error)
+    }
+  }
+
+   // 初始化路由
+  if (!permissionStore.getRouters || permissionStore.getRouters.length === 0) {
+    await permissionStore.generateRoutes()
+    permissionStore.getAddRouters.forEach((route) => {
+      router.addRoute(route as unknown as RouteRecordRaw)
+    })
+  }
+
+  next()
+  return
+  // =========================================
+
   if (getAccessToken()) {
     if (to.path === '/login') {
       next({ path: '/' })
     } else {
+      // 获取所有字典
       const dictStore = useDictStoreWithOut()
       const userStore = useUserStoreWithOut()
       const permissionStore = usePermissionStoreWithOut()
       // 异步加载字典
       // 另外，间接 issue：https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/ID9FLI
       if (!dictStore.getIsSetDict) {
-        dictStore.setDictMap().then()
+        // dictStore.setDictMap().then()
+        await dictStore.setDictMap()
       }
       if (!userStore.getIsSetUser) {
         isRelogin.show = true
