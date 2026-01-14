@@ -90,11 +90,11 @@
                     </template>
                   </el-table-column>
 
-                  <el-table-column label="演训主题" prop="exerciseTheme" align="center" width="120">
+                  <!-- <el-table-column label="演训主题" prop="exerciseTheme" align="center" width="120">
                     <template #default="scope">
                       {{ getExerciseThemeLabel(scope.row.exerciseTheme) }}
                     </template>
-                  </el-table-column>
+                  </el-table-column> -->
                   <el-table-column label="演训类型" prop="exerciseType" align="center" width="120">
                     <template #default="scope">
                       {{ getExerciseTypeLabel(scope.row.exerciseType) }}
@@ -321,7 +321,7 @@ const queryParams = reactive<PerformanceApi.TrainingPerformancePageReqVO>({
   createTime: undefined,
   applyNode: undefined,
   fileType: undefined, // 左侧文档分类
-  exerciseTheme: undefined, // 演训主题
+  // exerciseTheme: undefined, // 演训主题
   exerciseType: undefined, // 演训类型
   level: undefined, // 演训等级
   docType: undefined // 文档类型
@@ -425,15 +425,15 @@ const fileTypeOptions = computed(() => {
 })
 
 // 演训主题选项（供标签转换和 DrillSelector 使用）
-const exerciseThemeOptions = [
-  { label: '联合作战训练', value: 'LHZZYX' },
-  { label: '作战训练', value: 'ZUOZL' },
-  { label: '政治训练', value: 'ZZL' },
-  { label: '经济训练', value: 'JJL' },
-  { label: '认知训练', value: 'RZL' },
-  { label: '文化训练', value: 'WHL' },
-  { label: '后装训练', value: 'HZL' }
-]
+// const exerciseThemeOptions = [
+//   { label: '联合作战训练', value: 'LHZZYX' },
+//   { label: '作战训练', value: 'ZUOZL' },
+//   { label: '政治训练', value: 'ZZL' },
+//   { label: '经济训练', value: 'JJL' },
+//   { label: '认知训练', value: 'RZL' },
+//   { label: '文化训练', value: 'WHL' },
+//   { label: '后装训练', value: 'HZL' }
+// ]
 
 // 演训类型选项（供标签转换和 DrillSelector 使用）
 const exerciseTypeOptions = [
@@ -519,7 +519,7 @@ const handleEditData = (row: PerformanceApi.TrainingPerformanceVO) => {
       planId: row.planId || '',
       exerciseName: row.exerciseName || '',
       planName: row.planName || '',
-      exerciseTheme: row.exerciseTheme || '',
+      // exerciseTheme: row.exerciseTheme || '',
       exerciseType: row.exerciseType || '',
       level: row.level || '',
       fileType: row.fileType || '',
@@ -555,7 +555,7 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
         planId: formData.planId, // 演训数据ID
         exerciseName: formData.exerciseName, // 演训数据名称
         planName: formData.planName, // 演训方案名称
-        exerciseTheme: formData.exerciseTheme, // 演训主题
+        // exerciseTheme: formData.exerciseTheme, // 演训主题
         exerciseType: formData.exerciseType, // 演训类型
         level: formData.level, // 演训等级
         fileType: fileType, // 文件类型
@@ -577,7 +577,7 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
       planId: formData.planId, // 演训数据ID
       exerciseName: formData.exerciseName, // 演训数据名称
       planName: formData.planName, // 演训方案名称
-      exerciseTheme: formData.exerciseTheme, // 演训主题
+      // exerciseTheme: formData.exerciseTheme, // 演训主题
       exerciseType: formData.exerciseType, // 演训类型
       level: formData.level, // 演训等级
       fileType: fileType, // 文档分类
@@ -1101,11 +1101,11 @@ const getLevelLabel = (level?: string) => {
   return option?.label || level
 }
 
-const getExerciseThemeLabel = (theme?: string) => {
-  if (!theme) return ''
-  const option = exerciseThemeOptions.find((item) => item.value === theme)
-  return option?.label || theme
-}
+// const getExerciseThemeLabel = (theme?: string) => {
+//   if (!theme) return ''
+//   const option = exerciseThemeOptions.find((item) => item.value === theme)
+//   return option?.label || theme
+// }
 
 const getExerciseTypeLabel = (type?: string) => {
   if (!type) return ''

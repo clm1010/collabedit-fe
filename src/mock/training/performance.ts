@@ -60,7 +60,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '本方案用于指导2024年度联合作战演练的组织实施',
     level: 'ZLJ',
     exerciseType: 'LHL',
-    exerciseTheme: '联合作战',
+    // exerciseTheme: '联合作战',
     docType: 'docx',
     createBy: 'admin',
     applyNode: ApplyNode.EDITING, // 编辑中
@@ -79,7 +79,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '战略级综合演练的总体方案设计',
     level: 'ZLJ',
     exerciseType: 'ZUOZL',
-    exerciseTheme: '战略演练',
+    // exerciseTheme: '战略演练',
     docType: 'docx',
     createBy: 'staff_b',
     applyNode: ApplyNode.REVIEWING, // 审核中
@@ -98,7 +98,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '网络空间安全攻防演练方案',
     level: 'YXJ',
     exerciseType: 'WLL',
-    exerciseTheme: '网络安全',
+    // exerciseTheme: '网络安全',
     docType: 'docx',
     createBy: 'admin',
     applyNode: ApplyNode.APPROVED, // 审核通过
@@ -117,7 +117,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '后勤保障体系综合演练方案',
     level: 'ZSJ',
     exerciseType: 'HZL',
-    exerciseTheme: '后勤保障',
+    // exerciseTheme: '后勤保障',
     docType: 'docx',
     createBy: 'staff_a',
     applyNode: ApplyNode.PUBLISHED, // 发布
@@ -136,7 +136,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '复杂电磁环境下的频谱管控方案',
     level: 'YXJ',
     exerciseType: 'DCL',
-    exerciseTheme: '电磁管控',
+    // exerciseTheme: '电磁管控',
     docType: 'docx',
     createBy: 'admin',
     applyNode: ApplyNode.REJECTED, // 驳回
@@ -155,7 +155,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '后勤保障体系综合演练方案',
     level: 'YXJ',
     exerciseType: 'HZL',
-    exerciseTheme: '后勤保障',
+    // exerciseTheme: '后勤保障',
     docType: 'docx',
     createBy: 'staff_a',
     applyNode: ApplyNode.REVIEWING, // 审核中
@@ -174,7 +174,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '太空作战演练方案',
     level: 'YXJ', // 演训等级
     exerciseType: 'KZL', // 演训类型
-    exerciseTheme: '太空作战',
+    // exerciseTheme: '太空作战',
     docType: 'docx', // 文档类型
     createBy: 'staff_a', // 创建人
     applyNode: ApplyNode.REJECTED, // 驳回
@@ -324,11 +324,11 @@ export const getPageList = async (params: TrainingPerformancePageReqVO) => {
   }
 
   // 按演训主题筛选
-  if (params.exerciseTheme) {
-    filteredList = filteredList.filter((item) =>
-      item.exerciseTheme?.toLowerCase().includes(params.exerciseTheme!.toLowerCase())
-    )
-  }
+  // if (params.exerciseTheme) {
+  //   filteredList = filteredList.filter((item) =>
+  //     item.exerciseTheme?.toLowerCase().includes(params.exerciseTheme!.toLowerCase())
+  //   )
+  // }
 
   // 按演训类型筛选
   if (params.exerciseType) {
@@ -622,9 +622,9 @@ const mockExerciseDataList = [
     participantCount: '5000',
     updater: '张三',
     startTime: '2024-01-01',
-    endTime: '2024-01-15',
+    endTime: '2024-01-15'
     // 用于表单回显
-    exerciseTheme: '联合作战'
+    // exerciseTheme: '联合作战'
   },
   {
     id: 'drill-002',
@@ -646,8 +646,8 @@ const mockExerciseDataList = [
     participantCount: '2000',
     updater: '李四',
     startTime: '2024-03-10',
-    endTime: '2024-03-20',
-    exerciseTheme: '战略演练'
+    endTime: '2024-03-20'
+    // exerciseTheme: '战略演练'
   },
   {
     id: 'drill-003',
@@ -669,8 +669,8 @@ const mockExerciseDataList = [
     participantCount: '500',
     updater: '王五',
     startTime: '2024-04-05',
-    endTime: '2024-04-12',
-    exerciseTheme: '网络安全'
+    endTime: '2024-04-12'
+    // exerciseTheme: '网络安全'
   },
   {
     id: 'drill-004',
@@ -692,8 +692,8 @@ const mockExerciseDataList = [
     participantCount: '1500',
     updater: '赵六',
     startTime: '2024-05-20',
-    endTime: '2024-05-25',
-    exerciseTheme: '后勤保障'
+    endTime: '2024-05-25'
+    // exerciseTheme: '后勤保障'
   },
   {
     id: 'drill-005',
@@ -715,8 +715,8 @@ const mockExerciseDataList = [
     participantCount: '800',
     updater: '孙七',
     startTime: '2024-06-01',
-    endTime: '2024-06-10',
-    exerciseTheme: '电磁管控'
+    endTime: '2024-06-10'
+    // exerciseTheme: '电磁管控'
   },
   {
     id: 'drill-006',
@@ -738,8 +738,8 @@ const mockExerciseDataList = [
     participantCount: '600',
     updater: '周八',
     startTime: '2024-07-15',
-    endTime: '2024-07-25',
-    exerciseTheme: '太空作战'
+    endTime: '2024-07-25'
+    // exerciseTheme: '太空作战'
   },
   {
     id: 'drill-007',
@@ -761,8 +761,8 @@ const mockExerciseDataList = [
     participantCount: '3000',
     updater: '吴九',
     startTime: '2024-08-10',
-    endTime: '2024-08-20',
-    exerciseTheme: '海上作战'
+    endTime: '2024-08-20'
+    // exerciseTheme: '海上作战'
   },
   {
     id: 'drill-008',
@@ -784,8 +784,8 @@ const mockExerciseDataList = [
     participantCount: '2500',
     updater: '郑十',
     startTime: '2024-09-05',
-    endTime: '2024-09-15',
-    exerciseTheme: '机动作战'
+    endTime: '2024-09-15'
+    // exerciseTheme: '机动作战'
   },
   {
     id: 'drill-009',
@@ -807,8 +807,8 @@ const mockExerciseDataList = [
     participantCount: '1800',
     updater: '冯十一',
     startTime: '2024-10-01',
-    endTime: '2024-10-10',
-    exerciseTheme: '山地作战'
+    endTime: '2024-10-10'
+    // exerciseTheme: '山地作战'
   },
   {
     id: 'drill-010',
@@ -830,8 +830,8 @@ const mockExerciseDataList = [
     participantCount: '400',
     updater: '陈十二',
     startTime: '2024-11-15',
-    endTime: '2024-11-20',
-    exerciseTheme: '反恐作战'
+    endTime: '2024-11-20'
+    // exerciseTheme: '反恐作战'
   }
 ]
 

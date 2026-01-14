@@ -184,14 +184,87 @@ export const parseMarkdownDocument = async (file: File): Promise<string> => {
 }
 
 /**
- * 将 HTML 内容转换为 Markdown 格式
- * @param htmlContent HTML 内容
+ * 检测并提取红头文件区块
+ * 红头文件特征：包含红色文字（#ff0000）和红色横线（data-line-color 或 class="red-line"）
+ * @param html HTML 内容
+ * @returns 红头文件区块和剩余内容，如果没有检测到则返回 null
+ */
+const extractRedHeader = (html: string): { header: string; rest: string; type: string } | null => {
+  // 调试日志
+  console.log('extractRedHeader: 检测红头文件...')
+  console.log('HTML 内容前200字符:', html.substring(0, 200))
+
+  // 查找红色横线的位置（红头文件的结束标志）
+  const redLineMatch = html.match(/<hr[^>]*(?:data-line-color|class="[^"]*red)[^>]*\/?>/i)
+  console.log('红色横线匹配结果:', redLineMatch ? '找到' : '未找到')
+
+  if (!redLineMatch || redLineMatch.index === undefined) {
+    console.log('未找到红色横线，不是红头文件')
+    return null
+  }
+
+  // 提取从开头到红色横线的内容
+  const headerEndIndex = redLineMatch.index + redLineMatch[0].length
+  const potentialHeader = html.slice(0, headerEndIndex)
+
+  // 验证是否包含红头文件的特征：红色文字
+  // 支持多种颜色格式：#ff0000, #FF0000, rgb(255, 0, 0), red
+  const hasRedColor =
+    /color\s*:\s*#ff0000/i.test(potentialHeader) ||
+    /color\s*:\s*rgb\s*\(\s*255\s*,\s*0\s*,\s*0\s*\)/i.test(potentialHeader) ||
+    /color\s*:\s*red\b/i.test(potentialHeader)
+
+  console.log('是否包含红色文字:', hasRedColor)
+
+  if (!hasRedColor) {
+    console.log('未检测到红色文字，不是红头文件')
+    return null
+  }
+
+  // 判断红头文件类型：标准版包含更多元素（编号、机密、特急等）
+  const isStandard =
+    potentialHeader.includes('机密') ||
+    potentialHeader.includes('特急') ||
+    /<table[^>]*style/i.test(potentialHeader)
+
+  console.log('红头文件类型:', isStandard ? 'standard' : 'simple')
+  console.log('红头文件区块长度:', potentialHeader.length)
+
+  return {
+    header: potentialHeader,
+    rest: html.slice(headerEndIndex),
+    type: isStandard ? 'standard' : 'simple'
+  }
+}
+
+/**
+ * 将普通 HTML 内容转换为 Markdown（不包含红头文件）
+ * @param content HTML 内容
  * @returns Markdown 文本
  */
-export const htmlToMarkdown = (htmlContent: string): string => {
-  if (!htmlContent || htmlContent.trim() === '') return ''
+const convertContentToMarkdown = (content: string): string => {
+  if (!content || content.trim() === '') return ''
 
-  const markdown = htmlContent
+  const markdown = content
+    // 处理代码块（pre > code）- 使用自定义标记保留
+    .replace(
+      /<pre[^>]*><code[^>]*(?:class="[^"]*language-(\w+)[^"]*")?[^>]*>([\s\S]*?)<\/code><\/pre>/gi,
+      (_, lang, code) => {
+        const language = lang || ''
+        const decodedCode = code
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+        return `\n\`\`\`${language}\n${decodedCode}\n\`\`\`\n\n`
+      }
+    )
+    // 处理 AI 模块标记 - 使用自定义语法 ==AI[内容]AI==
+    .replace(
+      /<span[^>]*(?:data-type="ai-block"|class="[^"]*ai-block[^"]*")[^>]*>(.*?)<\/span>/gi,
+      '==AI[$1]AI=='
+    )
     // 处理标题
     .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
     .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
@@ -217,12 +290,11 @@ export const htmlToMarkdown = (htmlContent: string): string => {
     // 处理图片
     .replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*\/?>/gi, '![$2]($1)')
     .replace(/<img[^>]*src="([^"]*)"[^>]*\/?>/gi, '![]($1)')
-    // 处理水平线
+    // 处理普通水平线
     .replace(/<hr[^>]*\/?>/gi, '\n---\n\n')
     // 处理引用
-    .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, content) => {
-      // 清理引用内的 HTML 标签
-      const cleanContent = content
+    .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, blockContent) => {
+      const cleanContent = blockContent
         .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n')
         .replace(/<br[^>]*\/?>/gi, '\n')
         .replace(/<[^>]+>/g, '')
@@ -257,6 +329,44 @@ export const htmlToMarkdown = (htmlContent: string): string => {
     .trim()
 
   return markdown
+}
+
+/**
+ * 将 HTML 内容转换为 Markdown 格式
+ * 使用自定义标记块 <!-- REDHEADER:type --> 保留红头文件完整 HTML
+ * @param htmlContent HTML 内容
+ * @returns Markdown 文本
+ */
+export const htmlToMarkdown = (htmlContent: string): string => {
+  if (!htmlContent || htmlContent.trim() === '') return ''
+
+  console.log('=== htmlToMarkdown 开始 ===')
+  console.log('输入 HTML 长度:', htmlContent.length)
+
+  // 1. 检测并提取红头文件
+  const redHeader = extractRedHeader(htmlContent)
+
+  let result = ''
+  let contentToConvert = htmlContent
+
+  if (redHeader) {
+    // 红头文件使用标记块保留完整 HTML
+    result = `<!-- REDHEADER:${redHeader.type} -->\n${redHeader.header}\n<!-- /REDHEADER -->\n\n`
+    contentToConvert = redHeader.rest
+    console.log('已添加红头文件标记块，标记块长度:', result.length)
+  } else {
+    console.log('未检测到红头文件')
+  }
+
+  // 2. 转换剩余内容为标准 Markdown
+  const markdown = convertContentToMarkdown(contentToConvert)
+
+  const finalResult = (result + markdown).trim()
+  console.log('=== htmlToMarkdown 结束 ===')
+  console.log('输出 Markdown 长度:', finalResult.length)
+  console.log('Markdown 前200字符:', finalResult.substring(0, 200))
+
+  return finalResult
 }
 
 /**

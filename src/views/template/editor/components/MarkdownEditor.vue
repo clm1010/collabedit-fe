@@ -130,6 +130,23 @@
       </div>
 
       <div class="toolbar-group">
+        <!-- 颜色 -->
+        <ColorPicker
+          v-model="textColor"
+          icon="mdi:format-color-text"
+          title="字体颜色"
+          @change="handleTextColor"
+        />
+        <ColorPicker
+          v-model="highlightColor"
+          icon="mdi:format-color-highlight"
+          title="字体背景颜色"
+          @change="handleHighlightColor"
+        />
+        <div class="toolbar-divider"></div>
+      </div>
+
+      <div class="toolbar-group">
         <!-- 列表 -->
         <button
           class="toolbar-btn"
@@ -175,6 +192,15 @@
           title="代码块"
         >
           <Icon icon="mdi:code-braces" />
+        </button>
+        <!-- AI 模块标记 -->
+        <button
+          class="toolbar-btn"
+          :class="{ active: editor?.isActive('aiBlock') }"
+          @click="editor?.chain().focus().toggleAIBlock().run()"
+          title="标记为 AI 模块 (Ctrl+Shift+A)"
+        >
+          <Icon icon="mdi:robot-outline" />
         </button>
         <button
           class="toolbar-btn"
@@ -325,6 +351,32 @@
         >
           <Icon icon="mdi:format-align-right" />
         </button>
+        <div class="toolbar-divider"></div>
+      </div>
+
+      <div class="toolbar-group">
+        <!-- 红头文件 -->
+        <el-popover
+          ref="redHeaderPopoverRef"
+          placement="bottom"
+          :width="100"
+          trigger="click"
+          :show-arrow="false"
+          popper-class="red-header-popover"
+        >
+          <template #reference>
+            <button class="toolbar-btn" title="红头文件">
+              <Icon icon="mdi:file-document-outline" style="color: #ff0000" />
+              <Icon icon="mdi:chevron-down" class="ml-0.5 text-xs" />
+            </button>
+          </template>
+          <div class="red-header-menu">
+            <div class="red-header-menu-item" @click="handleInsertRedHeader('standard')">
+              标准
+            </div>
+            <div class="red-header-menu-item" @click="handleInsertRedHeader('simple')"> 简约 </div>
+          </div>
+        </el-popover>
       </div>
     </div>
 
@@ -483,6 +535,22 @@
                   <Icon icon="mdi:format-color-highlight" />
                 </button>
                 <button
+                  class="bubble-menu-btn"
+                  :class="{ 'is-active': editor?.isActive('code') }"
+                  @click="editor?.chain().focus().toggleCode().run()"
+                  title="行内代码"
+                >
+                  <Icon icon="mdi:code-tags" />
+                </button>
+                <button
+                  class="bubble-menu-btn"
+                  :class="{ 'is-active': editor?.isActive('aiBlock') }"
+                  @click="editor?.chain().focus().toggleAIBlock().run()"
+                  title="AI 模块"
+                >
+                  <Icon icon="mdi:robot-outline" />
+                </button>
+                <button
                   ref="linkBtnRef"
                   class="bubble-menu-btn"
                   :class="{ 'is-active': editor?.isActive('link') }"
@@ -550,9 +618,15 @@ import { TextAlign } from '@tiptap/extension-text-align'
 import { Highlight } from '@tiptap/extension-highlight'
 import { Link } from '@tiptap/extension-link'
 import { TaskList, TaskItem } from '@tiptap/extension-list'
-import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
+import { TableHeader } from '@tiptap/extension-table'
+// 使用自定义 Table 扩展（支持内联样式）
+import { CustomTable } from '../extensions/CustomTable'
+import { CustomTableRow } from '../extensions/CustomTableRow'
+import { CustomTableCell } from '../extensions/CustomTableCell'
 import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
 import { Markdown } from '@tiptap/markdown'
+import { TextStyle } from '@tiptap/extension-text-style'
+import { Color } from '@tiptap/extension-color'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { Icon } from '@/components/Icon'
@@ -567,6 +641,12 @@ import {
 } from '../utils/fileParser'
 // Link Popover 组件
 import LinkPopover from './LinkPopover.vue'
+// 颜色选择器组件
+import ColorPicker from './ColorPicker.vue'
+// 自定义水平线扩展（支持红色横线）
+import { ColoredHorizontalRule } from '../extensions/ColoredHorizontalRule'
+// AI 模块扩展
+import { AIBlock } from '../extensions/AIBlock'
 
 // Props
 interface Props {
@@ -628,6 +708,13 @@ const linkPopoverUrl = ref('')
 const linkPopoverTriggerRect = ref<DOMRect | null>(null)
 const linkBtnRef = ref<HTMLElement | null>(null)
 
+// 颜色选择器状态
+const textColor = ref('#000000')
+const highlightColor = ref('#FFFF00')
+
+// 红头文件弹窗引用
+const redHeaderPopoverRef = ref<any>(null)
+
 // 规范化导入的 HTML，确保包含可放置光标的文本块
 const normalizeImportedHtml = (html: string): string => {
   const content = (html || '').trim()
@@ -642,51 +729,23 @@ const normalizeImportedHtml = (html: string): string => {
   return `${wrapped}<p></p>`
 }
 
-// 将导入的 HTML 写入编辑器，并安全地设置光标
+// 将导入的 HTML 插入到编辑器当前光标位置
 const applyImportedHtml = async (html: string, fileName?: string) => {
   if (isComponentDestroyed || isNil(editor.value)) return
 
   const safeHtml = normalizeImportedHtml(html)
 
   try {
-    editor.value.commands.clearContent(false)
-    editor.value.commands.setContent(safeHtml, false)
+    // 在当前光标位置插入内容，而不是覆盖
+    editor.value
+      .chain()
+      .focus() // 保持当前光标位置
+      .insertContent(safeHtml)
+      .run()
   } catch (error) {
-    console.error('写入导入内容失败:', error)
-    editor.value.commands.clearContent(false)
-    editor.value.commands.setContent('<p></p>', false)
+    console.error('导入内容失败:', error)
     throw new Error('导入内容写入编辑器失败，请检查文件格式是否包含有效文本或块元素')
   }
-
-  await nextTick()
-
-  requestAnimationFrame(() => {
-    if (isComponentDestroyed || isNil(editor.value)) return
-
-    try {
-      const { doc } = editor.value!.state
-      let targetPos = 1
-      let hasTextBlock = false
-
-      doc.descendants((node, pos) => {
-        if (node.isTextblock && node.content.size > 0) {
-          targetPos = pos + 1
-          hasTextBlock = true
-          return false
-        }
-        return true
-      })
-
-      if (hasTextBlock) {
-        editor.value?.commands.setTextSelection(targetPos)
-        if (props.editable) {
-          editor.value?.commands.focus()
-        }
-      }
-    } catch (focusError) {
-      console.warn('设置光标失败（已忽略）:', focusError)
-    }
-  })
 
   if (fileName) {
     ElMessage.success(`成功导入 ${fileName}`)
@@ -727,7 +786,17 @@ const editor = useEditor({
       // Tiptap v3: history 重命名为 undoRedo
       undoRedo: false, // 禁用 undoRedo，Collaboration 会处理
       // 禁用 StarterKit 自带的 Link，使用自定义配置
-      link: false
+      link: false,
+      // 禁用默认的 horizontalRule，使用自定义的 ColoredHorizontalRule
+      horizontalRule: false
+    }),
+    // 自定义水平线扩展（支持红色横线）
+    ColoredHorizontalRule,
+    // 文本样式（用于颜色）
+    TextStyle,
+    // 文字颜色 - 支持 textStyle 和 heading
+    Color.configure({
+      types: ['textStyle', 'heading']
     }),
     // 协同编辑
     Collaboration.configure({
@@ -766,19 +835,25 @@ const editor = useEditor({
     TaskItem.configure({
       nested: true
     }),
-    // 表格扩展
-    Table.configure({
+    // 表格扩展（使用自定义扩展支持内联样式）
+    CustomTable.configure({
       resizable: true,
       HTMLAttributes: {
         class: 'editor-table'
       }
     }),
-    TableRow,
-    TableCell,
+    CustomTableRow,
+    CustomTableCell,
     TableHeader,
     // Markdown 扩展 - 支持 Markdown 内容的解析和序列化
     // 参考: https://tiptap.dev/docs/editor/markdown
-    Markdown
+    Markdown,
+    // AI 模块扩展 - 标识 AI 生成区域
+    AIBlock.configure({
+      HTMLAttributes: {
+        class: 'ai-block'
+      }
+    })
   ],
   onUpdate: ({ editor }) => {
     // 防止组件销毁后触发回调
@@ -1188,6 +1263,135 @@ const clearFormat = () => {
   editor.value.chain().focus().unsetAllMarks().clearNodes().run()
 }
 
+// ==================== 颜色处理 ====================
+// 字体颜色处理
+const handleTextColor = (color: string) => {
+  if (isNil(editor.value)) return
+  if (color) {
+    editor.value.chain().focus().setColor(color).run()
+  } else {
+    editor.value.chain().focus().unsetColor().run()
+  }
+}
+
+// 字体背景颜色处理
+const handleHighlightColor = (color: string) => {
+  if (isNil(editor.value)) return
+  if (color) {
+    editor.value.chain().focus().setHighlight({ color }).run()
+  } else {
+    editor.value.chain().focus().unsetHighlight().run()
+  }
+}
+
+// ==================== 红头文件 ====================
+// 处理插入红头文件（包含关闭弹窗）
+const handleInsertRedHeader = (type: 'standard' | 'simple') => {
+  // 关闭弹窗
+  if (redHeaderPopoverRef.value) {
+    redHeaderPopoverRef.value.hide()
+  }
+  // 插入内容
+  insertRedHeader(type)
+}
+
+// 插入红头文件
+const insertRedHeader = (type: 'standard' | 'simple') => {
+  if (isNil(editor.value)) return
+
+  // 确保有有效的选择位置，避免 TextSelection 错误
+  const { state } = editor.value
+  const { doc } = state
+  // 如果文档为空或没有有效选择，先聚焦到文档开始位置
+  if (doc.content.size <= 2) {
+    // 空文档，使用 setContent 替代 insertContent
+    editor.value.commands.setContent({ type: 'paragraph' })
+  }
+
+  if (type === 'standard') {
+    // 使用 Tiptap JSON 格式插入，在当前光标位置插入
+    editor.value
+      .chain()
+      .focus() // 保持当前光标位置
+      .insertContent([
+        { type: 'paragraph', content: [{ type: 'text', text: '000001' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '机密' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: '特急' }] },
+        {
+          type: 'heading',
+          attrs: { level: 1, textAlign: 'center' },
+          content: [
+            {
+              type: 'text',
+              marks: [{ type: 'textStyle', attrs: { color: '#ff0000' } }],
+              text: 'XXXXXXX文件'
+            }
+          ]
+        },
+        {
+          type: 'table',
+          attrs: {
+            style: 'width:100%;border:none;border-collapse:collapse;margin:8px 0 16px;'
+          },
+          content: [
+            {
+              type: 'tableRow',
+              attrs: { style: 'border:none;' },
+              content: [
+                {
+                  type: 'tableCell',
+                  attrs: { style: 'border:none;padding:0;background:transparent;' },
+                  content: [
+                    { type: 'paragraph', content: [{ type: 'text', text: 'XX〔2025〕01 号' }] }
+                  ]
+                },
+                {
+                  type: 'tableCell',
+                  attrs: {
+                    style: 'border:none;padding:0;background:transparent;text-align:right;'
+                  },
+                  content: [
+                    {
+                      type: 'paragraph',
+                      attrs: { textAlign: 'right' },
+                      content: [{ type: 'text', text: '签发人：' }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        { type: 'horizontalRule', attrs: { 'data-line-color': 'red', class: 'red-line' } },
+        { type: 'paragraph' }
+      ])
+      .run()
+    ElMessage.success('已插入标准红头文件')
+  } else {
+    // 简约红头文件，在当前光标位置插入
+    editor.value
+      .chain()
+      .focus() // 保持当前光标位置
+      .insertContent([
+        {
+          type: 'heading',
+          attrs: { level: 1, textAlign: 'center' },
+          content: [
+            {
+              type: 'text',
+              marks: [{ type: 'textStyle', attrs: { color: '#ff0000' } }],
+              text: 'XXXXXXX文件'
+            }
+          ]
+        },
+        { type: 'horizontalRule', attrs: { 'data-line-color': 'red', class: 'red-line' } },
+        { type: 'paragraph' }
+      ])
+      .run()
+    ElMessage.success('已插入简约红头文件')
+  }
+}
+
 // 生成完整的 HTML 文档
 const generateFullHtml = () => {
   if (isNil(editor.value)) return ''
@@ -1252,6 +1456,9 @@ const generateFullHtml = () => {
     s { text-decoration: line-through; }
     u { text-decoration: underline; }
     hr { border: none; border-top: 2px solid #e5e7eb; margin: 2em 0; }
+    hr.red-line, hr[data-line-color="red"] { border-top-color: #ff0000; border-top-width: 2px; }
+    table.red-header-table { border: none !important; width: 100%; margin: 0; border-collapse: collapse; }
+    table.red-header-table td, table.red-header-table th { border: none !important; padding: 0; background: transparent !important; }
   </style>
 </head>
 <body>
@@ -1576,6 +1783,27 @@ defineExpose({
       border: none;
       border-top: 2px solid #e5e7eb;
       margin: 2em 0;
+
+      // 红头文件红色横线
+      &.red-line,
+      &[data-line-color='red'] {
+        border-top-color: #ff0000;
+        border-top-width: 2px;
+      }
+    }
+
+    // 红头文件无边框表格（用于编号和签发人左右对齐）
+    table.red-header-table {
+      border: 1px solid red;
+      width: 100%;
+      margin: 0;
+
+      td,
+      th {
+        border: none !important;
+        padding: 0;
+        background: transparent !important;
+      }
     }
 
     // 任务列表样式
@@ -2162,6 +2390,17 @@ defineExpose({
     color: #2563eb;
     text-decoration: underline;
   }
+
+  :deep(hr) {
+    border: none;
+    border-top: 2px solid #e5e7eb;
+    margin: 2em 0;
+
+    &.red-line,
+    &[data-line-color='red'] {
+      border-top-color: #ff0000;
+    }
+  }
 }
 
 .preview-footer {
@@ -2264,6 +2503,88 @@ defineExpose({
       color: #666;
       text-align: right;
     }
+  }
+}
+
+// ==================== 红头文件菜单样式 ====================
+.red-header-menu {
+  .red-header-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    transition: all 0.15s ease;
+    border-radius: 4px;
+
+    &:hover {
+      background: #f3f4f6;
+      color: #1a73e8;
+    }
+  }
+}
+</style>
+
+<style lang="scss">
+// 红头文件 popover 全局样式
+.red-header-popover {
+  padding: 8px !important;
+  min-width: 80px !important;
+}
+
+// AI 模块全局样式（行内标记）
+.ProseMirror {
+  // AI 模块区域样式 - 浅蓝色背景（行内标记）
+  .ai-block,
+  span[data-type='ai-block'] {
+    background-color: #e3f2fd; // 浅蓝色背景 (Material Design Blue 50)
+    border: 1px solid #90caf9; // 边框颜色 (Material Design Blue 200)
+    border-radius: 4px;
+    padding: 2px 6px;
+    position: relative;
+    display: inline;
+
+    // AI 模块标识标签
+    &::before {
+      content: 'AI';
+      background-color: #1976d2; // Material Design Blue 700
+      color: white;
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+  }
+
+  // 代码块样式
+  pre {
+    background-color: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 8px 0;
+    overflow-x: auto;
+
+    code {
+      background: none;
+      padding: 0;
+      font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #333;
+    }
+  }
+
+  // 行内代码样式
+  code {
+    background-color: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+    font-size: 0.9em;
+    color: #d32f2f;
   }
 }
 </style>

@@ -112,6 +112,7 @@ import {
   type SubmitAuditReqVO
 } from './api/markdownApi'
 import type { ElementItem } from '@/types/management'
+import { htmlToMarkdown } from './utils/fileParser'
 
 // Props
 interface Props {
@@ -252,81 +253,28 @@ const handleEditorReady = async (editor: any) => {
     // 使用 setTimeout 确保协同编辑已完全初始化
     setTimeout(() => {
       if (editor && initialMarkdownContent.value) {
-        editor.commands.setContent(initialMarkdownContent.value)
-        console.log('初始内容已设置')
+        try {
+          // 确保内容不为空，且是有效的 HTML
+          const content = initialMarkdownContent.value.trim()
+          if (content) {
+            // 使用 setContent 并禁用发送更新，避免协同冲突
+            editor.commands.setContent(content, false)
+            console.log('初始内容已设置')
+          }
+        } catch (error) {
+          console.error('设置初始内容失败:', error)
+          // 如果设置失败，尝试设置一个空段落
+          try {
+            editor.commands.setContent('<p></p>', false)
+          } catch (e) {
+            console.error('设置空段落也失败:', e)
+          }
+        }
         // 清空初始内容，避免重复设置
         initialMarkdownContent.value = ''
       }
     }, 500)
   }
-}
-
-/**
- * 将 HTML 内容转换为 Markdown 格式
- * @param htmlContent HTML 内容
- * @returns Markdown 文本
- */
-const htmlToMarkdown = (htmlContent: string): string => {
-  if (isEmpty(htmlContent)) return ''
-
-  let markdown = htmlContent
-    // 处理标题
-    .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
-    .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
-    .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
-    .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n')
-    .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n')
-    .replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n')
-    // 处理粗体和斜体
-    .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
-    .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
-    .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-    .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
-    // 处理删除线
-    .replace(/<s[^>]*>(.*?)<\/s>/gi, '~~$1~~')
-    .replace(/<del[^>]*>(.*?)<\/del>/gi, '~~$1~~')
-    .replace(/<strike[^>]*>(.*?)<\/strike>/gi, '~~$1~~')
-    // 处理行内代码
-    .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
-    // 处理链接
-    .replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
-    // 处理图片
-    .replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*\/?>/gi, '![$2]($1)')
-    .replace(/<img[^>]*src="([^"]*)"[^>]*\/?>/gi, '![]($1)')
-    // 处理水平线
-    .replace(/<hr[^>]*\/?>/gi, '\n---\n\n')
-    // 处理引用
-    .replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, content) => {
-      return (
-        content
-          .split('\n')
-          .map((line: string) => `> ${line.trim()}`)
-          .join('\n') + '\n\n'
-      )
-    })
-    // 处理无序列表项
-    .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
-    // 移除 ul/ol 标签
-    .replace(/<\/?ul[^>]*>/gi, '\n')
-    .replace(/<\/?ol[^>]*>/gi, '\n')
-    // 处理段落
-    .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
-    // 处理换行
-    .replace(/<br[^>]*\/?>/gi, '\n')
-    // 移除其他 HTML 标签
-    .replace(/<[^>]+>/g, '')
-    // 解码 HTML 实体
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    // 清理多余的空行
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-
-  return markdown
 }
 
 /**
@@ -687,44 +635,65 @@ const base64ToText = async (base64: string): Promise<string> => {
 }
 
 /**
- * Markdown 转 HTML
- * 简单转换，支持基本的 Markdown 语法
- * @param markdown Markdown 文本
+ * 将普通 Markdown 内容转换为 HTML（不包含红头文件标记）
+ * @param content Markdown 内容
  * @returns HTML 内容
  */
-const markdownToHtml = (markdown: string): string => {
-  if (isEmpty(markdown)) return ''
+const convertMarkdownContent = (content: string): string => {
+  if (!content || content.trim() === '') return ''
 
-  // 第一步：提取并保护链接和图片，防止 URL 中的特殊字符被错误转义
-  // 使用不会被 Markdown 语法干扰的占位符格式 (避免使用 _ 或 * 等 Markdown 特殊字符)
-  const links: { placeholder: string; html: string }[] = []
-  let linkIndex = 0
+  // 提取并保护特殊内容，防止被错误转义
+  const placeholders: { placeholder: string; html: string }[] = []
+  let placeholderIndex = 0
 
-  // 处理图片 ![alt](url) - 必须在链接之前处理（支持 alt 中包含方括号）
-  let html = markdown.replace(/!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)/g, (_match, alt, url) => {
-    const placeholder = `XYZLINKPLACEHOLDER${linkIndex}XYZ`
-    links.push({
+  // 处理代码块 ```language\ncode\n```
+  let html = content.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
+    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
+    const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const langClass = lang ? ` class="language-${lang}"` : ''
+    placeholders.push({
       placeholder,
-      html: `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`
+      html: `<pre><code${langClass}>${escapedCode}</code></pre>`
     })
-    linkIndex++
+    placeholderIndex++
     return placeholder
   })
 
-  // 处理 Markdown 链接 [text](url) - 支持嵌套方括号如 [[6]](url)
-  // 正则说明：(?:[^\[\]]|\[[^\]]*\])* 匹配非方括号字符或完整的 [xxx] 对
+  // 处理 AI 模块标记 ==AI[内容]AI==
+  html = html.replace(/==AI\[([\s\S]*?)\]AI==/g, (_match, aiContent) => {
+    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
+    placeholders.push({
+      placeholder,
+      html: `<span data-type="ai-block" class="ai-block">${aiContent}</span>`
+    })
+    placeholderIndex++
+    return placeholder
+  })
+
+  // 处理图片 ![alt](url)
+  html = html.replace(/!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)/g, (_match, alt, url) => {
+    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
+    placeholders.push({
+      placeholder,
+      html: `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`
+    })
+    placeholderIndex++
+    return placeholder
+  })
+
+  // 处理 Markdown 链接 [text](url)
   html = html.replace(/\[((?:[^\[\]]|\[[^\]]*\])+)\]\(([^)]+)\)/g, (_match, text, url) => {
-    const placeholder = `XYZLINKPLACEHOLDER${linkIndex}XYZ`
-    links.push({
+    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
+    placeholders.push({
       placeholder,
       html: `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${text}</a>`
     })
-    linkIndex++
+    placeholderIndex++
     return placeholder
   })
 
   html = html
-    // 转义 HTML 特殊字符（但保留 Markdown 需要的字符）
+    // 转义 HTML 特殊字符
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -753,13 +722,13 @@ const markdownToHtml = (markdown: string): string => {
     .replace(/^\* (.+)$/gm, '<li>$1</li>')
     // 有序列表
     .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    // 自动链接裸 URL（含两侧括号的情况）
+    // 自动链接裸 URL
     .replace(/(\(|（)?(https?:\/\/[^\s<>]+)(\)|）)?/g, (_m, l, url, r) => {
       const left = l || ''
       const right = r || ''
       return `${left}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${url}</a>${right}`
     })
-    // 段落（连续的非空行）
+    // 段落
     .replace(/\n\n/g, '</p><p>')
 
   // 包裹在段落中
@@ -774,16 +743,57 @@ const markdownToHtml = (markdown: string): string => {
   html = html.replace(/(<\/blockquote>)<\/p>/g, '$1')
   html = html.replace(/<p>(<li>)/g, '<ul>$1')
   html = html.replace(/(<\/li>)<\/p>/g, '$1</ul>')
+  html = html.replace(/<p>(XYZPLACEHOLDER\d+XYZ)<\/p>/g, '$1') // 清理代码块周围的段落
 
   // 合并连续的列表项
   html = html.replace(/<\/ul><ul>/g, '')
 
-  // 最后：恢复链接和图片
-  links.forEach((link) => {
-    html = html.replace(link.placeholder, link.html)
+  // 恢复占位符内容
+  placeholders.forEach((item) => {
+    html = html.replace(item.placeholder, item.html)
   })
 
   return html
+}
+
+/**
+ * Markdown 转 HTML
+ * 支持红头文件标记块 <!-- REDHEADER:type -->...<!-- /REDHEADER -->
+ * @param markdown Markdown 文本
+ * @returns HTML 内容
+ */
+const markdownToHtml = (markdown: string): string => {
+  if (isEmpty(markdown)) return ''
+
+  // 调试：打印原始 Markdown 内容
+  console.log('markdownToHtml 输入内容前100字符:', markdown.substring(0, 100))
+  console.log('是否包含 REDHEADER 标记:', markdown.includes('<!-- REDHEADER:'))
+
+  // 检查是否包含红头文件标记（更宽松的正则，允许空格和换行）
+  const redHeaderPattern = /<!--\s*REDHEADER:(\w+)\s*-->\s*([\s\S]*?)\s*<!--\s*\/REDHEADER\s*-->/
+  const match = markdown.match(redHeaderPattern)
+
+  if (match) {
+    console.log('检测到红头文件标记，类型:', match[1])
+    // 提取红头文件 HTML 和剩余内容
+    const redHeaderHtml = match[2].trim()
+    const restContent = markdown.replace(redHeaderPattern, '').trim()
+
+    console.log('红头文件 HTML 长度:', redHeaderHtml.length)
+    console.log('剩余内容长度:', restContent.length)
+
+    // 转换剩余内容为 HTML
+    const restHtml = restContent ? convertMarkdownContent(restContent) : ''
+
+    // 组合红头文件 HTML 和剩余内容
+    const result = (redHeaderHtml + restHtml).trim()
+    console.log('组合后 HTML 长度:', result.length)
+    return result
+  }
+
+  console.log('未检测到红头文件标记，使用普通转换')
+  // 没有红头文件标记，使用普通转换
+  return convertMarkdownContent(markdown)
 }
 
 // 初始 Markdown 内容（用于编辑器初始化后设置）

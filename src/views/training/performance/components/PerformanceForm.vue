@@ -26,7 +26,7 @@
       <el-form-item label="筹划方案名称" prop="planName">
         <el-input v-model="formData.planName" placeholder="请输入" clearable />
       </el-form-item>
-      <el-form-item label="演训主题" prop="exerciseTheme">
+      <!-- <el-form-item label="演训主题" prop="exerciseTheme">
         <el-select v-model="formData.exerciseTheme" placeholder="请选择" clearable class="w-full">
           <el-option
             v-for="item in exerciseThemeOptions"
@@ -35,8 +35,8 @@
             :value="item.value"
           />
         </el-select>
-      </el-form-item>
-      <el-form-item label="演训类型" prop="exerciseType">
+      </el-form-item> -->
+      <el-form-item v-show="false" label="演训类型" prop="exerciseType">
         <el-select
           v-model="formData.exerciseType"
           placeholder="请选择"
@@ -52,7 +52,7 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="演训等级" prop="level">
+      <el-form-item v-show="false" label="演训等级" prop="level">
         <el-select
           v-model="formData.level"
           placeholder="请选择"
@@ -68,7 +68,7 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="所属学院" prop="collegeCode">
+      <el-form-item v-show="false" label="所属学院" prop="collegeCode">
         <el-select
           v-model="formData.collegeCode"
           placeholder="请选择"
@@ -157,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, watch } from 'vue'
+import { ref, reactive, computed, nextTick } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { isEmpty } from 'lodash-es'
 import { Icon } from '@/components/Icon'
@@ -229,7 +229,7 @@ const formRef = ref()
 // 表单验证规则
 const formRules = {
   planName: [{ required: true, message: '请输入筹划方案名称', trigger: 'blur' }],
-  exerciseTheme: [{ required: true, message: '请输入演训主题', trigger: 'blur' }],
+  // exerciseTheme: [{ required: true, message: '请输入演训主题', trigger: 'blur' }],
   fileType: [{ required: true, message: '请选择文档分类', trigger: 'change' }],
   activeUser: [{ required: true, message: '请选择可编辑用户', trigger: 'change' }],
   creationMethod: [{ required: true, message: '请选择创建方式', trigger: 'change' }]

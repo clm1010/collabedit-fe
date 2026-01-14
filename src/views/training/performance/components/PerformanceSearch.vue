@@ -14,10 +14,10 @@
               v-model="localParams.planName"
               placeholder="请输入"
               clearable
-              class="!w-200px"
+              class="!w-260px"
             />
           </el-form-item>
-          <el-form-item label="演训主题" prop="exerciseTheme">
+          <!-- <el-form-item label="演训主题" prop="exerciseTheme">
             <el-select
               v-model="localParams.exerciseTheme"
               placeholder="请选择"
@@ -31,23 +31,21 @@
                 :value="item.value"
               />
             </el-select>
-          </el-form-item>
+          </el-form-item> -->
 
           <el-form-item label="演训等级" prop="level">
-            <el-select v-model="localParams.level" placeholder="请选择" clearable class="!w-200px">
+            <el-select v-model="localParams.level" placeholder="请选择" clearable class="!w-260px">
               <el-option label="战略级" value="ZLJ" />
               <el-option label="战役级" value="ZYJ" />
               <el-option label="战术级" value="ZSJ" />
             </el-select>
           </el-form-item>
-        </el-col>
-        <el-col :span="24">
           <el-form-item label="所属学院" prop="collegeCode">
             <el-select
               v-model="localParams.collegeCode"
               placeholder="请选择"
               clearable
-              class="!w-200px"
+              class="!w-260px"
             >
               <el-option
                 v-for="item in collegeOptions"
@@ -57,12 +55,14 @@
               />
             </el-select>
           </el-form-item>
+        </el-col>
+        <el-col :span="24">
           <el-form-item label="审核状态" prop="applyNode">
             <el-select
               v-model="localParams.applyNode"
               placeholder="请选择"
               clearable
-              class="!w-200px"
+              class="!w-260px"
             >
               <el-option label="编辑中" value="1" />
               <el-option label="审核中" value="2" />
@@ -78,7 +78,7 @@
               start-placeholder="请选择"
               end-placeholder="请选择"
               value-format="YYYY-MM-DD"
-              class="!w-240px"
+              class="!w-260px"
             />
           </el-form-item>
           <el-form-item label="" class="">
@@ -103,15 +103,15 @@ import { Icon } from '@/components/Icon'
 import type { TrainingPerformancePageReqVO } from '@/api/training'
 
 // 演训主题选项
-const exerciseThemeOptions = [
-  { label: '联合作战训练', value: 'LHZZYX' },
-  { label: '作战训练', value: 'ZUOZL' },
-  { label: '政治训练', value: 'ZZL' },
-  { label: '经济训练', value: 'JJL' },
-  { label: '认知训练', value: 'RZL' },
-  { label: '文化训练', value: 'WHL' },
-  { label: '后装训练', value: 'HZL' }
-]
+// const exerciseThemeOptions = [
+//   { label: '联合作战训练', value: 'LHZZYX' },
+//   { label: '作战训练', value: 'ZUOZL' },
+//   { label: '政治训练', value: 'ZZL' },
+//   { label: '经济训练', value: 'JJL' },
+//   { label: '认知训练', value: 'RZL' },
+//   { label: '文化训练', value: 'WHL' },
+//   { label: '后装训练', value: 'HZL' }
+// ]
 
 // 所属学院选项
 const collegeOptions = [
