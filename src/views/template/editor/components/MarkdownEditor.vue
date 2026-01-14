@@ -193,12 +193,12 @@
         >
           <Icon icon="mdi:code-braces" />
         </button>
-        <!-- AI 模块标记 -->
+        <!-- AI 模块（块级） -->
         <button
           class="toolbar-btn"
-          :class="{ active: editor?.isActive('aiBlock') }"
+          :class="{ active: editor?.isActive('aiBlockNode') }"
           @click="editor?.chain().focus().toggleAIBlock().run()"
-          title="标记为 AI 模块 (Ctrl+Shift+A)"
+          title="AI 模块 (Ctrl+Shift+A)"
         >
           <Icon icon="mdi:robot-outline" />
         </button>
@@ -429,10 +429,10 @@
       <template #footer>
         <div class="preview-footer">
           <div class="footer-left">
-            <button class="sidebar-btn" @click="togglePreviewSidebar">
+            <!-- <button class="sidebar-btn" @click="togglePreviewSidebar">
               <Icon icon="mdi:dock-left" />
               <span>打开边栏</span>
-            </button>
+            </button> -->
           </div>
           <div class="footer-right">
             <button class="zoom-btn" @click="togglePreviewFullscreen" title="全屏">
@@ -544,7 +544,7 @@
                 </button>
                 <button
                   class="bubble-menu-btn"
-                  :class="{ 'is-active': editor?.isActive('aiBlock') }"
+                  :class="{ 'is-active': editor?.isActive('aiBlockNode') }"
                   @click="editor?.chain().focus().toggleAIBlock().run()"
                   title="AI 模块"
                 >
@@ -645,8 +645,8 @@ import LinkPopover from './LinkPopover.vue'
 import ColorPicker from './ColorPicker.vue'
 // 自定义水平线扩展（支持红色横线）
 import { ColoredHorizontalRule } from '../extensions/ColoredHorizontalRule'
-// AI 模块扩展
-import { AIBlock } from '../extensions/AIBlock'
+// AI 模块扩展（块级 - 支持内部编辑）
+import { AIBlockNode } from '../extensions/AIBlockNode'
 
 // Props
 interface Props {
@@ -848,10 +848,10 @@ const editor = useEditor({
     // Markdown 扩展 - 支持 Markdown 内容的解析和序列化
     // 参考: https://tiptap.dev/docs/editor/markdown
     Markdown,
-    // AI 模块扩展 - 标识 AI 生成区域
-    AIBlock.configure({
+    // AI 模块块级扩展 - 支持内部编辑的金色边框区块
+    AIBlockNode.configure({
       HTMLAttributes: {
-        class: 'ai-block'
+        class: 'ai-block-node'
       }
     })
   ],
@@ -1435,16 +1435,20 @@ const generateFullHtml = () => {
       background: #f3f4f6;
       padding: 0.2em 0.4em;
       border-radius: 4px;
+      border: none;
       font-size: 0.9em;
+      text-decoration: none !important;
     }
     pre {
       background: #1f2937;
       color: #f9fafb;
       padding: 1em;
       border-radius: 8px;
+      border: none;
       overflow-x: auto;
     }
-    pre code { background: transparent; color: inherit; padding: 0; }
+    pre code { background: transparent !important; color: inherit; padding: 0; border: none !important; text-decoration: none !important; }
+    pre * { text-decoration: none !important; background: transparent !important; border: none !important; }
     table { border-collapse: collapse; width: 100%; margin: 1em 0; table-layout: fixed; }
     th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; vertical-align: top; }
     th { background: #f9fafb; font-weight: 600; color: #374151; }
@@ -1459,6 +1463,29 @@ const generateFullHtml = () => {
     hr.red-line, hr[data-line-color="red"] { border-top-color: #ff0000; border-top-width: 2px; }
     table.red-header-table { border: none !important; width: 100%; margin: 0; border-collapse: collapse; }
     table.red-header-table td, table.red-header-table th { border: none !important; padding: 0; background: transparent !important; }
+    /* AI 模块样式 */
+    .ai-block-node, div[data-type="ai-block-node"] {
+      display: block;
+      width: 100%;
+      margin: 16px 0;
+      padding: 16px;
+      border: 1px solid #e8a849;
+      border-radius: 4px;
+      background-color: #fff;
+      position: relative;
+    }
+    .ai-block-node p, div[data-type="ai-block-node"] p {
+      margin: 0.5em 0;
+      line-height: 1.75;
+      text-indent: 2em;
+    }
+    .ai-block-node strong, div[data-type="ai-block-node"] strong { font-weight: 700; color: #333; }
+    .ai-block, span[data-type="ai-block"] {
+      background-color: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
   </style>
 </head>
 <body>
@@ -1746,6 +1773,7 @@ defineExpose({
       color: #dc2626;
       padding: 0.125em 0.25em;
       border-radius: 4px;
+      border: none;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.9em;
     }
@@ -1755,12 +1783,23 @@ defineExpose({
       color: #f9fafb;
       padding: 1em;
       border-radius: 8px;
+      border: none;
       overflow-x: auto;
 
       code {
-        background: transparent;
+        background: transparent !important;
+        background-color: transparent !important;
         color: inherit;
         padding: 0;
+        border: none !important;
+        text-decoration: none !important;
+      }
+
+      // 移除所有继承的样式
+      * {
+        text-decoration: none !important;
+        background: transparent !important;
+        border: none !important;
       }
     }
 
@@ -2351,6 +2390,7 @@ defineExpose({
     background: #f3f4f6;
     padding: 0.2em 0.4em;
     border-radius: 4px;
+    border: none;
     font-family: 'Fira Code', monospace;
     font-size: 0.9em;
   }
@@ -2360,7 +2400,20 @@ defineExpose({
     color: #f9fafb;
     padding: 1em;
     border-radius: 8px;
+    border: none;
     overflow-x: auto;
+
+    code {
+      background: transparent !important;
+      color: inherit;
+      padding: 0;
+      border: none !important;
+    }
+
+    * {
+      background: transparent !important;
+      border: none !important;
+    }
   }
 
   :deep(table) {
@@ -2400,6 +2453,50 @@ defineExpose({
     &[data-line-color='red'] {
       border-top-color: #ff0000;
     }
+  }
+
+  // AI 模块块级样式（预览）
+  :deep(.ai-block-node),
+  :deep(div[data-type='ai-block-node']) {
+    display: block;
+    width: 100%;
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid #e8a849;
+    border-radius: 4px;
+    background-color: #fff;
+    position: relative;
+
+    p {
+      margin: 0.5em 0;
+      line-height: 1.75;
+      text-indent: 2em;
+    }
+
+    strong,
+    b {
+      font-weight: 700;
+      color: #333;
+    }
+
+    ul,
+    ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+    }
+
+    li {
+      text-indent: 0;
+    }
+  }
+
+  // AI 模块行内样式（预览）
+  :deep(.ai-block),
+  :deep(span[data-type='ai-block']) {
+    background-color: #e3f2fd;
+    border: 1px solid #90caf9;
+    border-radius: 4px;
+    padding: 2px 6px;
   }
 }
 
@@ -2531,22 +2628,77 @@ defineExpose({
   min-width: 80px !important;
 }
 
-// AI 模块全局样式（行内标记）
+// AI 模块全局样式
 .ProseMirror {
-  // AI 模块区域样式 - 浅蓝色背景（行内标记）
+  // AI 模块块级样式 - 占满整行宽度
+  .ai-block-node,
+  div[data-type='ai-block-node'] {
+    display: block;
+    width: 100%;
+    margin: 16px 0;
+    padding: 0;
+    border: 1px solid #e8a849;
+    border-radius: 4px;
+    background-color: #fff;
+    position: relative;
+    min-height: 60px;
+
+    &:hover {
+      border-color: #d49a3a;
+      box-shadow: 0 2px 8px rgba(232, 168, 73, 0.15);
+    }
+
+    &.ProseMirror-selectednode {
+      border-color: #c78c2e;
+      box-shadow: 0 2px 12px rgba(232, 168, 73, 0.25);
+    }
+
+    // 内容区域段落样式
+    p {
+      margin: 0.5em 0;
+      line-height: 1.75;
+      text-indent: 2em;
+
+      &:first-child {
+        margin-top: 0;
+      }
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    // 粗体文字
+    strong,
+    b {
+      font-weight: 700;
+      color: #333;
+    }
+
+    // 列表不缩进
+    ul,
+    ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+    }
+
+    li {
+      text-indent: 0;
+    }
+  }
+
+  // AI 模块区域样式 - 浅蓝色背景（行内标记，保留兼容性）
   .ai-block,
   span[data-type='ai-block'] {
-    background-color: #e3f2fd; // 浅蓝色背景 (Material Design Blue 50)
-    border: 1px solid #90caf9; // 边框颜色 (Material Design Blue 200)
+    background-color: #e3f2fd;
+    border: 1px solid #90caf9;
     border-radius: 4px;
     padding: 2px 6px;
     position: relative;
     display: inline;
 
-    // AI 模块标识标签
     &::before {
       content: 'AI';
-      background-color: #1976d2; // Material Design Blue 700
+      background-color: #1976d2;
       color: white;
       font-size: 9px;
       font-weight: 600;
@@ -2559,32 +2711,43 @@ defineExpose({
 
   // 代码块样式
   pre {
-    background-color: #f5f5f5;
-    border: 1px solid #e0e0e0;
+    background-color: #1f2937;
+    border: none;
     border-radius: 6px;
     padding: 12px 16px;
     margin: 8px 0;
     overflow-x: auto;
 
     code {
-      background: none;
+      background: none !important;
+      background-color: transparent !important;
       padding: 0;
+      border: none !important;
       font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
       font-size: 13px;
       line-height: 1.5;
-      color: #333;
+      color: #f9fafb;
+      text-decoration: none !important;
+    }
+
+    // 移除所有继承的样式
+    * {
+      text-decoration: none !important;
+      background: transparent !important;
+      border: none !important;
     }
   }
 
   // 行内代码样式
   code {
     background-color: #f5f5f5;
-    border: 1px solid #e0e0e0;
+    border: none;
     border-radius: 3px;
     padding: 2px 6px;
     font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
     font-size: 0.9em;
     color: #d32f2f;
+    text-decoration: none !important;
   }
 }
 </style>

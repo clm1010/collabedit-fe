@@ -189,11 +189,15 @@
                   </el-button>
                 </template>
 
-                <!-- 发布状态(4)显示：已发布 + 审核记录 -->
+                <!-- 发布状态(4)显示：预览、导出、审核记录 -->
                 <template v-else-if="scope.row.applyNode === '4'">
-                  <el-button link type="success" disabled>
-                    <Icon icon="ep:check" />
-                    已发布
+                  <el-button link type="primary" @click="handlePreview(scope.row)">
+                    <Icon icon="ep:view" />
+                    预览
+                  </el-button>
+                  <el-button link type="primary" @click="handleExport(scope.row)">
+                    <Icon icon="ep:download" />
+                    导出
                   </el-button>
                   <el-button link type="primary" @click="openExamRecordDialog(scope.row)">
                     <Icon icon="ep:document" />
@@ -450,6 +454,13 @@
       :elements="formData.elements_items"
       @confirm="handleElementsConfirm"
     />
+
+    <!-- 文档预览弹窗 -->
+    <DocumentPreviewDialog
+      v-model:visible="previewDialogVisible"
+      :content="previewContent"
+      :title="previewTitle"
+    />
   </div>
 </template>
 
@@ -462,7 +473,9 @@ import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { isEmpty, isNil, isString, isObject, pickBy, filter, map, every } from 'lodash-es'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
+import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
 import ElementsEditor from './components/ElementsEditor.vue'
+import MarkdownIt from 'markdown-it'
 import type { ElementItem } from '@/types/management'
 
 defineOptions({ name: 'TemplateManagement' })
@@ -1156,6 +1169,85 @@ const handleRejectSubmit = async () => {
 //     }
 //   }
 // }
+
+// 预览弹窗相关
+const previewDialogVisible = ref(false)
+const previewContent = ref('')
+const previewTitle = ref('')
+
+// 预览功能
+const handlePreview = async (row: TemplateApi.TemplateVO) => {
+  if (!row.id) {
+    ElMessage.warning('文档ID不存在')
+    return
+  }
+
+  const loadingInstance = ElLoading.service({
+    text: '加载文档中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+
+  try {
+    const blob = await TemplateApi.getFileStream(String(row.id))
+    if (!blob) {
+      ElMessage.warning('文档内容为空')
+      return
+    }
+
+    // 读取 Blob 内容为文本
+    const text = await blob.text()
+
+    // 使用 markdown-it 解析 Markdown 为 HTML
+    const md = new MarkdownIt()
+    const htmlContent = md.render(text)
+    previewContent.value = htmlContent
+    previewTitle.value = row.templateName || '文档预览'
+    previewDialogVisible.value = true
+  } catch (error) {
+    console.error('预览失败:', error)
+    ElMessage.error('预览失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
+  }
+}
+
+// 导出功能
+const handleExport = async (row: TemplateApi.TemplateVO) => {
+  if (!row.id) {
+    ElMessage.warning('文档ID不存在')
+    return
+  }
+
+  const loadingInstance = ElLoading.service({
+    text: '导出文档中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+
+  try {
+    const blob = await TemplateApi.getFileStream(String(row.id))
+    if (!blob) {
+      ElMessage.warning('文档内容为空')
+      return
+    }
+
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${row.templateName || '文档'}.md`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
+  }
+}
 
 // 审核记录弹窗相关
 const examRecordDialogVisible = ref(false)

@@ -466,10 +466,10 @@
       <template #footer>
         <div class="preview-footer">
           <div class="footer-left">
-            <button class="sidebar-btn" @click="togglePreviewSidebar">
+            <!-- <button class="sidebar-btn" @click="togglePreviewSidebar">
               <Icon icon="mdi:dock-left" />
               <span>打开边栏</span>
-            </button>
+            </button> -->
           </div>
           <div class="footer-right">
             <button class="zoom-btn" @click="togglePreviewFullscreen" title="全屏">

@@ -164,6 +164,62 @@ export const parseWordDocument = async (file: File): Promise<string> => {
 }
 
 /**
+ * 预处理 Markdown 文本，转换自定义语法
+ * @param text Markdown 文本
+ * @returns 预处理后的 Markdown 文本
+ */
+const preprocessMarkdown = (text: string): string => {
+  let result = text
+
+  // 处理块级 AI 模块标记 :::ai ... :::
+  // 支持多行格式：:::ai\n内容\n:::
+  // 支持单行格式：:::ai 内容 ::: 或 :::ai 内容:::
+  // 支持 title: xxx 格式的标题行
+  // 转换为 HTML div 标签
+  result = result.replace(/:::ai\s+([\s\S]*?)\s*:::/g, (_, content) => {
+    // 生成唯一 ID
+    const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+    // 提取 title（如果有）
+    let title = ''
+    let actualContent = content.trim()
+    const titleMatch = actualContent.match(/^title:\s*(.*)$/m)
+    if (titleMatch) {
+      title = titleMatch[1].trim()
+      // 移除 title 行
+      actualContent = actualContent.replace(/^title:\s*.*\n?/m, '').trim()
+    }
+
+    // 将内部 Markdown 转换为 HTML
+    // 如果内容不包含块级元素标记，包裹在段落中
+    let innerHtml = ''
+    if (actualContent) {
+      innerHtml = md.render(actualContent)
+      // 如果渲染结果为空或只有空白，创建一个空段落
+      if (!innerHtml.trim()) {
+        innerHtml = `<p>${actualContent}</p>`
+      }
+    } else {
+      innerHtml = '<p></p>'
+    }
+
+    // 构建属性
+    const titleAttr = title ? ` data-ai-title="${title}"` : ''
+
+    return `<div data-type="ai-block-node" data-ai-id="${id}"${titleAttr} class="ai-block-node">${innerHtml}</div>`
+  })
+
+  // 处理行内 AI 模块标记 ==AI[内容]AI== - 转换为块级 AI 模块
+  result = result.replace(/==AI\[(.*?)\]AI==/g, (_, content) => {
+    const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const innerHtml = content.trim() ? `<p>${content}</p>` : '<p></p>'
+    return `<div data-type="ai-block-node" data-ai-id="${id}" class="ai-block-node">${innerHtml}</div>`
+  })
+
+  return result
+}
+
+/**
  * 解析 Markdown 文件
  * 使用 markdown-it 库转换为 HTML
  * @param file Markdown 文件
@@ -173,14 +229,32 @@ export const parseMarkdownDocument = async (file: File): Promise<string> => {
   try {
     const text = await file.text()
 
+    // 预处理 Markdown，转换自定义语法（AI 模块等）
+    const preprocessedText = preprocessMarkdown(text)
+
     // 使用 markdown-it 将 Markdown 转换为 HTML
-    const html = md.render(text)
+    const html = md.render(preprocessedText)
 
     return html
   } catch (error) {
     console.error('Markdown 文档解析失败:', error)
     throw new Error('Markdown 文档解析失败，请确保文件格式正确')
   }
+}
+
+/**
+ * 将 Markdown 文本转换为 HTML（用于编辑器内容设置）
+ * @param markdown Markdown 文本
+ * @returns HTML 内容
+ */
+export const markdownToHtml = (markdown: string): string => {
+  if (!markdown || markdown.trim() === '') return ''
+
+  // 预处理 Markdown，转换自定义语法
+  const preprocessedText = preprocessMarkdown(markdown)
+
+  // 使用 markdown-it 转换
+  return md.render(preprocessedText)
 }
 
 /**
@@ -246,6 +320,52 @@ const convertContentToMarkdown = (content: string): string => {
   if (!content || content.trim() === '') return ''
 
   const markdown = content
+    // 处理块级 AI 模块 - 使用 :::ai 语法，支持 title 属性
+    .replace(
+      /<div[^>]*(?:data-type="ai-block-node"|class="[^"]*ai-block-node[^"]*")[^>]*>([\s\S]*?)<\/div>/gi,
+      (match, innerHtml) => {
+        // 提取 title 属性
+        const titleMatch = match.match(/data-ai-title="([^"]*)"/i)
+        const title = titleMatch ? titleMatch[1] : ''
+
+        // 递归处理内部内容
+        const innerContent = innerHtml
+          // 处理标题
+          .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
+          .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+          .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+          // 处理粗体和斜体
+          .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+          .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+          .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+          .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+          // 处理段落
+          .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+          // 处理列表项
+          .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+          // 移除列表标签
+          .replace(/<\/?ul[^>]*>/gi, '\n')
+          .replace(/<\/?ol[^>]*>/gi, '\n')
+          // 处理换行
+          .replace(/<br[^>]*\/?>/gi, '\n')
+          // 移除其他标签
+          .replace(/<[^>]+>/g, '')
+          // 解码 HTML 实体
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          // 清理多余空行
+          .replace(/\n{3,}/g, '\n\n')
+          .trim()
+
+        // 如果有标题，添加标题行
+        const titleLine = title ? `title: ${title}\n` : ''
+        return `\n:::ai\n${titleLine}${innerContent}\n:::\n\n`
+      }
+    )
     // 处理代码块（pre > code）- 使用自定义标记保留
     .replace(
       /<pre[^>]*><code[^>]*(?:class="[^"]*language-(\w+)[^"]*")?[^>]*>([\s\S]*?)<\/code><\/pre>/gi,
@@ -260,10 +380,10 @@ const convertContentToMarkdown = (content: string): string => {
         return `\n\`\`\`${language}\n${decodedCode}\n\`\`\`\n\n`
       }
     )
-    // 处理 AI 模块标记 - 使用自定义语法 ==AI[内容]AI==
+    // 处理旧版行内 AI 模块标记 - 转换为块级 :::ai 语法
     .replace(
       /<span[^>]*(?:data-type="ai-block"|class="[^"]*ai-block[^"]*")[^>]*>(.*?)<\/span>/gi,
-      '==AI[$1]AI=='
+      '\n\n:::ai\n$1\n:::\n\n'
     )
     // 处理标题
     .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
@@ -494,6 +614,37 @@ export const generatePreviewHtml = (content: string, title: string): string => {
     }
     ul[data-type="taskList"] li input[type="checkbox"] {
       margin-top: 5px;
+    }
+    /* AI 模块块级样式 */
+    .ai-block-node,
+    div[data-type="ai-block-node"] {
+      display: block;
+      width: 100%;
+      margin: 16px 0;
+      padding: 16px;
+      border: 1px solid #e8a849;
+      border-radius: 4px;
+      background-color: #fff;
+      position: relative;
+    }
+    .ai-block-node p,
+    div[data-type="ai-block-node"] p {
+      margin: 0.5em 0;
+      line-height: 1.75;
+      text-indent: 2em;
+    }
+    .ai-block-node strong,
+    div[data-type="ai-block-node"] strong {
+      font-weight: 700;
+      color: #333;
+    }
+    /* AI 模块行内样式 */
+    .ai-block,
+    span[data-type="ai-block"] {
+      background-color: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 4px;
+      padding: 2px 6px;
     }
   </style>
 </head>

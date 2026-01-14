@@ -659,12 +659,39 @@ const convertMarkdownContent = (content: string): string => {
     return placeholder
   })
 
-  // 处理 AI 模块标记 ==AI[内容]AI==
-  html = html.replace(/==AI\[([\s\S]*?)\]AI==/g, (_match, aiContent) => {
+  // 处理块级 AI 模块标记 :::ai ... :::
+  html = html.replace(/:::ai\s+([\s\S]*?)\s*:::/g, (_match, aiContent) => {
     const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
+    const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    // 将内容按换行分割为段落
+    const trimmedContent = aiContent.trim()
+    let innerHtml = ''
+    if (trimmedContent) {
+      // 将换行转换为段落
+      const paragraphs = trimmedContent
+        .split(/\n\n|\n/)
+        .filter((p: string) => p.trim())
+        .map((p: string) => `<p>${p.trim()}</p>`)
+      innerHtml = paragraphs.length > 0 ? paragraphs.join('') : `<p>${trimmedContent}</p>`
+    } else {
+      innerHtml = '<p></p>'
+    }
     placeholders.push({
       placeholder,
-      html: `<span data-type="ai-block" class="ai-block">${aiContent}</span>`
+      html: `<div data-type="ai-block-node" data-ai-id="${id}" class="ai-block-node">${innerHtml}</div>`
+    })
+    placeholderIndex++
+    return placeholder
+  })
+
+  // 处理行内 AI 模块标记 ==AI[内容]AI== - 转换为块级 AI 模块
+  html = html.replace(/==AI\[([\s\S]*?)\]AI==/g, (_match, aiContent) => {
+    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
+    const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const innerHtml = aiContent.trim() ? `<p>${aiContent.trim()}</p>` : '<p></p>'
+    placeholders.push({
+      placeholder,
+      html: `<div data-type="ai-block-node" data-ai-id="${id}" class="ai-block-node">${innerHtml}</div>`
     })
     placeholderIndex++
     return placeholder

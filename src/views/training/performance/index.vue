@@ -163,11 +163,15 @@
                         </el-button>
                       </div>
 
-                      <!-- 发布状态(4)显示：已发布 + 审核记录 -->
+                      <!-- 发布状态(4)显示：预览、导出、审核记录 -->
                       <div v-else-if="scope.row.applyNode === '4'">
-                        <el-button link type="success" disabled>
-                          <Icon icon="ep:check" />
-                          已发布
+                        <el-button link type="primary" @click="handlePreview(scope.row)">
+                          <Icon icon="ep:view" />
+                          预览
+                        </el-button>
+                        <el-button link type="primary" @click="handleExport(scope.row)">
+                          <Icon icon="ep:download" />
+                          导出
                         </el-button>
                         <el-button link type="primary" @click="openExamRecordDialog(scope.row)">
                           <Icon icon="ep:document" />
@@ -266,6 +270,13 @@
     :loading="examRecordLoading"
     :record-list="examRecordList"
   />
+
+  <!-- 文档预览弹窗 -->
+  <DocumentPreviewDialog
+    v-model:visible="previewDialogVisible"
+    :content="previewContent"
+    :title="previewTitle"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -275,6 +286,9 @@ import * as PerformanceApi from '@/api/training'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
+import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
+import MarkdownIt from 'markdown-it'
+import { htmlToDocx } from '@/views/utils/htmlToDocx'
 import PerformanceSearch from './components/PerformanceSearch.vue'
 import PerformanceForm from './components/PerformanceForm.vue'
 import DrillSelector from './components/DrillSelector.vue'
@@ -890,6 +904,95 @@ const handlePublishDialogSubmit = async (visibleScope: string[]) => {
     ElMessage.error(error.message || '发布失败')
   } finally {
     publishLoading.value = false
+  }
+}
+
+// 预览弹窗相关
+const previewDialogVisible = ref(false)
+const previewContent = ref('')
+const previewTitle = ref('')
+
+// 预览功能
+const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
+  if (!row.id) {
+    ElMessage.warning('文档ID不存在')
+    return
+  }
+
+  const loadingInstance = ElLoading.service({
+    text: '加载文档中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+
+  try {
+    const blob = await PerformanceApi.getFileStream(row.id)
+    if (!blob) {
+      ElMessage.warning('文档内容为空')
+      return
+    }
+
+    // 读取 Blob 内容为文本
+    const text = await blob.text()
+
+    // 使用 markdown-it 解析 Markdown 为 HTML
+    const md = new MarkdownIt()
+    const htmlContent = md.render(text)
+    previewContent.value = htmlContent
+    previewTitle.value = row.planName || '文档预览'
+    previewDialogVisible.value = true
+  } catch (error) {
+    console.error('预览失败:', error)
+    ElMessage.error('预览失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
+  }
+}
+
+// 导出功能（导出为 docx 格式）
+const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
+  if (!row.id) {
+    ElMessage.warning('文档ID不存在')
+    return
+  }
+
+  const loadingInstance = ElLoading.service({
+    text: '导出文档中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+
+  try {
+    const blob = await PerformanceApi.getFileStream(row.id)
+    if (!blob) {
+      ElMessage.warning('文档内容为空')
+      return
+    }
+
+    // 读取 Blob 内容为文本（markdown）
+    const markdownText = await blob.text()
+
+    // 使用 markdown-it 将 markdown 转换为 HTML
+    const md = new MarkdownIt()
+    const htmlContent = md.render(markdownText)
+
+    // 使用 htmlToDocx 将 HTML 转换为 docx Blob
+    const docxBlob = await htmlToDocx(htmlContent, row.planName || '文档')
+
+    // 创建下载链接
+    const url = window.URL.createObjectURL(docxBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${row.planName || '文档'}.docx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
   }
 }
 
