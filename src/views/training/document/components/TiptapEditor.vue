@@ -92,6 +92,7 @@
                   @change="handleBubbleHighlightColor"
                 />
                 <button
+                  ref="linkBtnRef"
                   class="bubble-menu-btn"
                   :class="{ 'is-active': editor?.isActive('link') }"
                   @click="toggleBubbleLink"
@@ -126,6 +127,17 @@
                 </button>
               </div>
             </div>
+
+            <!-- Link Popover 组件 -->
+            <LinkPopover
+              v-if="editor && editable"
+              :editor="editor"
+              v-model:visible="linkPopoverVisible"
+              :initial-url="linkPopoverUrl"
+              :trigger-rect="linkPopoverTriggerRect"
+              @apply="handleLinkApply"
+              @remove="handleLinkRemove"
+            />
           </div>
         </div>
       </template>
@@ -236,6 +248,7 @@ import { ElMessage } from 'element-plus'
 import { EditorToolbar } from './toolbar'
 import { EditorKey } from './toolbar/types'
 import ColorPicker from './toolbar/ColorPicker.vue'
+import LinkPopover from './toolbar/LinkPopover.vue'
 
 // Props
 interface Props {
@@ -286,6 +299,12 @@ let bubbleMenuPluginKey: string | null = null
 // 气泡菜单颜色选择
 const bubbleTextColor = ref('#000000')
 const bubbleHighlightColor = ref('#FFFF00')
+
+// LinkPopover 相关状态
+const linkPopoverVisible = ref(false)
+const linkPopoverUrl = ref('')
+const linkPopoverTriggerRect = ref<DOMRect | null>(null)
+const linkBtnRef = ref<HTMLElement | null>(null)
 
 // 回到顶部按钮显示状态
 const showBackToTop = ref(false)
@@ -510,6 +529,75 @@ onMounted(() => {
   }
 })
 
+// 处理编辑器点击事件（用于点击链接时打开 LinkPopover）
+const handleEditorClick = (event: MouseEvent) => {
+  if (!props.editable) return
+
+  const target = event.target as HTMLElement
+
+  // 检查是否点击了链接
+  const linkElement = target.closest('a')
+  if (linkElement && editor.value) {
+    event.preventDefault()
+
+    // 获取链接的 URL
+    const href = linkElement.getAttribute('href') || ''
+
+    // 设置 LinkPopover
+    linkPopoverUrl.value = href
+    linkPopoverTriggerRect.value = linkElement.getBoundingClientRect()
+
+    // 在编辑器中选中这个链接
+    const pos = editor.value.view.posAtDOM(linkElement, 0)
+    let linkPos = -1
+    editor.value.state.doc.nodesBetween(pos, pos + linkElement.textContent!.length, (node, nodePos) => {
+      if (node.marks.some((m: any) => m.type.name === 'link')) {
+        linkPos = nodePos
+        return false
+      }
+      return true
+    })
+
+    if (linkPos >= 0) {
+      // 选中链接
+      editor.value
+        .chain()
+        .focus()
+        .setTextSelection({ from: linkPos, to: linkPos + (linkElement.textContent?.length || 0) })
+        .run()
+    }
+
+    // 显示 LinkPopover
+    linkPopoverVisible.value = true
+  }
+}
+
+// 安全添加链接点击事件监听
+const addLinkClickListener = (editorInstance?: any) => {
+  try {
+    if (!editorInstance || editorInstance.isDestroyed || !props.editable) return
+    const dom = editorInstance.view?.dom
+    if (dom) {
+      dom.addEventListener('click', handleEditorClick)
+    }
+  } catch (e) {
+    // 视图未就绪时忽略
+  }
+}
+
+// 安全移除链接点击事件监听
+const removeLinkClickListener = (editorInstance?: any) => {
+  try {
+    if (!editorInstance || editorInstance.isDestroyed) return
+    const dom = editorInstance.view?.dom
+    if (dom) {
+      dom.removeEventListener('click', handleEditorClick)
+    }
+  } catch (e) {
+    // 视图可能已被销毁，忽略
+  }
+}
+
 // 监听编辑器和菜单元素，在两者都就绪后注册 BubbleMenu
 watch(
   [() => editor.value, () => bubbleMenuRef.value],
@@ -517,6 +605,16 @@ watch(
     if (!isNil(newEditor) && !isNil(newMenuRef)) {
       registerBubbleMenu()
     }
+  },
+  { immediate: true }
+)
+
+// 监听编辑器初始化，添加链接点击事件监听
+watch(
+  () => editor.value,
+  (newEditor, oldEditor) => {
+    removeLinkClickListener(oldEditor)
+    addLinkClickListener(newEditor)
   },
   { immediate: true }
 )
@@ -559,20 +657,37 @@ const registerBubbleMenu = () => {
   editor.value.registerPlugin(plugin)
 }
 
-// 气泡菜单中切换链接
+// 气泡菜单中切换链接 - 使用 LinkPopover 组件
 const toggleBubbleLink = () => {
   if (isNil(editor.value)) return
 
-  const previousUrl = editor.value.getAttributes('link').href
+  // 获取当前链接的 URL
+  const previousUrl = editor.value.getAttributes('link').href || ''
 
-  if (!isEmpty(previousUrl)) {
-    editor.value.chain().focus().unsetLink().run()
-  } else {
-    const url = window.prompt('输入链接地址:', 'https://')
-    if (!isEmpty(url)) {
-      editor.value.chain().focus().setLink({ href: url }).run()
-    }
+  // 设置 LinkPopover 的初始 URL
+  linkPopoverUrl.value = previousUrl
+
+  // 获取链接按钮的位置作为触发点
+  if (linkBtnRef.value) {
+    linkPopoverTriggerRect.value = linkBtnRef.value.getBoundingClientRect()
   }
+
+  // 显示 LinkPopover
+  linkPopoverVisible.value = true
+}
+
+// 应用链接
+const handleLinkApply = (url: string) => {
+  if (isNil(editor.value) || isEmpty(url)) return
+
+  editor.value.chain().focus().setLink({ href: url }).run()
+}
+
+// 删除链接
+const handleLinkRemove = () => {
+  if (isNil(editor.value)) return
+
+  editor.value.chain().focus().unsetLink().run()
 }
 
 // 气泡菜单中处理字体颜色
@@ -815,6 +930,9 @@ onBeforeUnmount(() => {
   // 标记组件已销毁
   isComponentDestroyed = true
 
+  // 移除链接点击事件监听
+  removeLinkClickListener(editor.value)
+
   // 销毁编辑器实例（这会自动清理 BubbleMenuPlugin）
   if (!isNil(editor.value)) {
     try {
@@ -830,10 +948,16 @@ onBeforeUnmount(() => {
   // 清理 DOM 引用
   contentWrapperRef.value = null
   bubbleMenuRef.value = null
+  linkBtnRef.value = null
 
   // 清理预览相关的引用和状态
   previewContent.value = ''
   pdfPreviewRef.value = null
+
+  // 清理 LinkPopover 状态
+  linkPopoverVisible.value = false
+  linkPopoverUrl.value = ''
+  linkPopoverTriggerRect.value = null
 
   // 重置状态
   saveStatus.value = 'saved'

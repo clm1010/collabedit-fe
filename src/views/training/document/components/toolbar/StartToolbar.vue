@@ -1034,7 +1034,33 @@ const cleanWordHtml = (html: string): string => {
   // 清理多余的空格，但保留必要的空格
   html = html.replace(/&nbsp;&nbsp;+/g, ' ')
 
-  // 移除 Word 特有的 mso- 样式，但保留其他有用的样式（如 color, font-size 等）
+  // 在移除 mso-* 样式之前，先提取并保留 text-align 样式
+  // 处理块级元素的 text-align 样式
+  html = html.replace(/<(p|div|h[1-6])([^>]*)style="([^"]*)"/gi, (match, tag, attrs, style) => {
+    // 提取 text-align 值
+    const textAlignMatch = style.match(/text-align:\s*(left|center|right|justify)/i)
+    
+    // 移除 mso-* 样式
+    let cleanedStyle = style.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
+    
+    // 确保 text-align 被保留
+    if (textAlignMatch) {
+      // 如果清理后 text-align 丢失，重新添加
+      if (!cleanedStyle.includes('text-align')) {
+        cleanedStyle = cleanedStyle ? `text-align: ${textAlignMatch[1]}; ${cleanedStyle}` : `text-align: ${textAlignMatch[1]}`
+      }
+    }
+    
+    // 清理多余的分号和空格
+    cleanedStyle = cleanedStyle.replace(/;\s*;/g, ';').replace(/^\s*;\s*/, '').replace(/\s*;\s*$/, '').trim()
+    
+    if (!cleanedStyle) {
+      return `<${tag}${attrs}>`
+    }
+    return `<${tag}${attrs}style="${cleanedStyle}"`
+  })
+
+  // 移除其他元素中的 Word 特有的 mso- 样式，但保留其他有用的样式（如 color, font-size 等）
   html = html.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
 
   // 移除空的 style 属性

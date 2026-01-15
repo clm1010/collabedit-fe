@@ -1492,7 +1492,33 @@ function cleanRedHeadHtml(html: string): string {
   // 移除注释
   html = html.replace(/<!--[\s\S]*?-->/g, '')
 
-  // 移除 mso-* 样式属性（Word 特有），但保留其他有用的样式
+  // 在移除 mso-* 样式之前，提取并保留 text-align 样式
+  // 处理块级元素的 text-align 样式
+  html = html.replace(/<(p|div|h[1-6])([^>]*)style="([^"]*)"/gi, (match, tag, attrs, style) => {
+    // 提取 text-align 值
+    const textAlignMatch = style.match(/text-align:\s*(left|center|right|justify)/i)
+    
+    // 移除 mso-* 样式
+    let cleanedStyle = style.replace(/mso-[^;:"']+:[^;:"']+;?\s*/gi, '')
+    
+    // 确保 text-align 被保留
+    if (textAlignMatch) {
+      // 如果清理后 text-align 丢失，重新添加
+      if (!cleanedStyle.includes('text-align')) {
+        cleanedStyle = cleanedStyle ? `text-align: ${textAlignMatch[1]}; ${cleanedStyle}` : `text-align: ${textAlignMatch[1]}`
+      }
+    }
+    
+    // 清理多余的分号和空格
+    cleanedStyle = cleanedStyle.replace(/;\s*;/g, ';').replace(/^\s*;\s*/, '').replace(/\s*;\s*$/, '').trim()
+    
+    if (!cleanedStyle) {
+      return `<${tag}${attrs}>`
+    }
+    return `<${tag}${attrs}style="${cleanedStyle}"`
+  })
+
+  // 移除其他元素中的 mso-* 样式属性（Word 特有），但保留其他有用的样式
   html = html.replace(/mso-[^;:"']+:[^;:"']+;?\s*/gi, '')
 
   // 清理空的 style 属性
@@ -2737,9 +2763,36 @@ function convertRunEnhanced(
     } else if (item['w:tab']) {
       text += '&emsp;&emsp;'
     } else if (item['w:drawing']) {
-      // 图片
+      // 图片 - 直接返回图片 HTML，不通过 escapeHtml 处理
       const imgHtml = extractImageFromDrawingEnhanced(item['w:drawing'], context.images)
-      if (imgHtml) text += imgHtml
+      if (imgHtml) {
+        // 如果已有文本内容，先输出文本，再输出图片
+        if (text) {
+          const styleAttr = style.length ? ` style="${style.join('; ')}"` : ''
+          return `<span${styleAttr}>${escapeHtml(text)}</span>${imgHtml}`
+        }
+        return imgHtml
+      }
+    } else if (item['w:pict']) {
+      // 旧版 VML 图片 - 直接返回图片 HTML，不通过 escapeHtml 处理
+      const imgHtml = extractImageFromPict(item['w:pict'], context.images)
+      if (imgHtml) {
+        if (text) {
+          const styleAttr = style.length ? ` style="${style.join('; ')}"` : ''
+          return `<span${styleAttr}>${escapeHtml(text)}</span>${imgHtml}`
+        }
+        return imgHtml
+      }
+    } else if (item['w:object']) {
+      // 嵌入对象（可能包含图片）- 直接返回图片 HTML，不通过 escapeHtml 处理
+      const imgHtml = extractImageFromObject(item['w:object'], context.images)
+      if (imgHtml) {
+        if (text) {
+          const styleAttr = style.length ? ` style="${style.join('; ')}"` : ''
+          return `<span${styleAttr}>${escapeHtml(text)}</span>${imgHtml}`
+        }
+        return imgHtml
+      }
     }
   }
 

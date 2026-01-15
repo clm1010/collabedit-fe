@@ -3,7 +3,7 @@
     <!-- 链接 -->
     <div class="toolbar-group">
       <el-tooltip content="链接" placement="bottom" :show-after="500">
-        <button class="toolbar-btn-large" @click="insertLink">
+        <button ref="linkBtnRef" class="toolbar-btn-large" @click="insertLink">
           <Icon icon="mdi:link-variant" class="btn-icon-large" />
           <span class="btn-text">链接</span>
         </button>
@@ -364,27 +364,16 @@
       </el-tooltip>
     </div>
 
-    <!-- 链接对话框 -->
-    <el-dialog v-model="linkDialogVisible" title="插入链接" width="480px">
-      <el-form :model="linkForm" label-width="80px">
-        <el-form-item label="链接文本">
-          <el-input v-model="linkForm.text" placeholder="显示的文本" />
-        </el-form-item>
-        <el-form-item label="链接地址">
-          <el-input v-model="linkForm.url" placeholder="https://" />
-        </el-form-item>
-        <el-form-item label="打开方式">
-          <el-radio-group v-model="linkForm.target">
-            <el-radio value="_self">当前窗口</el-radio>
-            <el-radio value="_blank">新窗口</el-radio>
-          </el-radio-group>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="linkDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmInsertLink">确定</el-button>
-      </template>
-    </el-dialog>
+    <!-- Link Popover 组件 -->
+    <LinkPopover
+      v-if="editor"
+      :editor="editor"
+      v-model:visible="linkPopoverVisible"
+      :initial-url="linkPopoverUrl"
+      :trigger-rect="linkPopoverTriggerRect"
+      @apply="handleLinkApply"
+      @remove="handleLinkRemove"
+    />
 
     <!-- 图片文件选择 -->
     <input
@@ -476,6 +465,7 @@ import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { specialCharacters, emojiCategories, templateList } from './types'
 import { useEditor } from './useEditor'
+import LinkPopover from './LinkPopover.vue'
 
 // 获取编辑器实例
 const editor = useEditor()
@@ -527,13 +517,11 @@ const calloutTypes = [
   }
 ]
 
-// 链接对话框
-const linkDialogVisible = ref(false)
-const linkForm = reactive({
-  text: '',
-  url: '',
-  target: '_blank'
-})
+// LinkPopover 相关状态
+const linkPopoverVisible = ref(false)
+const linkPopoverUrl = ref('')
+const linkPopoverTriggerRect = ref<DOMRect | null>(null)
+const linkBtnRef = ref<HTMLElement | null>(null)
 
 // 图片选择
 const imageInput = ref<HTMLInputElement | null>(null)
@@ -567,35 +555,47 @@ const formatDate = (format: string) => {
   return dayjs(selectedDate.value).format(format)
 }
 
-// 插入链接
+// 插入链接 - 使用 LinkPopover 组件
 const insertLink = () => {
   if (!editor.value) return
-  const { from, to } = editor.value.state.selection
-  const selectedText = editor.value.state.doc.textBetween(from, to)
-  linkForm.text = selectedText
-  linkForm.url = editor.value.getAttributes('link').href || ''
-  linkDialogVisible.value = true
+
+  // 获取当前链接的 URL（如果有的话）
+  const previousUrl = editor.value.getAttributes('link').href || ''
+
+  // 设置 LinkPopover 的初始 URL
+  linkPopoverUrl.value = previousUrl
+
+  // 获取链接按钮的位置作为触发点
+  if (linkBtnRef.value) {
+    linkPopoverTriggerRect.value = linkBtnRef.value.getBoundingClientRect()
+  }
+
+  // 显示 LinkPopover
+  linkPopoverVisible.value = true
 }
 
-const confirmInsertLink = () => {
-  if (!editor.value || !linkForm.url) {
-    ElMessage.warning('请输入链接地址')
-    return
-  }
+// 应用链接
+const handleLinkApply = (url: string) => {
+  if (!editor.value || !url) return
 
-  if (linkForm.text) {
-    editor.value
-      .chain()
-      .focus()
-      .insertContent(`<a href="${linkForm.url}" target="${linkForm.target}">${linkForm.text}</a>`)
-      .run()
+  // 检查是否有选中的文本
+  const { from, to } = editor.value.state.selection
+  const selectedText = editor.value.state.doc.textBetween(from, to)
+
+  if (selectedText) {
+    // 有选中文本，直接设置链接
+    editor.value.chain().focus().setLink({ href: url }).run()
   } else {
-    editor.value.chain().focus().setLink({ href: linkForm.url, target: linkForm.target }).run()
+    // 没有选中文本，插入链接文本
+    editor.value.chain().focus().insertContent(`<a href="${url}">${url}</a>`).run()
   }
+}
 
-  linkDialogVisible.value = false
-  linkForm.text = ''
-  linkForm.url = ''
+// 删除链接
+const handleLinkRemove = () => {
+  if (!editor.value) return
+
+  editor.value.chain().focus().unsetLink().run()
 }
 
 // 插入块级图片
