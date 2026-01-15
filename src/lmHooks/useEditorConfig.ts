@@ -56,14 +56,23 @@ const NAME_NOUNS = ['懿', '亮', '修', '穆', '宫', '云', '典', '越', '羲
 
 /**
  * 获取 WebSocket 基础 URL
+ * 支持相对路径 (如 /ws) 和完整 URL (如 ws://localhost:3001)
  */
 const getWsBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_WS_URL as string | undefined
-  if (envUrl) {
-    // 确保 URL 格式正确，移除尾部斜杠
-    return envUrl.replace(/\/+$/, '')
+  if (!envUrl) {
+    return 'ws://localhost:3001'
   }
-  return 'ws://localhost:3001'
+
+  // 如果是相对路径，根据当前页面 host 动态构建完整 URL
+  if (envUrl.startsWith('/') && !envUrl.startsWith('//')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return `${protocol}//${host}${envUrl.replace(/\/+$/, '')}`
+  }
+
+  // 完整 URL 格式，移除尾部斜杠
+  return envUrl.replace(/\/+$/, '')
 }
 
 /**

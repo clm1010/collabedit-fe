@@ -1270,6 +1270,7 @@ onUnmounted(() => {
 }
 
 .table-container-wrap {
+  margin: 0;
   :deep(.el-card__body) {
     height: 100%;
     display: flex;

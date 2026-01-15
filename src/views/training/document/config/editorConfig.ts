@@ -21,8 +21,19 @@ export interface CollaborationConfig {
 
 // 默认配置
 // 规范化 ws 地址，强制追加协同网关前缀，避免与其他网关冲突
+// 支持相对路径 (如 /ws) 和完整 URL (如 ws://localhost:3001)
 const resolveWsUrl = () => {
   const envUrl = (import.meta.env.VITE_WS_URL as string | undefined) || 'ws://localhost:3001'
+
+  // 如果是相对路径，根据当前页面 host 动态构建完整 URL
+  if (envUrl.startsWith('/') && !envUrl.startsWith('//')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    const basePath = envUrl.replace(/\/+$/, '')
+    return `${protocol}//${host}${basePath}/collaboration`
+  }
+
+  // 兼容完整 URL 格式
   const normalized = envUrl.replace(/\/+$/, '')
   return normalized.endsWith('/collaboration') ? normalized : `${normalized}/collaboration`
 }

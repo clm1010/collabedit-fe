@@ -4,22 +4,22 @@ overview: 整合前端 WebSocket 相对路径支持与 Nginx 统一代理配置�
 todos:
   - id: modify-useEditorConfig
     content: 修改 src/lmHooks/useEditorConfig.ts 的 getWsBaseUrl 函数，支持相对路径动态解析
-    status: pending
+    status: completed
   - id: modify-editorConfig
     content: 修改 src/views/training/document/config/editorConfig.ts 的 resolveWsUrl 函数，支持相对路径
-    status: pending
+    status: completed
   - id: modify-markdownConfig
     content: 修改 src/views/template/editor/config/markdownConfig.ts 的 getWsBaseUrl 函数，支持相对路径
-    status: pending
+    status: completed
   - id: update-env-prod
     content: 更新 .env.prod 配置 VITE_WS_URL=/ws
-    status: pending
+    status: completed
   - id: create-nginx-conf
     content: 在项目根目录创建 nginx.conf 配置文件模板
-    status: pending
+    status: completed
   - id: optional-docker-compose
     content: 可选：创建 docker-compose.yml 部署配置
-    status: pending
+    status: completed
 ---
 
 # WebSocket 相对路径与 Nginx 统一代理整合方案

@@ -1,0 +1,54 @@
+# ==========================================
+# 协同编辑平台 Docker Compose 部署配置
+# ==========================================
+version: '3.8'
+
+services:
+  # Nginx 前端服务
+  nginx:
+    image: nginx:alpine
+    container_name: collabedit-nginx
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      # 前端构建产物
+      - ./dist:/usr/share/nginx/html:ro
+      # Nginx 配置文件
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # SSL 证书（可选，HTTPS 时使用）
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - middleware
+    restart: unless-stopped
+    networks:
+      - collabedit-network
+
+  # WebSocket 协同中间件
+  middleware:
+    build:
+      context: ./collaborative-middleware
+      dockerfile: Dockerfile
+    container_name: collabedit-middleware
+    environment:
+      - NODE_ENV=production
+      - COLLABORATIVE_MIDDLEWARE_PORT=3001
+    expose:
+      - '3001'
+    restart: unless-stopped
+    networks:
+      - collabedit-network
+
+networks:
+  collabedit-network:
+    driver: bridge
+
+# ==========================================
+# 使用说明：
+# 1. 确保 collaborative-middleware 目录与此文件同级
+# 2. 先构建前端: pnpm build
+# 3. 修改 nginx.conf 中的 upstream 地址
+# 4. 启动服务: docker-compose up -d
+# 5. 查看日志: docker-compose logs -f
+# 6. 停止服务: docker-compose down
+# ==========================================

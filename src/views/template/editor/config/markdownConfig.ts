@@ -20,8 +20,17 @@ export interface MarkdownCollaborationConfig {
 }
 
 // 获取 WebSocket 基础 URL
+// 支持相对路径 (如 /ws) 和完整 URL (如 ws://localhost:3001)
 const getWsBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_WS_URL
+
+  // 如果是相对路径，根据当前页面 host 动态构建完整 URL
+  if (envUrl?.startsWith('/') && !envUrl.startsWith('//')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = window.location.host
+    return `${protocol}//${host}${envUrl.replace(/\/+$/, '')}`
+  }
+
   if (envUrl) {
     // 确保 URL 格式正确
     return envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl
