@@ -296,6 +296,7 @@ import PublishDialog from './components/PublishDialog.vue'
 import RejectDialog from './components/RejectDialog.vue'
 import ExamRecordDialog from './components/ExamRecordDialog.vue'
 import { saveDocContent } from '@/views/utils/docStorage'
+import { blobToBase64 } from '@/views/utils/fileUtils'
 import {
   isEmpty,
   isArray,
@@ -765,20 +766,6 @@ const handleEdit = async (row: any) => {
   } finally {
     loadingInstance.close()
   }
-}
-
-/**
- * Blob 转 Base64 工具函数
- * @param blob Blob 对象
- * @returns Base64 字符串
- */
-const blobToBase64 = (blob: Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = (error) => reject(error)
-    reader.readAsDataURL(blob)
-  })
 }
 
 // 审核弹窗相关

@@ -14,8 +14,10 @@ export { ELEMENT_TYPE_OPTIONS, ELEMENT_TYPE_LABELS, needOptions } from '@/utils/
 
 // 模板子类数据接口（与 TemplateSubClass.json 结构一致）
 export interface TemplateSubclassVO {
-  template_id: string // 分类id
-  template_name: string // 分类名称
+  // template_id: string // 分类id
+  // template_name: string // 分类名称
+  category_id: string // 分类id
+  category_name: string // 分类名称
 }
 
 // 审核状态枚举（编辑中:1、审核中:2、审核通过:3、发布:4、驳回:5）

@@ -51,11 +51,17 @@
             class="!w-150px"
             @change="handleQuery"
           >
-            <el-option
+            <!-- <el-option
               v-for="item in subClassOptions"
               :key="item.template_id"
               :label="item.template_name"
               :value="item.template_id"
+            /> -->
+            <el-option
+              v-for="item in subClassOptions"
+              :key="item.category_id"
+              :label="item.category_name"
+              :value="item.category_id"
             />
           </el-select>
         </el-form-item>
@@ -254,7 +260,7 @@
       :close-on-click-modal="false"
       class="custom-dialog-header"
     >
-      <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
+      <el-form ref="formRef" :model="formData" :rules="formRules" label-width="160px">
         <el-form-item label="模板名称" prop="templateName">
           <el-input v-model="formData.templateName" placeholder="请输入模板名称" clearable />
         </el-form-item>
@@ -270,11 +276,17 @@
         </el-form-item>
         <el-form-item label="模板子类" prop="temSubclass">
           <el-select v-model="formData.temSubclass" placeholder="请选择" clearable class="w-full">
-            <el-option
+            <!-- <el-option
               v-for="item in subClassOptions"
               :key="item.template_id"
               :label="item.template_name"
               :value="item.template_id"
+            /> -->
+            <el-option
+              v-for="item in subClassOptions"
+              :key="item.category_id"
+              :label="item.category_name"
+              :value="item.category_id"
             />
           </el-select>
         </el-form-item>
@@ -474,6 +486,7 @@ import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { isEmpty, isNil, isString, isObject, pickBy, filter, map, every } from 'lodash-es'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
+import { blobToBase64 } from '@/views/utils/fileUtils'
 import ElementsEditor from './components/ElementsEditor.vue'
 import MarkdownIt from 'markdown-it'
 import type { ElementItem } from '@/types/management'
@@ -687,8 +700,10 @@ const initCategories = async () => {
 
 // 根据子类 ID 获取子类名称
 const getSubCategoryNameById = (id: string): string => {
-  const subClass = subClassOptions.value.find((c) => c.template_id === id)
-  return subClass?.template_name || ''
+  // const subClass = subClassOptions.value.find((c) => c.template_id === id)
+  // return subClass?.template_name || ''
+  const subClass = subClassOptions.value.find((c) => c.category_id === id)
+  return subClass?.category_name || ''
 }
 
 // 获取当前选中的模板子类名称（用于保存时传递 temSubName）
@@ -750,20 +765,6 @@ const handleAdd = () => {
   uploadFileList.value = []
   uploadFile.value = null
   dialogVisible.value = true
-}
-
-/**
- * Blob 转 Base64 工具函数
- * @param blob Blob 对象
- * @returns Base64 字符串
- */
-const blobToBase64 = (blob: Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = (error) => reject(error)
-    reader.readAsDataURL(blob)
-  })
 }
 
 // 编辑/写作 - 跳转到 Markdown 协同编辑器

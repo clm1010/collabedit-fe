@@ -53,6 +53,8 @@ export interface UseCollaborationOptions {
 export interface UseCollaborationReturn {
   /** Yjs 文档实例 */
   ydoc: Ref<Y.Doc | null>
+  /** Yjs XmlFragment（用于 Tiptap Collaboration 扩展） */
+  fragment: Ref<Y.XmlFragment | null>
   /** WebSocket Provider 实例 */
   provider: Ref<WebsocketProvider | null>
   /** 连接状态 */
@@ -65,6 +67,8 @@ export interface UseCollaborationReturn {
   initCollaboration: () => void
   /** 清理协同资源 */
   cleanup: () => void
+  /** 重新初始化协同编辑（用于切换文档） */
+  reinitialize: (newDocumentId?: string, newCreatorId?: string | number) => void
 }
 
 /**
@@ -94,18 +98,21 @@ export interface UseCollaborationReturn {
  */
 export function useCollaboration(options: UseCollaborationOptions): UseCollaborationReturn {
   const {
-    documentId,
     wsUrl,
     user,
-    creatorId,
     showConnectMessage = true,
     onConnectionChange,
     onCollaboratorsChange,
     onSynced
   } = options
 
+  // 可变的配置（支持动态切换文档）
+  let currentDocumentId = options.documentId
+  let currentCreatorId = options.creatorId
+
   // 响应式状态
   const ydoc = ref<Y.Doc | null>(null)
+  const fragment = ref<Y.XmlFragment | null>(null)
   const provider = ref<WebsocketProvider | null>(null)
   const connectionStatus = ref('未连接')
   const collaborators = ref<Collaborator[]>([])
@@ -153,7 +160,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
               clientId,
               ...state.user,
               isSelf,
-              isOwner: creatorId !== undefined && state.user.id === creatorId
+              isOwner: currentCreatorId !== undefined && state.user.id === currentCreatorId
             })
           }
         }
@@ -186,11 +193,15 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       // 初始化 Y.Doc
       ydoc.value = new Y.Doc()
 
+      // 预先初始化 fragment，确保在编辑器初始化前它已存在
+      // 使用 'default' 作为 field 名称（与 Tiptap Collaboration 扩展的默认值一致）
+      fragment.value = ydoc.value.getXmlFragment('default')
+
       // 初始化 WebSocket Provider
-      provider.value = new WebsocketProvider(wsUrl, documentId, ydoc.value, {
+      provider.value = new WebsocketProvider(wsUrl, currentDocumentId, ydoc.value, {
         connect: true,
         params: {
-          documentId: documentId,
+          documentId: currentDocumentId,
           userId: String(user.id),
           userName: user.name,
           userColor: user.color
@@ -260,6 +271,21 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       // 立即更新一次协作者列表
       updateCollaborators()
 
+      // 重要：检查 provider 是否已经同步（sync 事件可能在注册监听器之前就触发了）
+      // 必须在注册监听器之后立即检查，避免遗漏已同步的情况
+      if (provider.value.synced && !isReady.value) {
+        // 使用 nextTick 确保 Y.Doc 的内部结构已完全初始化
+        setTimeout(() => {
+          if (isComponentDestroyed) return
+          if (!isReady.value && provider.value?.synced) {
+            hasShownSyncedMessage = true
+            isReady.value = true
+            updateCollaborators()
+            onSynced?.()
+          }
+        }, 50)
+      }
+
       // 如果连接已建立但还没有收到 sync 事件，设置超时
       syncTimeoutId = setTimeout(() => {
         if (isComponentDestroyed) return
@@ -320,6 +346,9 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     handleProviderSync = null
     handleAwarenessChange = null
 
+    // 清理 fragment 引用（fragment 会随 ydoc 一起销毁，这里只清理引用）
+    fragment.value = null
+
     // 销毁 Y.Doc
     if (ydoc.value) {
       try {
@@ -335,6 +364,34 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     isReady.value = false
   }
 
+  /**
+   * 重新初始化协同编辑（用于切换文档）
+   * @param newDocumentId 新的文档ID
+   * @param newCreatorId 新的创建者ID（可选）
+   */
+  const reinitialize = (newDocumentId?: string, newCreatorId?: string | number) => {
+    // 先清理现有资源
+    cleanup()
+
+    // 更新文档ID
+    if (newDocumentId) {
+      currentDocumentId = newDocumentId
+    }
+
+    // 更新创建者ID
+    if (newCreatorId !== undefined) {
+      currentCreatorId = newCreatorId
+    }
+
+    // 重置内部状态标志
+    isComponentDestroyed = false
+    hasShownConnectedMessage = false
+    hasShownSyncedMessage = false
+
+    // 重新初始化
+    initCollaboration()
+  }
+
   // 组件卸载时自动清理
   onBeforeUnmount(() => {
     cleanup()
@@ -342,12 +399,14 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
 
   return {
     ydoc,
+    fragment,
     provider,
     connectionStatus,
     collaborators,
     isReady,
     initCollaboration,
-    cleanup
+    cleanup,
+    reinitialize
   }
 }
 

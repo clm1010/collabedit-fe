@@ -21,19 +21,25 @@
       <!-- 编辑器容器 -->
       <div class="flex-1 flex flex-col overflow-hidden bg-gray-100 p-4">
         <div class="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
+          <!-- 协同编辑器：等待 ydoc、fragment 和 provider 都就绪后再渲染，避免 Yjs sync-plugin 初始化错误 -->
           <TiptapEditor
-            v-if="provider && ydoc"
+            v-if="isCollaborationReady && provider && ydoc && fragment"
             ref="tiptapEditorRef"
             :ydoc="ydoc!"
+            :fragment="fragment!"
             :provider="provider!"
             :user="currentUser"
             :title="documentTitle"
             :placeholder="'开始编写 ' + documentTitle + '...'"
-            :loading="!isCollaborationReady"
+            :loading="false"
             :editable="!isReadonly"
             @update="handleContentUpdate"
             @ready="handleEditorReady"
           />
+          <!-- 协同未就绪时显示加载状态 -->
+          <div v-else class="p-6 h-full">
+            <el-skeleton :rows="12" animated />
+          </div>
         </div>
       </div>
 
@@ -134,13 +140,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isNil, isEmpty } from 'lodash-es'
 import dayjs from 'dayjs'
-import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import CollaborationPanel from '@/lmComponents/collaboration/CollaborationPanel.vue'
 import { EditorStatusBar } from '@/lmComponents/Editor'
 import TiptapEditor from './components/TiptapEditor.vue'
 import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
+import { useCollaboration } from '@/lmHooks'
 import { defaultCollaborationConfig } from './config/editorConfig'
 import {
   getReferenceMaterials,
@@ -195,16 +200,30 @@ const emit = defineEmits<{
   collaboratorsChange: [users: any[]]
 }>()
 
+// 使用协同编辑 Hook
+const {
+  ydoc,
+  fragment,
+  provider,
+  connectionStatus,
+  collaborators,
+  isReady: isCollaborationReady,
+  initCollaboration,
+  reinitialize: reinitializeCollaboration
+} = useCollaboration({
+  documentId: documentId.value,
+  wsUrl: defaultCollaborationConfig.wsUrl,
+  user: currentUser,
+  creatorId: undefined, // 将在 loadDocument 后更新
+  showConnectMessage: true,
+  onConnectionChange: (status) => emit('connectionChange', status),
+  onCollaboratorsChange: (users) => emit('collaboratorsChange', users)
+})
+
 // 状态
-const connectionStatus = ref('未连接')
-const collaborators = ref<any[]>([])
-const isCollaborationReady = ref(false)
 const isSaving = ref(false)
 const tiptapEditorRef = ref<InstanceType<typeof TiptapEditor> | null>(null)
 const editorInstance = ref<any>(null)
-let isComponentDestroyed = false // 标记组件是否已销毁
-let hasShownConnectedMessage = false // 是否已显示连接成功消息
-let hasShownSyncedMessage = false // 是否已显示同步完成消息
 
 // 预加载的文档内容（从权限校验接口获取的文件流）
 const preloadedContent = ref<string>('')
@@ -269,16 +288,6 @@ const userOptions = [
   { label: 'user4', value: 'user4' },
   { label: 'user5', value: 'user5' }
 ]
-
-// Yjs 和 WebSocket Provider
-let ydoc: Y.Doc | null = null
-let provider: WebsocketProvider | null = null
-let syncTimeoutId: ReturnType<typeof setTimeout> | null = null // 用于清理 setTimeout
-
-// 事件处理函数引用（用于正确移除事件监听器）
-let handleProviderStatus: ((event: any) => void) | null = null
-let handleProviderSync: ((synced: boolean) => void) | null = null
-let handleAwarenessChange: (() => void) | null = null
 
 // 处理素材点击
 const handleMaterialClick = (item: any) => {
@@ -482,166 +491,6 @@ const handleSave = async () => {
   }
 }
 
-// 初始化协同编辑
-const initCollaboration = () => {
-  try {
-    // 重置消息标志
-    hasShownConnectedMessage = false
-    hasShownSyncedMessage = false
-
-    // 初始化 Y.Doc
-    ydoc = new Y.Doc()
-
-    // 构建 WebSocket URL
-    const baseWsUrl = defaultCollaborationConfig.wsUrl
-
-    // 初始化 WebSocket Provider
-    provider = new WebsocketProvider(baseWsUrl, documentId.value, ydoc, {
-      connect: true,
-      params: {
-        documentId: documentId.value,
-        userId: String(currentUser.id),
-        userName: currentUser.name,
-        userColor: currentUser.color
-      }
-    })
-
-    // 定义事件处理函数（保存引用以便后续移除）
-    handleProviderStatus = (event: any) => {
-      // 如果组件已销毁，不执行任何操作
-      if (isComponentDestroyed) return
-
-      const status = event.status
-
-      if (status === 'disconnected') {
-        connectionStatus.value = '连接断开'
-        // 断开后重置消息标志，以便重连时能再次显示
-        hasShownConnectedMessage = false
-        hasShownSyncedMessage = false
-      } else if (status === 'connected') {
-        connectionStatus.value = '已连接'
-        // 只显示一次连接成功消息
-        if (!hasShownConnectedMessage) {
-          hasShownConnectedMessage = true
-          ElMessage.success('已连接到协同服务')
-        }
-        // 连接成功后更新协作者列表
-        updateCollaborators()
-      } else if (status === 'connecting') {
-        connectionStatus.value = '连接中...'
-      }
-
-      emit('connectionChange', connectionStatus.value)
-    }
-
-    handleProviderSync = (synced: boolean) => {
-      // 如果组件已销毁，不执行任何操作
-      if (isComponentDestroyed) return
-
-      if (synced && !hasShownSyncedMessage) {
-        hasShownSyncedMessage = true
-        // 同步完成后标记协同编辑就绪
-        isCollaborationReady.value = true
-        // 同步完成后更新协作者列表
-        updateCollaborators()
-      }
-    }
-
-    handleAwarenessChange = () => {
-      // 如果组件已销毁，不执行任何操作
-      if (isComponentDestroyed) return
-      updateCollaborators()
-    }
-
-    // 监听连接状态
-    provider.on('status', handleProviderStatus)
-
-    // 监听同步状态
-    provider.on('sync', handleProviderSync)
-
-    // 监听感知信息（在线用户）
-    provider.awareness.on('change', handleAwarenessChange)
-
-    // 设置当前用户状态到 awareness
-    const userState = {
-      id: currentUser.id,
-      name: currentUser.name,
-      color: currentUser.color,
-      avatar: currentUser.avatar,
-      role: currentUser.role,
-      joinTime: currentUser.joinTime
-    }
-    provider.awareness.setLocalStateField('user', userState)
-
-    // 立即更新一次协作者列表
-    updateCollaborators()
-
-    // 如果连接已建立但还没有收到 sync 事件，设置超时
-    syncTimeoutId = setTimeout(() => {
-      // 如果组件已销毁，不执行任何操作
-      if (isComponentDestroyed) return
-
-      if (!isCollaborationReady.value && provider?.wsconnected) {
-        isCollaborationReady.value = true
-      }
-    }, 2000)
-  } catch (error) {
-    console.error('协同编辑初始化失败:', error)
-    ElMessage.error('协同编辑初始化失败: ' + (error as Error).message)
-  }
-}
-
-// 更新协作者列表（带防抖）
-let updateCollaboratorsTimer: ReturnType<typeof setTimeout> | null = null
-const updateCollaborators = () => {
-  // 如果组件已销毁或 provider 不存在，不执行任何操作
-  if (isComponentDestroyed || isNil(provider)) return
-
-  // 防抖：避免频繁更新
-  if (!isNil(updateCollaboratorsTimer)) {
-    clearTimeout(updateCollaboratorsTimer)
-  }
-
-  updateCollaboratorsTimer = setTimeout(() => {
-    if (isComponentDestroyed || isNil(provider)) return
-
-    const states = provider.awareness.getStates()
-    // 使用 Map 按用户 ID 去重，保留最新的连接
-    const userMap = new Map<string, any>()
-
-    states.forEach((state: any, clientId: number) => {
-      if (state.user) {
-        // 使用用户ID去重，如果没有ID则使用clientId
-        const userId = state.user.id || `client_${clientId}`
-        const isSelf = clientId === provider!.awareness.clientID
-
-        // 如果是自己，优先使用；否则只在没有记录时添加
-        if (isSelf || !userMap.has(userId)) {
-          userMap.set(userId, {
-            clientId,
-            ...state.user,
-            isSelf,
-            isOwner: state.user.id === documentInfo.value?.creatorId
-          })
-        }
-      }
-    })
-
-    // 转换为数组
-    const users = Array.from(userMap.values())
-
-    // 将当前用户排在第一位
-    users.sort((a, b) => {
-      if (a.isSelf) return -1
-      if (b.isSelf) return 1
-      return 0
-    })
-
-    collaborators.value = users
-    emit('collaboratorsChange', users)
-  }, 100) // 100ms 防抖
-}
-
 // 加载文档数据
 const loadDocument = async () => {
   try {
@@ -708,17 +557,10 @@ const loadDocument = async () => {
 // 监听文档ID变化
 watch(
   () => documentId.value,
-  () => {
-    // 重新初始化
-    if (provider) {
-      provider.destroy()
-    }
-    if (ydoc) {
-      ydoc.destroy()
-    }
-    isCollaborationReady.value = false
+  (newDocId) => {
+    // 使用 hook 的 reinitialize 方法重新初始化协同编辑
     loadDocument()
-    initCollaboration()
+    reinitializeCollaboration(newDocId, documentInfo.value?.creatorId)
   }
 )
 
@@ -762,67 +604,14 @@ onMounted(async () => {
   initCollaboration()
 })
 
-// 组件卸载 - 完善的内存泄漏防护
+// 组件卸载 - 清理非协同相关的资源
+// 注意: useCollaboration hook 会自动清理协同编辑相关的资源（ydoc, provider, 事件监听器等）
 onBeforeUnmount(() => {
-  // 标记组件已销毁，防止异步回调继续执行
-  isComponentDestroyed = true
-
-  // 清理 syncTimeout
-  if (syncTimeoutId) {
-    clearTimeout(syncTimeoutId)
-    syncTimeoutId = null
-  }
-
-  // 清理 updateCollaboratorsTimer（防抖定时器）
-  if (updateCollaboratorsTimer) {
-    clearTimeout(updateCollaboratorsTimer)
-    updateCollaboratorsTimer = null
-  }
-
   // 清理编辑器实例引用
   editorInstance.value = null
   tiptapEditorRef.value = null
 
-  // 销毁 WebSocket Provider
-  if (provider) {
-    try {
-      // 移除所有事件监听器（使用保存的函数引用）
-      if (handleAwarenessChange) {
-        provider.awareness.off('change', handleAwarenessChange)
-      }
-      if (handleProviderStatus) {
-        provider.off('status', handleProviderStatus)
-      }
-      if (handleProviderSync) {
-        provider.off('sync', handleProviderSync)
-      }
-      // 移除用户状态
-      provider.awareness.setLocalStateField('user', null)
-    } catch (e) {
-      // 忽略销毁时的错误
-      console.warn('清理 provider 时出错:', e)
-    }
-    provider.destroy()
-    provider = null
-  }
-
-  // 清理事件处理函数引用
-  handleProviderStatus = null
-  handleProviderSync = null
-  handleAwarenessChange = null
-
-  // 销毁 Y.Doc
-  if (ydoc) {
-    try {
-      ydoc.destroy()
-    } catch (e) {
-      console.warn('清理 ydoc 时出错:', e)
-    }
-    ydoc = null
-  }
-
   // 清理其他响应式引用
-  collaborators.value = []
   referenceMaterials.value = []
   documentInfo.value = null
   currentMaterial.value = null

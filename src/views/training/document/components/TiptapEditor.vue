@@ -253,6 +253,7 @@ import LinkPopover from './toolbar/LinkPopover.vue'
 // Props
 interface Props {
   ydoc: Y.Doc
+  fragment: Y.XmlFragment
   provider: WebsocketProvider
   user: {
     name: string
@@ -396,6 +397,8 @@ const formattedHtml = computed(() => {
 
 // 编辑器实例
 const editor = useEditor({
+  // 延迟渲染，等待 DOM 和 Y.Doc 完全就绪，避免 y-prosemirror 初始化时的 "Unexpected case" 错误
+  immediatelyRender: false,
   editable: props.editable, // 根据 props 控制是否可编辑
   extensions: [
     StarterKit.configure({
@@ -408,9 +411,10 @@ const editor = useEditor({
     }),
     // 自定义水平线扩展（支持红色横线）
     ColoredHorizontalRule,
-    // 协同编辑
+    // 协同编辑 - 使用预初始化的 fragment 而不是 document
+    // 这可以避免 y-prosemirror 在空 Y.Doc 上初始化时的 "Unexpected case" 错误
     Collaboration.configure({
-      document: props.ydoc
+      fragment: props.fragment
     }),
     // Tiptap v3: 协同光标扩展重命名为 CollaborationCaret
     CollaborationCaret.configure({
@@ -550,13 +554,17 @@ const handleEditorClick = (event: MouseEvent) => {
     // 在编辑器中选中这个链接
     const pos = editor.value.view.posAtDOM(linkElement, 0)
     let linkPos = -1
-    editor.value.state.doc.nodesBetween(pos, pos + linkElement.textContent!.length, (node, nodePos) => {
-      if (node.marks.some((m: any) => m.type.name === 'link')) {
-        linkPos = nodePos
-        return false
+    editor.value.state.doc.nodesBetween(
+      pos,
+      pos + linkElement.textContent!.length,
+      (node, nodePos) => {
+        if (node.marks.some((m: any) => m.type.name === 'link')) {
+          linkPos = nodePos
+          return false
+        }
+        return true
       }
-      return true
-    })
+    )
 
     if (linkPos >= 0) {
       // 选中链接
@@ -965,7 +973,7 @@ onBeforeUnmount(() => {
   htmlPreviewVisible.value = false
   pdfExportVisible.value = false
   exportingPdf.value = false
-  
+
   // 清理 DragHandle 相关状态
   currentDragNode.value = null
 })
