@@ -5,12 +5,65 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 
 /**
+ * 全局错误处理器引用计数
+ * 用于确保只有一个组件实例注册全局错误处理器
+ */
+let globalErrorHandlerRefCount = 0
+let originalOnError: OnErrorEventHandler | null = null
+
+/**
+ * 注册 y-prosemirror 相关错误的全局处理器
+ * 这些错误通常是由于协作光标位置无效导致的，不影响编辑功能
+ */
+const registerYjsErrorHandler = () => {
+  if (globalErrorHandlerRefCount === 0) {
+    originalOnError = window.onerror
+    window.onerror = (message, source, lineno, colno, error) => {
+      // 检查是否是 y-prosemirror 相关的已知错误
+      const messageStr = String(message)
+      const isYjsError =
+        messageStr.includes('nodeSize') ||
+        messageStr.includes('relativePositionToAbsolutePosition') ||
+        messageStr.includes('Unexpected end of array') ||
+        messageStr.includes('Unexpected case')
+
+      if (isYjsError) {
+        // 抑制这些错误，只在开发模式下打印警告
+        if (import.meta.env.DEV) {
+          console.warn('[协同编辑] 捕获到已知的 y-prosemirror 错误（已忽略）:', messageStr)
+        }
+        return true // 阻止错误继续传播
+      }
+
+      // 其他错误交给原始处理器
+      if (originalOnError) {
+        return originalOnError(message, source, lineno, colno, error)
+      }
+      return false
+    }
+  }
+  globalErrorHandlerRefCount++
+}
+
+/**
+ * 注销全局错误处理器
+ */
+const unregisterYjsErrorHandler = () => {
+  globalErrorHandlerRefCount--
+  if (globalErrorHandlerRefCount === 0 && originalOnError !== null) {
+    window.onerror = originalOnError
+    originalOnError = null
+  }
+}
+
+/**
  * 协作用户信息
  */
 export interface CollaborationUser {
   id: string
   name: string
   color: string
+  deviceId?: string // 设备唯一标识，支持同一用户多设备连接
   avatar?: string
   role?: string
   joinTime?: number
@@ -48,6 +101,40 @@ export interface UseCollaborationOptions {
 }
 
 /**
+ * 连接诊断信息
+ */
+export interface ConnectionDiagnostics {
+  /** 当前连接状态 */
+  status: string
+  /** WebSocket 连接状态 */
+  wsConnected: boolean
+  /** 是否已同步 */
+  synced: boolean
+  /** 文档ID */
+  documentId: string
+  /** WebSocket URL */
+  wsUrl: string
+  /** 当前用户信息 */
+  user: {
+    id: string
+    name: string
+    deviceId?: string
+  }
+  /** 连接时间戳 */
+  connectedAt?: number
+  /** 协作者数量 */
+  collaboratorCount: number
+  /** awareness clientID */
+  awarenessClientId?: number
+  /** 连接历史记录 */
+  connectionHistory: Array<{
+    event: string
+    timestamp: number
+    details?: string
+  }>
+}
+
+/**
  * useCollaboration 返回值
  */
 export interface UseCollaborationReturn {
@@ -69,6 +156,10 @@ export interface UseCollaborationReturn {
   cleanup: () => void
   /** 重新初始化协同编辑（用于切换文档） */
   reinitialize: (newDocumentId?: string, newCreatorId?: string | number) => void
+  /** 获取连接诊断信息 */
+  getDiagnostics: () => ConnectionDiagnostics
+  /** 输出诊断信息到控制台 */
+  logDiagnostics: () => void
 }
 
 /**
@@ -124,6 +215,32 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   let hasShownSyncedMessage = false
   let syncTimeoutId: ReturnType<typeof setTimeout> | null = null
   let updateCollaboratorsTimer: ReturnType<typeof setTimeout> | null = null
+  let connectedAtTimestamp: number | undefined = undefined
+
+  // 连接历史记录（用于诊断）
+  const connectionHistory: Array<{
+    event: string
+    timestamp: number
+    details?: string
+  }> = []
+
+  /**
+   * 记录连接事件到历史
+   */
+  const logConnectionEvent = (event: string, details?: string) => {
+    const entry = {
+      event,
+      timestamp: Date.now(),
+      details
+    }
+    connectionHistory.push(entry)
+    // 只保留最近 50 条记录
+    if (connectionHistory.length > 50) {
+      connectionHistory.shift()
+    }
+    // 输出到控制台
+    console.log(`[协同编辑] ${event}`, details ? `- ${details}` : '')
+  }
 
   // 事件处理函数引用（用于正确移除事件监听器）
   let handleProviderStatus: ((event: any) => void) | null = null
@@ -186,9 +303,18 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
    */
   const initCollaboration = () => {
     try {
+      // 注册全局错误处理器，用于捕获 y-prosemirror 的已知错误
+      registerYjsErrorHandler()
+
+      logConnectionEvent(
+        '初始化开始',
+        `文档: ${currentDocumentId}, 用户: ${user.name} (${user.id})`
+      )
+
       // 重置消息标志
       hasShownConnectedMessage = false
       hasShownSyncedMessage = false
+      connectedAtTimestamp = undefined
 
       // 初始化 Y.Doc
       ydoc.value = new Y.Doc()
@@ -197,14 +323,20 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       // 使用 'default' 作为 field 名称（与 Tiptap Collaboration 扩展的默认值一致）
       fragment.value = ydoc.value.getXmlFragment('default')
 
+      logConnectionEvent('Y.Doc 初始化完成')
+
       // 初始化 WebSocket Provider
+      const deviceId = user.deviceId || ''
+      logConnectionEvent('WebSocket 连接参数', `URL: ${wsUrl}, deviceId: ${deviceId || '未设置'}`)
+
       provider.value = new WebsocketProvider(wsUrl, currentDocumentId, ydoc.value, {
         connect: true,
         params: {
           documentId: currentDocumentId,
           userId: String(user.id),
           userName: user.name,
-          userColor: user.color
+          userColor: user.color,
+          deviceId // 设备ID，支持同一用户多设备连接
         }
       })
 
@@ -218,8 +350,14 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
           connectionStatus.value = '连接断开'
           hasShownConnectedMessage = false
           hasShownSyncedMessage = false
+          logConnectionEvent('连接断开')
         } else if (status === 'connected') {
           connectionStatus.value = '已连接'
+          connectedAtTimestamp = Date.now()
+          logConnectionEvent(
+            '连接成功',
+            `awareness clientId: ${provider.value?.awareness?.clientID}`
+          )
           if (showConnectMessage && !hasShownConnectedMessage) {
             hasShownConnectedMessage = true
             ElMessage.success('已连接到协同服务')
@@ -227,6 +365,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
           updateCollaborators()
         } else if (status === 'connecting') {
           connectionStatus.value = '连接中...'
+          logConnectionEvent('正在连接')
         }
 
         onConnectionChange?.(connectionStatus.value)
@@ -235,9 +374,12 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       handleProviderSync = (synced: boolean) => {
         if (isComponentDestroyed) return
 
+        logConnectionEvent('同步状态变化', synced ? '已同步' : '同步中')
+
         if (synced && !hasShownSyncedMessage) {
           hasShownSyncedMessage = true
           isReady.value = true
+          logConnectionEvent('协同编辑就绪', `协作者数量: ${collaborators.value.length}`)
           updateCollaborators()
           onSynced?.()
         }
@@ -245,7 +387,12 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
 
       handleAwarenessChange = () => {
         if (isComponentDestroyed) return
-        updateCollaborators()
+        try {
+          updateCollaborators()
+        } catch (e) {
+          // 忽略 awareness 更新中的错误，这些通常是由于离线用户的光标位置无效导致的
+          console.warn('[协同编辑] awareness 更新出错:', e)
+        }
       }
 
       // 监听连接状态
@@ -262,6 +409,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         id: user.id,
         name: user.name,
         color: user.color,
+        deviceId: user.deviceId || '',
         avatar: user.avatar || '',
         role: user.role || '编辑者',
         joinTime: user.joinTime || Date.now()
@@ -295,6 +443,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         }
       }, 2000)
     } catch (error) {
+      logConnectionEvent('初始化失败', (error as Error).message)
       console.error('协同编辑初始化失败:', error)
       ElMessage.error('协同编辑初始化失败: ' + (error as Error).message)
     }
@@ -304,6 +453,11 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
    * 清理协同资源
    */
   const cleanup = () => {
+    logConnectionEvent('开始清理连接资源')
+
+    // 注销全局错误处理器
+    unregisterYjsErrorHandler()
+
     // 标记组件已销毁，防止异步回调继续执行
     isComponentDestroyed = true
 
@@ -392,6 +546,64 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     initCollaboration()
   }
 
+  /**
+   * 获取连接诊断信息
+   */
+  const getDiagnostics = (): ConnectionDiagnostics => {
+    return {
+      status: connectionStatus.value,
+      wsConnected: provider.value?.wsconnected ?? false,
+      synced: provider.value?.synced ?? false,
+      documentId: currentDocumentId,
+      wsUrl,
+      user: {
+        id: user.id,
+        name: user.name,
+        deviceId: user.deviceId
+      },
+      connectedAt: connectedAtTimestamp,
+      collaboratorCount: collaborators.value.length,
+      awarenessClientId: provider.value?.awareness?.clientID,
+      connectionHistory: [...connectionHistory]
+    }
+  }
+
+  /**
+   * 输出诊断信息到控制台
+   */
+  const logDiagnostics = () => {
+    const diag = getDiagnostics()
+
+    console.group('🔍 协同编辑连接诊断')
+    console.log('连接状态:', diag.status)
+    console.log('WebSocket 连接:', diag.wsConnected ? '✅ 已连接' : '❌ 未连接')
+    console.log('数据同步:', diag.synced ? '✅ 已同步' : '❌ 未同步')
+    console.log('文档ID:', diag.documentId)
+    console.log('WebSocket URL:', diag.wsUrl)
+    console.log('用户信息:', {
+      id: diag.user.id,
+      name: diag.user.name,
+      deviceId: diag.user.deviceId || '未设置'
+    })
+    console.log(
+      '连接时间:',
+      diag.connectedAt ? new Date(diag.connectedAt).toLocaleString() : '未连接'
+    )
+    console.log('协作者数量:', diag.collaboratorCount)
+    console.log('Awareness ClientID:', diag.awarenessClientId ?? '未分配')
+
+    if (diag.connectionHistory.length > 0) {
+      console.log('')
+      console.log('最近连接事件:')
+      diag.connectionHistory.slice(-10).forEach((entry) => {
+        const time = new Date(entry.timestamp).toLocaleTimeString()
+        console.log(`  [${time}] ${entry.event}${entry.details ? ` - ${entry.details}` : ''}`)
+      })
+    }
+
+    console.groupEnd()
+  }
+
   // 组件卸载时自动清理
   onBeforeUnmount(() => {
     cleanup()
@@ -406,7 +618,9 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     isReady,
     initCollaboration,
     cleanup,
-    reinitialize
+    reinitialize,
+    getDiagnostics,
+    logDiagnostics
   }
 }
 

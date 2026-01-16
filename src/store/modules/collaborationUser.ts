@@ -1,10 +1,36 @@
 import { store } from '@/store'
 import { defineStore } from 'pinia'
 import { nanoid } from 'nanoid'
-import { getRandomUserColor, generateRandomUsername } from '@/views/training/document/config/editorConfig'
+import {
+  getRandomUserColor,
+  generateRandomUsername
+} from '@/views/training/document/config/editorConfig'
 
 // sessionStorage 存储键
 const STORAGE_KEY = 'collaboration_user'
+// 设备ID 存储键（使用 localStorage 保持设备唯一性）
+const DEVICE_ID_KEY = 'collaboration_device_id'
+
+/**
+ * 获取或生成设备ID
+ * 设备ID 存储在 localStorage 中，保持设备唯一性
+ * 即使清除 sessionStorage 也不会改变
+ */
+const getOrCreateDeviceId = (): string => {
+  try {
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY)
+    if (!deviceId) {
+      deviceId = `device_${nanoid(12)}`
+      localStorage.setItem(DEVICE_ID_KEY, deviceId)
+      console.log('🔧 生成新设备ID:', deviceId)
+    }
+    return deviceId
+  } catch (e) {
+    // 如果 localStorage 不可用，每次生成新的（降级处理）
+    console.warn('localStorage 不可用，使用临时设备ID')
+    return `temp_${nanoid(12)}`
+  }
+}
 
 /**
  * 协作编辑用户信息
@@ -13,6 +39,7 @@ export interface CollaborationUserVO {
   id: string
   name: string
   color: string
+  deviceId: string // 设备唯一标识，支持同一用户多设备连接
   createdAt: number
 }
 
@@ -82,6 +109,12 @@ export const useCollaborationUserStore = defineStore('collaboration-user', {
      */
     getOrCreateUser(): CollaborationUserVO {
       if (this.user) {
+        // 兼容旧数据：如果没有 deviceId，补充一个
+        if (!this.user.deviceId) {
+          this.user.deviceId = getOrCreateDeviceId()
+          saveUserToStorage(this.user)
+          console.log('🔧 为已有用户补充设备ID:', this.user.deviceId)
+        }
         return this.user
       }
       return this.createUser()
@@ -95,13 +128,14 @@ export const useCollaborationUserStore = defineStore('collaboration-user', {
         id: nanoid(),
         name: generateRandomUsername(),
         color: getRandomUserColor(),
+        deviceId: getOrCreateDeviceId(),
         createdAt: Date.now()
       }
 
       this.user = user
       saveUserToStorage(user)
 
-      console.log('🎭 创建协作用户:', user.name, `(${user.id})`)
+      console.log('🎭 创建协作用户:', user.name, `(${user.id})`, `设备: ${user.deviceId}`)
       return user
     },
 
