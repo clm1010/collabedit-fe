@@ -5,6 +5,7 @@
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import qs from 'qs'
+import { getAccessToken } from '@/utils/auth'
 
 /**
  * 获取 Java API 的 baseURL
@@ -69,6 +70,12 @@ const javaService: AxiosInstance = axios.create({
 // 请求拦截器
 javaService.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // 添加 token 到请求头
+    const accessToken = getAccessToken()
+    if (accessToken) {
+      config.headers.Authorization = 'Bearer ' + accessToken
+    }
+
     const method = config.method?.toUpperCase()
 
     // 防止 GET 请求缓存

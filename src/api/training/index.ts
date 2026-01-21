@@ -9,6 +9,7 @@ import { javaRequest } from '@/config/axios/javaService'
 import { isArray } from 'lodash-es'
 import {
   performanceCategories,
+  ALL_CATEGORY,
   type DocCategoryVO
 } from '@/views/training/performance/config/categories'
 
@@ -42,10 +43,28 @@ const javaApi = {
   },
 
   /**
-   * 获取文档分类列表
+   * 获取文档分类列表 - Java 后端
+   * GET /dict/list?dictType=FILE_TYPE
+   * 返回格式: [{ value: 'ZCQB', label: '侦察情报' }, ...]
    */
-  getDocCategories: async (): Promise<{ data: DocCategoryVO[] }> => {
-    return Promise.resolve({ data: performanceCategories })
+  getDocCategories: async (): Promise<{ data: DocCategoryVO[]; withAll: DocCategoryVO[] }> => {
+    try {
+      const res = await javaRequest.get('/dict/list', { dictType: 'FILE_TYPE' })
+      // Java 后端返回的数据格式: { code: 200, data: [...] }
+      const data: DocCategoryVO[] = res || []
+      // 返回原始数据和带"全部"的数据
+      return {
+        data,
+        withAll: [ALL_CATEGORY, ...data]
+      }
+    } catch (error) {
+      console.error('获取文档分类失败:', error)
+      // 降级使用本地配置
+      return {
+        data: performanceCategories,
+        withAll: [ALL_CATEGORY, ...performanceCategories]
+      }
+    }
   },
 
   /**
@@ -192,7 +211,7 @@ const mockApi = {
     return res.data
   },
 
-  getDocCategories: async (): Promise<{ data: DocCategoryVO[] }> => {
+  getDocCategories: async (): Promise<{ data: DocCategoryVO[]; withAll: DocCategoryVO[] }> => {
     const { getDocCategories } = await import('@/mock/training/performance')
     return getDocCategories()
   },

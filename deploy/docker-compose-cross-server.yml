@@ -1,0 +1,41 @@
+# ==========================================
+# 方案 B：跨服务器部署 - 前端服务器 (192.168.20.174)
+# 只部署 Nginx，中间件在另一台服务器 (192.168.20.179)
+# ==========================================
+version: '3.8'
+
+services:
+  # Nginx 前端服务
+  nginx:
+    image: nginx:alpine
+    container_name: collabedit-nginx
+    ports:
+      - "8001:80"
+    volumes:
+      # 前端构建产物
+      - /data/jiuyuan/dist:/usr/share/nginx/html:ro
+      # Nginx 配置目录（匹配服务器实际结构）
+      - /data/jiuyuan/conf:/etc/nginx/conf.d:ro
+    restart: unless-stopped
+    networks:
+      - webnet
+
+networks:
+  webnet:
+    driver: bridge
+
+# ==========================================
+# 使用说明（192.168.20.174 前端服务器）：
+# 1. 复制 nginx-cross-server.conf 为 /data/jiuyuan/nginx.conf
+# 2. 复制 dist-prod 内容到 /data/jiuyuan/dist/
+# 3. 启动服务: docker-compose -f docker-compose-cross-server.yml up -d
+#
+# 中间件服务器 (192.168.20.179) 单独启动：
+# docker run -d \
+#   --name collabedit-middleware \
+#   --restart unless-stopped \
+#   -p 3001:3001 \
+#   -e NODE_ENV=production \
+#   -e COLLABORATIVE_MIDDLEWARE_PORT=3001 \
+#   collaborative-middleware:latest
+# ==========================================

@@ -486,7 +486,7 @@ import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { isEmpty, isNil, isString, isObject, pickBy, filter, map, every } from 'lodash-es'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
-import { blobToBase64 } from '@/views/utils/fileUtils'
+import { blobToBase64, blobToText } from '@/views/utils/fileUtils'
 import ElementsEditor from './components/ElementsEditor.vue'
 import MarkdownIt from 'markdown-it'
 import type { ElementItem } from '@/types/management'
@@ -1195,8 +1195,8 @@ const handlePreview = async (row: TemplateApi.TemplateVO) => {
       return
     }
 
-    // 读取 Blob 内容为文本
-    const text = await blob.text()
+    // 使用 blobToText 读取内容（防止中文乱码）
+    const text = await blobToText(blob)
 
     // 使用 markdown-it 解析 Markdown 为 HTML
     const md = new MarkdownIt()
@@ -1231,8 +1231,15 @@ const handleExport = async (row: TemplateApi.TemplateVO) => {
       return
     }
 
+    // 使用 blobToText 读取内容（防止中文乱码）
+    const text = await blobToText(blob)
+
+    // 添加 UTF-8 BOM 头，确保在 Windows 记事本等编辑器中正确显示中文
+    const BOM = '\uFEFF'
+    const exportBlob = new Blob([BOM + text], { type: 'text/markdown;charset=utf-8' })
+
     // 创建下载链接
-    const url = window.URL.createObjectURL(blob)
+    const url = window.URL.createObjectURL(exportBlob)
     const link = document.createElement('a')
     link.href = url
     link.download = `${row.templateName || '文档'}.md`

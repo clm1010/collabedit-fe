@@ -18,6 +18,7 @@ import type {
 
 // 模板子类Mock数据（与 TemplateSubClass.json 保持一致）
 const mockTemplateSubclassList: TemplateSubclassVO[] = [
+  { template_id: 'ZCQB', template_name: '侦察情报' },
   { template_id: 'QTLA', template_name: '企图立案' },
   { template_id: 'ZZJH', template_name: '作战计划' },
   { template_id: 'YXFA', template_name: '演训方案' },

@@ -31,6 +31,35 @@ export const removeToken = () => {
   wsCache.delete(RefreshTokenKey)
 }
 
+// ========== 外部Token登录（嵌入式场景）==========
+
+// 外部Token默认过期时间（秒）：8小时
+const EXTERNAL_TOKEN_EXPIRE = 8 * 60 * 60
+
+/**
+ * 设置外部token（用于嵌入式场景）
+ * @param token - 外部系统传递的token
+ * @param expireSeconds - 过期时间（秒），默认8小时
+ */
+export const setExternalToken = (token: string, expireSeconds: number = EXTERNAL_TOKEN_EXPIRE) => {
+  wsCache.set(AccessTokenKey, token, { exp: expireSeconds })
+}
+
+/**
+ * 判断是否为外部token登录模式
+ * 通过环境变量 VITE_EXTERNAL_TOKEN_LOGIN 控制
+ */
+export const isExternalTokenMode = () => {
+  return import.meta.env.VITE_EXTERNAL_TOKEN_LOGIN === 'true'
+}
+
+/**
+ * 清除外部token（退出登录时调用）
+ */
+export const clearExternalToken = () => {
+  wsCache.delete(AccessTokenKey)
+}
+
 /** 格式化token（jwt格式） */
 export const formatToken = (token: string): string => {
   return 'Bearer ' + token

@@ -1,50 +1,57 @@
 /**
  * 演训方案文档分类配置
- * 从 collaborative-middleware 迁移
+ * 字段格式与 Java 后端保持一致：{ value, label }
  */
 
 /**
- * 文档分类接口
+ * 文档分类接口（与 Java 后端 /dict/list?dictType=FILE_TYPE 返回格式一致）
  */
 export interface DocCategoryVO {
-  id: string
-  fileType: string
+  value: string
+  label: string
   count?: number
 }
 
 /**
- * 文档分类数据
+ * Mock 文档分类数据（不包含"全部"，"全部"由使用方按需添加）
  */
 export const performanceCategories: DocCategoryVO[] = [
-  { id: '0', fileType: '全部' },
-  { id: 'QTLA', fileType: '企图立案' },
-  { id: 'ZZJH', fileType: '作战计划' },
-  { id: 'YXFA', fileType: '演训方案' },
-  { id: 'ZZWS', fileType: '作战文书' },
-  { id: 'DTJH', fileType: '导调计划' },
-  { id: 'ZZXD', fileType: '作战想定' },
-  { id: 'ZJZG', fileType: '战绩战报' },
-  { id: 'ZJBG', fileType: '总结报告' },
-  { id: 'TZ', fileType: '通知' },
-  { id: 'TG', fileType: '通告' },
-  { id: 'PGJG', fileType: '评估结果' },
-  { id: 'QT', fileType: '其它' }
+  { value: 'ZCQB', label: '侦察情报' },
+  { value: 'QTLA', label: '企图立案' },
+  { value: 'ZZJH', label: '作战计划' },
+  { value: 'YXFA', label: '演训方案' },
+  { value: 'ZZWS', label: '作战文书' },
+  { value: 'DDJH', label: '导调计划' },
+  { value: 'ZJZB', label: '战绩战报' },
+  { value: 'ZZXT', label: '作战想定' },
+  { value: 'ZJBG', label: '总结报告' },
+  { value: 'TZ', label: '通知' },
+  { value: 'TG', label: '通告' },
+  { value: 'PGJG', label: '评估结果' },
+  { value: 'QT', label: '其它' }
 ]
 
 /**
- * 根据 ID 获取分类名称
- * @param id 分类 ID
+ * "全部"选项（左侧分类列表使用）
  */
-export const getCategoryNameById = (id: string): string => {
-  const category = performanceCategories.find((c) => c.id === id)
-  return category?.fileType || ''
+export const ALL_CATEGORY: DocCategoryVO = { value: '0', label: '全部' }
+
+/**
+ * 根据 value 获取分类名称
+ * @param value 分类 value
+ */
+export const getCategoryLabelByValue = (value: string): string => {
+  if (value === '0') return '全部'
+  const category = performanceCategories.find((c) => c.value === value)
+  return category?.label || ''
 }
 
 /**
- * 根据名称获取分类 ID
- * @param name 分类名称
+ * 根据名称获取分类 value
+ * @param label 分类名称
  */
-export const getCategoryIdByName = (name: string): string => {
-  const category = performanceCategories.find((c) => c.fileType === name)
-  return category?.id || ''
+export const getCategoryValueByLabel = (label: string): string => {
+  if (label === '全部') return '0'
+  const category = performanceCategories.find((c) => c.label === label)
+  return category?.value || ''
 }

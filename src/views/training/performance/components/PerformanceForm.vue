@@ -89,7 +89,7 @@
         <el-select v-model="formData.fileType" placeholder="请选择" clearable class="w-full">
           <el-option
             v-for="item in fileTypeOptions"
-            :key="item.id"
+            :key="item.value"
             :label="item.label"
             :value="item.value"
           />
@@ -167,7 +167,7 @@ interface Props {
   visible: boolean
   isEditMode: boolean
   loading: boolean
-  fileTypeOptions: { label: string; value: string; id: string }[]
+  fileTypeOptions: { label: string; value: string }[]
 }
 
 const props = defineProps<Props>()

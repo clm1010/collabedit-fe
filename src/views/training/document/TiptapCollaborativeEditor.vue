@@ -434,9 +434,44 @@ const handleEditorReady = async (editor: any) => {
   if (preloadedContent.value) {
     try {
       console.log('设置预加载内容到编辑器')
-      // 使用 setContent 设置内容
-      editor.commands.setContent(preloadedContent.value, false)
-      ElMessage.success('文档内容已加载')
+      
+      // 检查内容是否有效（不为空且包含实际内容）
+      const content = preloadedContent.value.trim()
+      
+      // 检查是否是有效的非空内容
+      // 移除空标签后检查是否还有内容
+      const strippedContent = content
+        .replace(/<[^>]*>/g, '') // 移除所有 HTML 标签
+        .replace(/&nbsp;/g, ' ') // 替换 &nbsp;
+        .trim()
+      
+      if (content && strippedContent.length > 0) {
+        // 使用 setContent 设置内容，emitUpdate 为 false 避免触发不必要的更新
+        editor.commands.setContent(content, false)
+        
+        // 安全地将光标移动到文档开头
+        try {
+          // 确保文档有内容后再设置光标
+          const { doc } = editor.state
+          if (doc.content.size > 0) {
+            // 找到第一个可以放置光标的位置
+            const firstPos = doc.resolve(1)
+            if (firstPos.parent.isTextblock) {
+              editor.commands.setTextSelection(1)
+            } else {
+              // 如果第一个位置不是文本块，使用 focus 命令
+              editor.commands.focus('start')
+            }
+          }
+        } catch (selectionError) {
+          // 选区设置失败时静默处理，不影响内容加载
+          console.warn('设置光标位置失败，使用默认位置:', selectionError)
+        }
+        
+        ElMessage.success('文档内容已加载')
+      } else {
+        console.log('预加载内容为空，跳过设置')
+      }
     } catch (error) {
       console.error('设置预加载内容失败:', error)
       ElMessage.warning('文档内容加载失败，请手动输入')

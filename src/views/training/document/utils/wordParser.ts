@@ -418,12 +418,25 @@ export const parseFileContent = async (
         const bytes = base64ToUint8Array(base64Data)
         // 检测文件头
         if (isZipFormat(bytes)) {
-          console.log('检测到 ZIP 格式（.docx），使用增强 OOXML 解析器...')
+          console.log('检测到 ZIP 格式（.docx），准备解析...')
           onProgress?.(20, '检测到 Word 文档...')
           const arrayBuffer = bytes.buffer.slice(
             bytes.byteOffset,
             bytes.byteOffset + bytes.byteLength
           ) as ArrayBuffer
+          
+          // 先检测是否为红头文件格式
+          try {
+            const isRedHead = await isRedHeadDocument(arrayBuffer)
+            if (isRedHead) {
+              console.log('检测到红头文件格式，使用红头文件解析器...')
+              onProgress?.(25, '检测到红头文件，使用专用解析器...')
+              return await parseRedHeadDocument(arrayBuffer, onProgress)
+            }
+          } catch (e) {
+            console.warn('红头文件检测失败，继续使用标准解析器:', e)
+          }
+          
           // 使用增强 OOXML 解析器，能正确识别标题并保留颜色、背景色等样式
           try {
             const html = await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
@@ -511,13 +524,26 @@ export const parseFileContent = async (
         throw new Error('不支持的文件格式，请上传 .docx 文件')
       }
 
-      // Word 文档或二进制流，使用增强 OOXML 解析器
-      console.log('检测到 Word 文档/二进制流，使用增强 OOXML 解析器...')
+      // Word 文档或二进制流
+      console.log('检测到 Word 文档/二进制流，准备解析...')
       onProgress?.(25, '检测到 Word 文档，准备解析...')
       const arrayBuffer = bytes.buffer.slice(
         bytes.byteOffset,
         bytes.byteOffset + bytes.byteLength
       ) as ArrayBuffer
+      
+      // 先检测是否为红头文件格式（包含 altChunk）
+      try {
+        const isRedHead = await isRedHeadDocument(arrayBuffer)
+        if (isRedHead) {
+          console.log('检测到红头文件格式，使用红头文件解析器...')
+          onProgress?.(30, '检测到红头文件，使用专用解析器...')
+          return await parseRedHeadDocument(arrayBuffer, onProgress)
+        }
+      } catch (e) {
+        console.warn('红头文件检测失败，继续使用标准解析器:', e)
+      }
+      
       // 使用增强 OOXML 解析器，能正确识别标题并保留颜色、背景色等样式
       try {
         const html = await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
@@ -543,12 +569,25 @@ export const parseFileContent = async (
 
       // 尝试检测是否可能是 Word 文档（通过文件头）
       if (isZip) {
-        console.log('通过文件头检测到 ZIP 格式（可能是 .docx），使用增强 OOXML 解析器...')
+        console.log('通过文件头检测到 ZIP 格式（可能是 .docx），准备解析...')
         onProgress?.(25, '检测到 Word 文档，准备解析...')
         const arrayBuffer = bytes.buffer.slice(
           bytes.byteOffset,
           bytes.byteOffset + bytes.byteLength
         ) as ArrayBuffer
+        
+        // 先检测是否为红头文件格式
+        try {
+          const isRedHead = await isRedHeadDocument(arrayBuffer)
+          if (isRedHead) {
+            console.log('检测到红头文件格式，使用红头文件解析器...')
+            onProgress?.(30, '检测到红头文件，使用专用解析器...')
+            return await parseRedHeadDocument(arrayBuffer, onProgress)
+          }
+        } catch (e) {
+          console.warn('红头文件检测失败，继续使用标准解析器:', e)
+        }
+        
         // 使用增强 OOXML 解析器，能正确识别标题并保留颜色、背景色等样式
         try {
           const html = await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
@@ -1356,6 +1395,46 @@ function optimizeHtml(html: string): string {
 }
 
 /**
+ * 检测是否为红头文件格式
+ * 红头文件使用 altChunk 嵌入 HTML 内容（afchunk.mht 或 afchunk.htm）
+ * @param arrayBuffer Word 文档的 ArrayBuffer
+ * @returns 是否为红头文件格式
+ */
+export async function isRedHeadDocument(arrayBuffer: ArrayBuffer): Promise<boolean> {
+  try {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(arrayBuffer)
+    
+    // 检查是否存在 altChunk 文件
+    const hasAfchunk = 
+      zip.file('word/afchunk.mht') !== null ||
+      zip.file('word/afchunk.htm') !== null ||
+      zip.file('word/afchunk.html') !== null ||
+      zip.file(/word\/afchunk/i).length > 0
+    
+    if (hasAfchunk) {
+      console.log('检测到红头文件特征：存在 altChunk 文件')
+      return true
+    }
+    
+    // 检查 document.xml.rels 中是否有 aFChunk 关系
+    const relsFile = zip.file('word/_rels/document.xml.rels')
+    if (relsFile) {
+      const relsContent = await relsFile.async('string')
+      if (relsContent.includes('aFChunk') || relsContent.includes('afChunk')) {
+        console.log('检测到红头文件特征：存在 aFChunk 关系')
+        return true
+      }
+    }
+    
+    return false
+  } catch (error) {
+    console.warn('红头文件检测失败:', error)
+    return false
+  }
+}
+
+/**
  * 红头文件 - altChunk HTML 提取方案
  * 达到 98%+ 还原度
  */
@@ -1457,7 +1536,8 @@ function parseMhtToHtml(mhtContent: string): string {
     // 提取 <pre> 中的内容（红头文件特有结构）
     const preMatch = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
     if (preMatch) {
-      return preMatch[1]
+      // 对红头文件的特殊 HTML 结构进行智能解析
+      return parseRedHeadHtmlStructure(preMatch[1])
     }
 
     return html
@@ -1468,44 +1548,210 @@ function parseMhtToHtml(mhtContent: string): string {
 }
 
 /**
+ * 解析红头文件的特殊 HTML 结构
+ * 将复杂的嵌套 div/span 结构转换为简洁的 Tiptap 兼容 HTML
+ */
+function parseRedHeadHtmlStructure(html: string): string {
+  const result: string[] = []
+  
+  // 移除零宽字符
+  html = html.replace(/[\ufeff\u200b\u200c\u200d\u2060]/g, '')
+  
+  // 1. 提取红头标题（查找包含 text-align: center 和 color: red 的元素）
+  const redHeadTitleMatch = html.match(
+    /<div[^>]*style="[^"]*(?:text-align:\s*center|margin:\s*0px\s*auto)[^"]*color:\s*red[^"]*"[^>]*>([^<]+)<\/div>/i
+  ) || html.match(
+    /<div[^>]*style="[^"]*color:\s*red[^"]*(?:text-align:\s*center|margin:\s*0px\s*auto)[^"]*"[^>]*>([^<]+)<\/div>/i
+  )
+  
+  if (redHeadTitleMatch) {
+    const titleText = redHeadTitleMatch[1].trim()
+    if (titleText) {
+      result.push(`<p style="text-align: center; color: #FF0000; font-size: 24pt; font-weight: bold;">${titleText}</p>`)
+    }
+  }
+  
+  // 2. 提取红色横线
+  if (html.includes('<hr') && html.match(/color:\s*red/i)) {
+    result.push('<hr style="border: none; border-top: 2px solid #FF0000; margin: 20px 0;">')
+  }
+  
+  // 3. 提取正文内容
+  // 使用更精确的方式解析：先找到所有带 data-ea-node="element" 的 div
+  const contentBlocks: Array<{ text: string; align?: string }> = []
+  
+  // 匹配带有 data-ea-node="element" 的 div 元素，确保正确捕获 style 属性
+  // 使用两步法：先匹配整个 div 标签，再从中提取 style
+  const divRegex = /<div([^>]*)data-ea-node="element"([^>]*)>([\s\S]*?)<\/div>/gi
+  let divMatch
+  
+  while ((divMatch = divRegex.exec(html)) !== null) {
+    const beforeAttr = divMatch[1] || ''
+    const afterAttr = divMatch[2] || ''
+    const content = divMatch[3] || ''
+    const fullAttrs = beforeAttr + afterAttr
+    
+    // 从属性中提取 style
+    const styleMatch = fullAttrs.match(/style="([^"]*)"/i)
+    const style = styleMatch ? styleMatch[1] : ''
+    
+    // 检查是否包含 text-align
+    const alignMatch = style.match(/text-align:\s*(right|center|left|justify)/i)
+    const align = alignMatch ? alignMatch[1].toLowerCase() : undefined
+    
+    // 提取文本内容（从 data-ea-string="true" 的 span 中）
+    const textMatch = content.match(/<span[^>]*data-ea-string="true"[^>]*>([^<]+)<\/span>/i)
+    if (textMatch && textMatch[1].trim()) {
+      contentBlocks.push({ text: textMatch[1].trim(), align })
+    }
+  }
+  
+  // 将提取的内容转换为段落
+  for (const block of contentBlocks) {
+    const styleAttr = block.align && block.align !== 'left' ? ` style="text-align: ${block.align}"` : ''
+    result.push(`<p${styleAttr}>${block.text}</p>`)
+  }
+  
+  // 如果没有提取到内容，返回原始 HTML（让 cleanRedHeadHtml 处理）
+  if (result.length === 0) {
+    return html
+  }
+  
+  return result.join('\n')
+}
+
+/**
  * 清理红头文件 HTML - 保留关键样式以便 Tiptap 正确解析
+ * 针对包含 data-ea-* 属性和零宽字符的复杂 HTML 结构进行优化
  */
 function cleanRedHeadHtml(html: string): string {
-  // 移除编辑器特有的 data-ea-* 属性
-  html = html.replace(/\s*data-ea-[^=]*="[^"]*"/g, '')
-
-  // 移除不需要的属性（但保留 style 和 class）
-  html = html.replace(/\s*(id|contenteditable|role|aria-[^=]*)="[^"]*"/gi, '')
-
-  // 移除无用的 class（但保留有样式意义的）
-  html = html.replace(/class="[^"]*MsoNormal[^"]*"/gi, '')
-
-  // 移除 XML 命名空间声明
+  // === 第一阶段：移除零宽字符和空元素 ===
+  
+  // 1. 移除零宽字符（BOM \ufeff 和其他零宽字符）
+  html = html.replace(/[\ufeff\u200b\u200c\u200d\u2060]/g, '')
+  
+  // 2. 多次迭代清理嵌套的空元素（从内到外）
+  let previousLength = 0
+  let iterations = 0
+  const maxIterations = 10 // 防止无限循环
+  
+  while (html.length !== previousLength && iterations < maxIterations) {
+    previousLength = html.length
+    iterations++
+    
+    // 2.1 移除只包含空白/br的最内层 span 元素
+    html = html.replace(/<span[^>]*data-ea-zero-width[^>]*>[\s]*(?:<br\s*\/?>)?[\s]*<\/span>/gi, '')
+    html = html.replace(/<span[^>]*data-ea-leaf[^>]*>[\s]*(?:<br\s*\/?>)?[\s]*<\/span>/gi, '')
+    html = html.replace(/<span[^>]*>[\s]*<\/span>/gi, '')
+    
+    // 2.2 移除只包含空白/br/空span的外层 span 元素
+    html = html.replace(/<span[^>]*data-ea-node="text"[^>]*>[\s]*<\/span>/gi, '')
+    html = html.replace(/<span[^>]*>[\s]*<br\s*\/?>[\s]*<\/span>/gi, '')
+    
+    // 2.3 移除只包含空白/br/空span的 div 元素
+    html = html.replace(/<div[^>]*data-ea-node="element"[^>]*>[\s]*<\/div>/gi, '')
+    html = html.replace(/<div[^>]*>[\s]*<br\s*\/?>[\s]*<\/div>/gi, '')
+    html = html.replace(/<div[^>]*>[\s]*<\/div>/gi, '')
+  }
+  
+  // 3. 移除 display: none 的元素
+  html = html.replace(/<[^>]*style="[^"]*display:\s*none[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, '')
+  
+  // === 第二阶段：移除不必要的属性和标签 ===
+  
+  // 5. 移除所有 data-ea-* 属性
+  html = html.replace(/\s*data-ea-[^=]*="[^"]*"/gi, '')
+  
+  // 6. 移除 id、contenteditable、role、aria-* 等属性
+  html = html.replace(/\s*(id|contenteditable|role|aria-[^=]*|zindex)="[^"]*"/gi, '')
+  
+  // 7. 移除特定的 class（编辑器内部使用的）
+  html = html.replace(/\s*class="[^"]*(?:src-components|SlateEditor|MsoNormal|_editor_|_redhead_)[^"]*"/gi, '')
+  
+  // 8. 移除 XML 命名空间和 Office 标签
   html = html.replace(/<\?xml[^>]*\?>/gi, '')
   html = html.replace(/xmlns[^=]*="[^"]*"/gi, '')
-
-  // 移除 Office 特有标签
   html = html.replace(/<o:[^>]*>[\s\S]*?<\/o:[^>]*>/gi, '')
   html = html.replace(/<v:[^>]*>[\s\S]*?<\/v:[^>]*>/gi, '')
   html = html.replace(/<w:[^>]*>[\s\S]*?<\/w:[^>]*>/gi, '')
-
-  // 移除注释
+  
+  // 9. 移除注释
   html = html.replace(/<!--[\s\S]*?-->/g, '')
-
-  // 在移除 mso-* 样式之前，提取并保留 text-align 样式
-  // 处理块级元素的 text-align 样式
-  html = html.replace(/<(p|div|h[1-6])([^>]*)style="([^"]*)"/gi, (match, tag, attrs, style) => {
-    // 提取 text-align 值
-    const textAlignMatch = style.match(/text-align:\s*(left|center|right|justify)/i)
+  
+  // === 第三阶段：处理红头标题的居中样式 ===
+  
+  // 10. 提取红头标题的样式并确保居中
+  // 红头标题通常在包含 "margin: 0px auto; text-align: center" 和 "color: red" 的 div 中
+  html = html.replace(
+    /<div[^>]*style="([^"]*(?:margin:\s*0px\s*auto|text-align:\s*center)[^"]*color:\s*red[^"]*)"[^>]*>([^<]*)<\/div>/gi,
+    (_match, style, content) => {
+      // 提取关键样式
+      const colorMatch = style.match(/color\s*:\s*([^;]+)/i)
+      const fontSizeMatch = style.match(/font-size\s*:\s*([^;]+)/i)
+      
+      // 构建新样式（红头标题默认居中、红色、加粗）
+      const styles: string[] = ['text-align: center']
+      if (colorMatch) {
+        const color = colorMatch[1].trim().toLowerCase()
+        styles.push(`color: ${color === 'red' ? '#FF0000' : color}`)
+      } else {
+        styles.push('color: #FF0000')
+      }
+      if (fontSizeMatch) styles.push(`font-size: ${fontSizeMatch[1].trim()}`)
+      styles.push('font-weight: bold')
+      
+      const newStyle = ` style="${styles.join('; ')}"`
+      
+      // 获取纯文本内容
+      const cleanContent = content.trim()
+      
+      // 如果内容为空，返回空字符串
+      if (!cleanContent) {
+        return ''
+      }
+      
+      return `<p${newStyle}>${cleanContent}</p>`
+    }
+  )
+  
+  // 10.1 再次尝试匹配（处理 color: red 在 margin/text-align 之前的情况）
+  html = html.replace(
+    /<div[^>]*style="([^"]*color:\s*red[^"]*(?:margin:\s*0px\s*auto|text-align:\s*center)[^"]*)"[^>]*>([^<]*)<\/div>/gi,
+    (_match, style, content) => {
+      const fontSizeMatch = style.match(/font-size\s*:\s*([^;]+)/i)
+      const styles: string[] = ['text-align: center', 'color: #FF0000']
+      if (fontSizeMatch) styles.push(`font-size: ${fontSizeMatch[1].trim()}`)
+      styles.push('font-weight: bold')
+      
+      const cleanContent = content.trim()
+      if (!cleanContent) return ''
+      
+      return `<p style="${styles.join('; ')}">${cleanContent}</p>`
+    }
+  )
+  
+  // === 第四阶段：处理文本对齐样式 ===
+  
+  // 11. 处理块级元素的 text-align 样式
+  html = html.replace(/<(p|div|h[1-6])([^>]*)style="([^"]*)"/gi, (_match, tag, attrs, style) => {
+    const textAlignMatch = style.match(/text-align\s*:\s*(left|center|right|justify)/i)
     
-    // 移除 mso-* 样式
-    let cleanedStyle = style.replace(/mso-[^;:"']+:[^;:"']+;?\s*/gi, '')
+    // 移除 mso-* 样式和不必要的样式
+    let cleanedStyle = style
+      .replace(/mso-[^;:"']+:[^;:"']+;?\s*/gi, '')
+      .replace(/outline\s*:[^;]+;?\s*/gi, '')
+      .replace(/white-space\s*:[^;]+;?\s*/gi, '')
+      .replace(/word-break\s*:[^;]+;?\s*/gi, '')
+      .replace(/user-select\s*:[^;]+;?\s*/gi, '')
+      .replace(/cursor\s*:[^;]+;?\s*/gi, '')
+      .replace(/overflow-wrap\s*:[^;]+;?\s*/gi, '')
+      .replace(/position\s*:\s*relative\s*;?\s*/gi, '')
     
     // 确保 text-align 被保留
     if (textAlignMatch) {
-      // 如果清理后 text-align 丢失，重新添加
-      if (!cleanedStyle.includes('text-align')) {
-        cleanedStyle = cleanedStyle ? `text-align: ${textAlignMatch[1]}; ${cleanedStyle}` : `text-align: ${textAlignMatch[1]}`
+      const alignValue = textAlignMatch[1].toLowerCase()
+      if (!cleanedStyle.match(/text-align\s*:/i)) {
+        cleanedStyle = `text-align: ${alignValue}; ${cleanedStyle}`
       }
     }
     
@@ -1517,60 +1763,98 @@ function cleanRedHeadHtml(html: string): string {
     }
     return `<${tag}${attrs}style="${cleanedStyle}"`
   })
-
-  // 移除其他元素中的 mso-* 样式属性（Word 特有），但保留其他有用的样式
+  
+  // 12. 移除 mso-* 样式
   html = html.replace(/mso-[^;:"']+:[^;:"']+;?\s*/gi, '')
-
-  // 清理空的 style 属性
+  
+  // 13. 清理空的 style 属性
   html = html.replace(/\s*style="\s*"/gi, '')
-
-  // 转换 font 标签为 span（Tiptap 不支持 font 标签）
-  html = html.replace(
-    /<font([^>]*)color\s*=\s*["']?([^"'\s>]+)["']?([^>]*)>/gi,
-    '<span style="color: $2"$1$3>'
-  )
+  
+  // === 第五阶段：处理红色横线 ===
+  
+  // 14. 将红色 hr 标签保留
+  html = html.replace(/<hr[^>]*style="[^"]*color:\s*red[^"]*"[^>]*>/gi, '<hr style="border: none; border-top: 2px solid red; margin: 20px 0;">')
+  
+  // === 第六阶段：转换颜色格式 ===
+  
+  // 15. 转换 font 标签为 span
+  html = html.replace(/<font([^>]*)color\s*=\s*["']?([^"'\s>]+)["']?([^>]*)>/gi, '<span style="color: $2"$1$3>')
   html = html.replace(/<\/font>/gi, '</span>')
-
-  // 确保颜色值格式正确（添加 # 前缀如果缺失）
+  
+  // 16. 确保颜色值格式正确
   html = html.replace(/color:\s*([A-Fa-f0-9]{6})([^A-Fa-f0-9])/gi, 'color: #$1$2')
   html = html.replace(/color:\s*([A-Fa-f0-9]{3})([^A-Fa-f0-9])/gi, 'color: #$1$2')
-
-  // 转换常见的颜色名称为十六进制值（Tiptap 更好地支持）
+  
+  // 17. 转换颜色名称为十六进制
   const colorNameMap: Record<string, string> = {
-    red: '#FF0000',
-    blue: '#0000FF',
-    green: '#008000',
-    yellow: '#FFFF00',
-    black: '#000000',
-    white: '#FFFFFF',
-    gray: '#808080',
-    grey: '#808080',
-    orange: '#FFA500',
-    purple: '#800080',
-    pink: '#FFC0CB',
-    brown: '#A52A2A',
-    navy: '#000080',
-    teal: '#008080',
-    maroon: '#800000',
-    olive: '#808000',
-    aqua: '#00FFFF',
-    fuchsia: '#FF00FF',
-    silver: '#C0C0C0',
-    lime: '#00FF00'
+    red: '#FF0000', blue: '#0000FF', green: '#008000', yellow: '#FFFF00',
+    black: '#000000', white: '#FFFFFF', gray: '#808080', grey: '#808080',
+    orange: '#FFA500', purple: '#800080', pink: '#FFC0CB', brown: '#A52A2A',
+    navy: '#000080', teal: '#008080', maroon: '#800000', olive: '#808000',
+    aqua: '#00FFFF', fuchsia: '#FF00FF', silver: '#C0C0C0', lime: '#00FF00'
   }
-
   for (const [name, hex] of Object.entries(colorNameMap)) {
     const regex = new RegExp(`color:\\s*${name}([;\\s"'])`, 'gi')
     html = html.replace(regex, `color: ${hex}$1`)
   }
-
-  // 移除空行
+  
+  // === 第七阶段：简化 HTML 结构 ===
+  
+  // 18. 移除空的 span 元素
+  html = html.replace(/<span[^>]*>\s*<\/span>/gi, '')
+  
+  // 19. 将嵌套的空 div 简化
+  html = html.replace(/<div[^>]*>\s*<\/div>/gi, '')
+  
+  // 20. 将只包含文本的 span 解包（保留有样式的）
+  html = html.replace(/<span>([^<]+)<\/span>/gi, '$1')
+  
+  // 21. 将 div 转换为 p（对于包含文本内容的）- 增强版，正确保留 text-align
+  html = html.replace(/<div([^>]*)>([\s\S]*?)<\/div>/gi, (_match, attrs, content) => {
+    // 移除内部的 span 标签，保留文本
+    const textContent = content
+      .replace(/<span[^>]*data-ea-string="true"[^>]*>([^<]*)<\/span>/gi, '$1')
+      .replace(/<span[^>]*>[\s]*<\/span>/gi, '')
+      .replace(/<span[^>]*>/gi, '')
+      .replace(/<\/span>/gi, '')
+      .trim()
+    
+    // 如果内容为空或只有空白/br，跳过
+    if (!textContent || /^(\s|<br\s*\/?>)*$/.test(textContent)) {
+      return ''
+    }
+    
+    // 提取 text-align 样式
+    const styleMatch = attrs.match(/style="([^"]*)"/i)
+    const style = styleMatch ? styleMatch[1] : ''
+    const textAlignMatch = style.match(/text-align\s*:\s*(right|center|left|justify)/i)
+    
+    // 构建新的 style 属性
+    let newStyle = ''
+    if (textAlignMatch) {
+      newStyle = `text-align: ${textAlignMatch[1].toLowerCase()}`
+    }
+    
+    const styleAttr = newStyle ? ` style="${newStyle}"` : ''
+    return `<p${styleAttr}>${textContent}</p>`
+  })
+  
+  // === 第八阶段：清理空行和空段落 ===
+  
+  // 22. 移除多余的换行
   html = html.replace(/\n\s*\n/g, '\n')
-
-  // 移除空的 span 包装（在处理完颜色后）
-  html = html.replace(/<span>\s*<\/span>/gi, '')
-  html = html.replace(/<span[^>]*>[\s\ufeff]*<br\s*\/?>\s*<\/span>/gi, '<br>')
-
+  html = html.replace(/>\s+</g, '><')
+  
+  // 23. 清理开头的空段落
+  html = html.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')
+  html = html.replace(/^\s+/, '')
+  
+  // 24. 压缩连续的空段落（只保留一个）
+  html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*){2,}/gi, '<p><br></p>')
+  
+  // 25. 移除末尾多余的空段落
+  html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+$/gi, '')
+  
   return html.trim()
 }
 
@@ -1833,10 +2117,13 @@ function postProcessDocxPreviewHtml(html: string): string {
 
   // 7. 清理开头的空段落和空白
   html = html.trim()
-  // 移除开头的空段落
-  html = html.replace(/^(<p[^>]*>\s*(<br\s*\/?>)?\s*<\/p>\s*)+/gi, '')
-  // 移除末尾的多余空段落（保留一个）
-  html = html.replace(/(<p[^>]*>\s*(<br\s*\/?>)?\s*<\/p>\s*){2,}$/gi, '<p><br></p>')
+  // 移除开头的空段落 - 增强版，匹配带任意属性的空段落
+  html = html.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')
+  html = html.replace(/^\s+/, '') // 移除开头的空白字符
+  // 移除末尾的多余空段落（保留一个）- 增强版
+  html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*){2,}$/gi, '<p><br></p>')
+  // 压缩中间的连续空段落
+  html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*){2,}/gi, '<p><br></p>')
 
   // 8. 清理空的 span 元素
   html = html.replace(/<span[^>]*>\s*<\/span>/g, '')

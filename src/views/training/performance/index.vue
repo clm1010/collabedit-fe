@@ -14,10 +14,10 @@
               >
                 <el-menu-item
                   v-for="category in categories"
-                  :key="category.id"
-                  :index="category.id"
+                  :key="category.value"
+                  :index="category.value"
                 >
-                  <span>{{ category.fileType }}</span>
+                  <span>{{ category.label }}</span>
                 </el-menu-item>
               </el-menu>
             </el-scrollbar>
@@ -296,7 +296,7 @@ import PublishDialog from './components/PublishDialog.vue'
 import RejectDialog from './components/RejectDialog.vue'
 import ExamRecordDialog from './components/ExamRecordDialog.vue'
 import { saveDocContent } from '@/views/utils/docStorage'
-import { blobToBase64 } from '@/views/utils/fileUtils'
+import { blobToBase64, blobToText } from '@/views/utils/fileUtils'
 import {
   isEmpty,
   isArray,
@@ -379,7 +379,8 @@ const getList = async () => {
 const getCategories = async () => {
   try {
     const res = await PerformanceApi.getDocCategories()
-    categories.value = res.data || []
+    // 左侧分类列表使用带"全部"的数据
+    categories.value = res.withAll || []
   } catch (error) {
     console.error('获取分类失败:', error)
     ElMessage.error('获取文档分类失败，请确保后端服务已启动')
@@ -404,19 +405,19 @@ const resetQuery = () => {
 // 文档分类选择
 const handleCategorySelect = (index: string) => {
   selectedCategory.value = index
-  console.log('选择分类 id:', index)
+  console.log('选择分类 value:', index)
 
-  // 使用 lodash find 根据 id 找到对应的 category
-  const category = find(categories.value, (cat) => cat.id === index)
+  // 使用 lodash find 根据 value 找到对应的 category
+  const category = find(categories.value, (cat) => cat.value === index)
 
   // 将选择的分类传递到查询参数
   if (index === '0') {
-    // 选择全部时 (id='0')，清空分类过滤
+    // 选择全部时 (value='0')，清空分类过滤
     queryParams.fileType = undefined
   } else if (category) {
-    // 传递 fileType（文字）而不是 id
-    queryParams.fileType = category.fileType
-    console.log('传递 fileType:', category.fileType)
+    // 传递 label（分类名称）
+    queryParams.fileType = category.label
+    console.log('传递 fileType:', category.label)
   }
 
   // 触发查询
@@ -429,13 +430,12 @@ const isEditMode = ref(false) // 是否为编辑模式（编辑模式隐藏创�
 const currentEditId = ref<string | null>(null) // 当前编辑的数据ID
 const performanceFormRef = ref()
 
-// 文档分类下拉选项（从中间件获取，过滤掉"全部"）
+// 文档分类下拉选项（过滤掉"全部"，用于新建/编辑弹窗）
 const fileTypeOptions = computed(() => {
-  const filtered = filter(categories.value, (item) => item.id !== '0')
+  const filtered = filter(categories.value, (item) => item.value !== '0')
   return map(filtered, (item) => ({
-    label: item.fileType,
-    value: item.id, // value 使用 fileType（分类名称）
-    id: item.id // 保留 id 用于传递 fileType 参数
+    label: item.label,
+    value: item.value
   }))
 })
 
@@ -557,9 +557,8 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
 
     loading.value = true
 
-    // 根据选择的 fileTypeOptions 找到对应的分类 id 作为 fileType
-    const selectedCat = find(fileTypeOptions.value, (item) => item.value === formData.fileType)
-    const fileType = selectedCat?.id || ''
+    // 使用选择的分类 value 作为 fileType
+    const fileType = formData.fileType || ''
     console.log(fileType, 'fileType------')
 
     // 编辑模式
@@ -954,8 +953,8 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
       return
     }
 
-    // 读取 Blob 内容为文本（markdown）
-    const markdownText = await blob.text()
+    // 使用 blobToText 读取内容（防止中文乱码）
+    const markdownText = await blobToText(blob)
 
     // 使用 markdown-it 将 markdown 转换为 HTML
     const md = new MarkdownIt()
@@ -1180,9 +1179,9 @@ const getCollegeLabel = (code?: string) => {
 const getFileTypeLabel = (fileType?: string) => {
   if (!fileType) return ''
   const category = categories.value.find(
-    (item) => item.fileType === fileType || item.id === fileType
+    (item) => item.label === fileType || item.value === fileType
   )
-  return category?.fileType || fileType
+  return category?.label || fileType
 }
 
 const getLevelLabel = (level?: string) => {

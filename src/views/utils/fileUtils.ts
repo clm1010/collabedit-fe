@@ -116,3 +116,28 @@ export const readFileAsText = (file: File, encoding = 'utf-8'): Promise<string> 
     reader.readAsText(file, encoding)
   })
 }
+
+/**
+ * 将 Blob 转换为文本（防止中文乱码）
+ * 使用 ArrayBuffer + TextDecoder 确保正确解码 UTF-8 编码
+ * @param blob Blob 对象
+ * @param encoding 编码格式，默认 UTF-8
+ * @returns Promise<string> 解码后的文本内容
+ */
+export const blobToText = async (blob: Blob, encoding = 'utf-8'): Promise<string> => {
+  try {
+    // 方式1：使用 arrayBuffer + TextDecoder（更可靠，防止乱码）
+    const arrayBuffer = await blob.arrayBuffer()
+    const decoder = new TextDecoder(encoding)
+    return decoder.decode(arrayBuffer)
+  } catch (error) {
+    console.error('Blob 转文本失败:', error)
+    // 降级方案：使用 FileReader
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = (err) => reject(err)
+      reader.readAsText(blob, encoding)
+    })
+  }
+}

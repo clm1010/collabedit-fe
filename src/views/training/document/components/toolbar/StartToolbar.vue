@@ -980,9 +980,9 @@ const cleanWordHtml = (html: string): string => {
 
   // === 首先清理开头的空白和空段落 - 解决"总是空出一行"的问题 ===
   html = html.trim()
-  // 移除开头的空段落（但保护内容不被完全清除）
+  // 移除开头的空段落（但保护内容不被完全清除）- 增强版，匹配带任意属性的空段落
   const beforeClean = html
-  html = html.replace(/^(\s*<p[^>]*>\s*(<br\s*\/?>)?\s*<\/p>\s*)+/gi, '')
+  html = html.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')
   // 移除开头的空白字符
   html = html.replace(/^\s+/, '')
 
@@ -1028,26 +1028,33 @@ const cleanWordHtml = (html: string): string => {
 
   // === 清理多余内容 ===
 
-  // 移除多余的连续空段落（保留单个空段落用于间距）
-  html = html.replace(/(<p>\s*<\/p>\s*){2,}/g, '<p></p>')
+  // 移除多余的连续空段落（保留单个空段落用于间距）- 增强版，处理带 style/class 属性的空段落
+  html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*){2,}/gi, '<p><br></p>')
+  
+  // 清理中间的多余空段落（超过2个连续的压缩为1个）
+  html = html.replace(/(<p[^>]*>\s*<br\s*\/?>\s*<\/p>\s*){3,}/gi, '<p><br></p>')
 
   // 清理多余的空格，但保留必要的空格
   html = html.replace(/&nbsp;&nbsp;+/g, ' ')
 
   // 在移除 mso-* 样式之前，先提取并保留 text-align 样式
-  // 处理块级元素的 text-align 样式
-  html = html.replace(/<(p|div|h[1-6])([^>]*)style="([^"]*)"/gi, (match, tag, attrs, style) => {
-    // 提取 text-align 值
-    const textAlignMatch = style.match(/text-align:\s*(left|center|right|justify)/i)
+  // 处理块级元素的 text-align 样式 - 增强版，支持更多格式变体
+  html = html.replace(/<(p|div|h[1-6]|span)([^>]*)style="([^"]*)"/gi, (match, tag, attrs, style) => {
+    // 提取 text-align 值（支持大小写和不同空格格式）
+    const textAlignMatch = style.match(/text-align\s*:\s*(left|center|right|justify)/i)
     
     // 移除 mso-* 样式
     let cleanedStyle = style.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
     
     // 确保 text-align 被保留
     if (textAlignMatch) {
+      const alignValue = textAlignMatch[1].toLowerCase() // 标准化对齐值
       // 如果清理后 text-align 丢失，重新添加
-      if (!cleanedStyle.includes('text-align')) {
-        cleanedStyle = cleanedStyle ? `text-align: ${textAlignMatch[1]}; ${cleanedStyle}` : `text-align: ${textAlignMatch[1]}`
+      if (!cleanedStyle.match(/text-align\s*:\s*(left|center|right|justify)/i)) {
+        cleanedStyle = cleanedStyle ? `text-align: ${alignValue}; ${cleanedStyle}` : `text-align: ${alignValue}`
+      } else {
+        // 即使存在，也确保格式正确（标准化为小写）
+        cleanedStyle = cleanedStyle.replace(/text-align\s*:\s*(left|center|right|justify)/i, `text-align: ${alignValue}`)
       }
     }
     
@@ -1416,8 +1423,9 @@ const confirmWordImport = async () => {
 
     // 清理开头的空段落和空白 - 解决"总是空出一行"的问题
     // 但要小心不要删除所有内容
+    // 增强版：匹配带任意属性的空段落（包括 style、class 等）
     const beforeClean = content
-    content = content.replace(/^(\s*<p[^>]*>\s*(<br\s*\/?>)?\s*<\/p>\s*)+/gi, '')
+    content = content.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')
     content = content.replace(/^\s+/, '')
 
     // 如果清理后内容为空，恢复原始内容

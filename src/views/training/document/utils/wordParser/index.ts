@@ -36,6 +36,7 @@ export {
   parseOoxmlDocumentEnhanced,
 
   // 红头文件解析
+  isRedHeadDocument,
   parseRedHeadDocument,
 
   // 智能解析

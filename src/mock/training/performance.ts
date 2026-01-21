@@ -17,6 +17,7 @@ import type {
 } from '@/types/performance'
 import {
   performanceCategories,
+  ALL_CATEGORY,
   type DocCategoryVO
 } from '@/views/training/performance/config/categories'
 
@@ -371,10 +372,14 @@ export const getPageList = async (params: TrainingPerformancePageReqVO) => {
 
 /**
  * 获取文档分类列表
+ * 返回 data（原始数据）和 withAll（带"全部"选项的数据）
  */
-export const getDocCategories = async (): Promise<{ data: DocCategoryVO[] }> => {
+export const getDocCategories = async (): Promise<{ data: DocCategoryVO[]; withAll: DocCategoryVO[] }> => {
   await mockDelay(100)
-  return { data: performanceCategories }
+  return {
+    data: performanceCategories,
+    withAll: [ALL_CATEGORY, ...performanceCategories]
+  }
 }
 
 /**

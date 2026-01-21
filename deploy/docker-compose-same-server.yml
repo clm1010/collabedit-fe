@@ -1,0 +1,49 @@
+# ==========================================
+# 方案 A：同一服务器部署
+# 前端 + Nginx + 中间件都在同一台服务器
+# ==========================================
+version: '3.8'
+
+services:
+  # Nginx 前端服务
+  nginx:
+    image: nginx:alpine
+    container_name: collabedit-nginx
+    ports:
+      - "8001:80"
+    volumes:
+      # 前端构建产物
+      - /data/jiuyuan/dist:/usr/share/nginx/html:ro
+      # Nginx 配置文件（必须挂载！）
+      - /data/jiuyuan/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - middleware
+    restart: unless-stopped
+    networks:
+      - webnet
+
+  # WebSocket 协同中间件
+  middleware:
+    image: collaborative-middleware:latest
+    container_name: collabedit-middleware
+    environment:
+      - NODE_ENV=production
+      - COLLABORATIVE_MIDDLEWARE_PORT=3001
+    expose:
+      - "3001"
+    restart: unless-stopped
+    networks:
+      - webnet
+
+networks:
+  webnet:
+    driver: bridge
+
+# ==========================================
+# 使用说明：
+# 1. 复制 nginx-same-server.conf 为 /data/jiuyuan/nginx.conf
+# 2. 复制 dist-prod 内容到 /data/jiuyuan/dist/
+# 3. 加载中间件镜像: docker load -i collaborative-middleware.tar
+# 4. 启动服务: docker-compose -f docker-compose-same-server.yml up -d
+# 5. 查看日志: docker-compose logs -f
+# ==========================================

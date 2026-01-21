@@ -1,7 +1,7 @@
 import router from './router'
 import type { RouteRecordRaw } from 'vue-router'
 import { isRelogin } from '@/config/axios/service'
-import { getAccessToken } from '@/utils/auth'
+import { getAccessToken, isExternalTokenMode, setExternalToken } from '@/utils/auth'
 import { useTitle } from '@/hooks/web/useTitle'
 import { useNProgress } from '@/hooks/web/useNProgress'
 import { usePageLoading } from '@/hooks/web/usePageLoading'
@@ -49,6 +49,7 @@ const parseURL = (
 // 路由不重定向白名单
 const whiteList = [
   '/login',
+  '/MyLogin', // 外部Token登录（嵌入式场景）
   '/social-login',
   '/auth-redirect',
   '/bind',
@@ -56,49 +57,98 @@ const whiteList = [
   '/oauthLogin/gitee'
 ]
 
+// 是否跳过登录验证（仅开发调试用）
+const skipAuth = import.meta.env.VITE_SKIP_AUTH === 'true'
+
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
   start()
   loadStart()
 
-  // ===== 临时跳过登录验证（开发调试用） =====
-  // 修复：跳过登录但仍然需要加载路由
   const permissionStore = usePermissionStoreWithOut()
   const dictStore = useDictStoreWithOut()
 
-  // 初始化字典（忽略错误，避免因后端未连接而阻塞）
-  if (!dictStore.getIsSetDict) {
-    try {
-      await dictStore.setDictMap()
-    } catch (error) {
-      console.warn('字典初始化失败（开发环境忽略）:', error)
+  // ===== 开发调试模式（跳过登录验证）=====
+  if (skipAuth) {
+    // 初始化字典（忽略错误）
+    if (!dictStore.getIsSetDict) {
+      try {
+        await dictStore.setDictMap()
+      } catch (error) {
+        console.warn('字典初始化失败:', error)
+      }
     }
+    // 初始化路由
+    if (!permissionStore.getRouters || permissionStore.getRouters.length === 0) {
+      await permissionStore.generateRoutes()
+      permissionStore.getAddRouters.forEach((route) => {
+        router.addRoute(route as unknown as RouteRecordRaw)
+      })
+    }
+    next()
+    return
   }
-
-   // 初始化路由
-  if (!permissionStore.getRouters || permissionStore.getRouters.length === 0) {
-    await permissionStore.generateRoutes()
-    permissionStore.getAddRouters.forEach((route) => {
-      router.addRoute(route as unknown as RouteRecordRaw)
-    })
-  }
-
-  next()
-  return
   // =========================================
 
+  // ===== 外部Token登录模式（嵌入式场景）=====
+  // 当启用外部Token登录时，支持从任意页面URL参数获取token
+  if (isExternalTokenMode()) {
+    // 1. 检查URL参数中是否有token，如果有则存储
+    const urlToken = to.query.token as string
+    if (urlToken) {
+      // 存储token
+      setExternalToken(urlToken)
+      // 移除URL中的token参数（避免token暴露在浏览器历史记录中）
+      const query = { ...to.query }
+      delete query.token
+      // 重定向到不带token参数的URL
+      next({ path: to.path, query, replace: true })
+      return
+    }
+
+    // 2. 初始化字典（忽略错误）
+    if (!dictStore.getIsSetDict) {
+      try {
+        await dictStore.setDictMap()
+      } catch (error) {
+        console.warn('字典初始化失败:', error)
+      }
+    }
+
+    // 3. 初始化路由
+    if (!permissionStore.getRouters || permissionStore.getRouters.length === 0) {
+      await permissionStore.generateRoutes()
+      permissionStore.getAddRouters.forEach((route) => {
+        router.addRoute(route as unknown as RouteRecordRaw)
+      })
+    }
+
+    // 4. 白名单页面直接放行
+    if (whiteList.indexOf(to.path) !== -1) {
+      next()
+      return
+    }
+
+    // 5. 有token则放行，无token则提示错误
+    if (getAccessToken()) {
+      next()
+    } else {
+      // 没有token，显示错误提示页面
+      next('/MyLogin')
+    }
+    return
+  }
+  // =========================================
+
+  // ===== 标准登录模式 =====
   if (getAccessToken()) {
     if (to.path === '/login') {
       next({ path: '/' })
     } else {
       // 获取所有字典
-      const dictStore = useDictStoreWithOut()
       const userStore = useUserStoreWithOut()
-      const permissionStore = usePermissionStoreWithOut()
       // 异步加载字典
-      // 另外，间接 issue：https://gitee.com/yudaocode/yudao-ui-admin-vue3/issues/ID9FLI
       if (!dictStore.getIsSetDict) {
-        // dictStore.setDictMap().then()
         await dictStore.setDictMap()
       }
       if (!userStore.getIsSetUser) {
