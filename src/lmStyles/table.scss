@@ -1,0 +1,9 @@
+:deep(.el-table__header-wrapper thead) {
+  height: 64px !important;
+}
+
+:deep(.el-table__header-wrapper th) {
+  background-color: #f0f4fa !important;
+  border-bottom-color: #8bb8ff !important;
+  color: #333333 !important;
+}

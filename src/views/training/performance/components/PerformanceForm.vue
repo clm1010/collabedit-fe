@@ -6,7 +6,7 @@
     :close-on-click-modal="false"
     class="custom-dialog-header"
   >
-    <el-form ref="formRef" :model="formData" :rules="formRules" label-width="120px">
+    <el-form ref="formRef" :model="formData" :rules="formRules" label-width="140px">
       <el-form-item label="演训数据">
         <div class="w-full flex gap-2">
           <el-input

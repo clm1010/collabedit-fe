@@ -1403,6 +1403,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+@use '@/lmStyles/dialog.scss';
+@use '@/lmStyles/table.scss';
 .template-management {
   padding: 0;
   height: calc(100vh - 90px); // 减去头部和标签栏高度
@@ -1417,60 +1419,6 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     padding: 0;
-  }
-}
-
-:deep(.el-table) {
-  font-size: 14px;
-}
-</style>
-
-<style lang="scss">
-// 统一弹窗样式 - 全局样式
-.el-dialog.custom-dialog-header {
-  padding: 0;
-
-  .el-dialog__header {
-    background: linear-gradient(102.53deg, #1677ff1a 0.03%, #1677ff26 102.41%);
-    padding: 20px 24px;
-    margin: 0;
-    border-bottom: 1px solid #1677ff1a;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .el-dialog__title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #303133;
-    line-height: 1;
-  }
-
-  .el-dialog__headerbtn {
-    position: static;
-    width: 24px;
-    height: 24px;
-    margin: 0;
-
-    .el-dialog__close {
-      color: #909399;
-      font-size: 20px;
-
-      &:hover {
-        color: #606266;
-      }
-    }
-  }
-
-  .el-dialog__body {
-    padding: 24px;
-  }
-
-  .el-dialog__footer {
-    padding: 16px 24px;
-    border-top: 1px solid #e4e7ed;
-    margin: 0;
   }
 }
 </style>

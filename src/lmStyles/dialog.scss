@@ -6,7 +6,8 @@
   padding: 0;
 
   .el-dialog__header {
-    background: linear-gradient(102.53deg, #1677ff1a 0.03%, #1677ff26 102.41%);
+    // background: linear-gradient(102.53deg, #1677ff1a 0.03%, #1677ff26 102.41%);
+    background: linear-gradient(to bottom, #e8f1ff, #dcedff);
     padding: 20px 24px;
     margin: 0;
     border-bottom: 1px solid #1677ff1a;
@@ -55,7 +56,8 @@
  */
 .el-drawer.custom-drawer-header {
   .el-drawer__header {
-    background: linear-gradient(102.53deg, #1677ff1a 0.03%, #1677ff26 102.41%);
+    // background: linear-gradient(102.53deg, #1677ff1a 0.03%, #1677ff26 102.41%);
+    background: linear-gradient(to bottom, #e8f1ff, #dcedff);
     padding: 20px 24px;
     margin: 0;
     border-bottom: 1px solid #1677ff1a;

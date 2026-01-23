@@ -1249,6 +1249,8 @@ onUnmounted(() => {
 })
 </script>
 <style scoped lang="scss">
+@use '@/lmStyles/dialog.scss';
+@use '@/lmStyles/table.scss';
 .performance-container {
   height: calc(100vh - 90px); // 减去头部和标签栏高度
   display: flex;

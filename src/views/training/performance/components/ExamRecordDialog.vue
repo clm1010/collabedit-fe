@@ -2,7 +2,7 @@
   <el-dialog
     v-model="dialogVisible"
     title="审核记录"
-    width="900px"
+    width="1000px"
     :close-on-click-modal="false"
     class="custom-dialog-header"
   >
@@ -30,8 +30,8 @@
         show-overflow-tooltip
       />
       <el-table-column prop="examOfficeName" label="审核部门" width="120" align="center" />
-      <el-table-column prop="examUserId" label="审批用户" width="100" align="center" />
-      <el-table-column prop="nextUserId" label="下一审批人" width="100" align="center" />
+      <el-table-column prop="examUserId" label="审批用户" width="120" align="center" />
+      <el-table-column prop="nextUserId" label="下一审批人" width="160" align="center" />
       <el-table-column prop="createTime" label="审核时间" width="160" align="center" />
     </el-table>
     <template #footer>
@@ -64,3 +64,6 @@ const dialogVisible = computed({
   set: (val) => emit('update:visible', val)
 })
 </script>
+<style scoped lang="scss">
+@use '@/lmStyles/table.scss';
+</style>
