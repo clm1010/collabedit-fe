@@ -297,6 +297,7 @@ import RejectDialog from './components/RejectDialog.vue'
 import ExamRecordDialog from './components/ExamRecordDialog.vue'
 import { saveDocContent } from '@/views/utils/docStorage'
 import { blobToBase64, blobToText } from '@/views/utils/fileUtils'
+import { parseFileContent } from '@/views/training/document/utils/wordParser'
 import {
   isEmpty,
   isArray,
@@ -917,8 +918,32 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
       return
     }
 
+    // 尝试判断是否为 Word 文档（docx/doc）
+    const mimeType = blob.type || ''
+    let isWordDoc = mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
+
+    if (!isWordDoc) {
+      // 通过文件头判断是否为 docx（ZIP: PK）
+      const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+      isWordDoc = header[0] === 0x50 && header[1] === 0x4b
+    }
+
+    if (isWordDoc) {
+      // Word 文档：转 base64 -> 解析为 HTML
+      const base64Content = await blobToBase64(blob)
+      const htmlContent = await parseFileContent(base64Content)
+      if (htmlContent) {
+        previewContent.value = htmlContent
+        previewTitle.value = row.planName || '文档预览'
+        previewDialogVisible.value = true
+        return
+      }
+      // 解析失败时回退为文本
+      console.warn('Word 解析失败，回退为文本预览')
+    }
+
     // 读取 Blob 内容为文本
-    const text = await blob.text()
+    const text = await blobToText(blob)
 
     // 使用 markdown-it 解析 Markdown 为 HTML
     const md = new MarkdownIt()
@@ -953,21 +978,32 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
       return
     }
 
-    // 使用 blobToText 读取内容（防止中文乱码）
-    const markdownText = await blobToText(blob)
+    // 判断是否为 Word 文档（docx/doc）
+    const mimeType = blob.type || ''
+    let isWordDoc = mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
 
-    // 使用 markdown-it 将 markdown 转换为 HTML
-    const md = new MarkdownIt()
-    const htmlContent = md.render(markdownText)
+    if (!isWordDoc) {
+      // 通过文件头判断是否为 docx（ZIP: PK）
+      const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+      isWordDoc = header[0] === 0x50 && header[1] === 0x4b
+    }
 
-    // 使用 htmlToDocx 将 HTML 转换为 docx Blob
-    const docxBlob = await htmlToDocx(htmlContent, row.planName || '文档')
+    let downloadBlob = blob
+    let filename = `${row.planName || '文档'}.docx`
+
+    if (!isWordDoc) {
+      // 非 Word 文档：按 markdown 处理并导出为 docx
+      const markdownText = await blobToText(blob)
+      const md = new MarkdownIt()
+      const htmlContent = md.render(markdownText)
+      downloadBlob = await htmlToDocx(htmlContent, row.planName || '文档')
+    }
 
     // 创建下载链接
-    const url = window.URL.createObjectURL(docxBlob)
+    const url = window.URL.createObjectURL(downloadBlob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${row.planName || '文档'}.docx`
+    link.download = filename
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

@@ -177,7 +177,11 @@ const {
   creatorId: undefined, // 将在 loadDocument 后更新
   showConnectMessage: true,
   onConnectionChange: (status) => emit('connectionChange', status),
-  onCollaboratorsChange: (users) => emit('collaboratorsChange', users)
+  onCollaboratorsChange: (users) => emit('collaboratorsChange', users),
+  onSynced: () => {
+    isCollaborationSynced.value = true
+    tryApplyInitialContent()
+  }
 })
 
 // 状态
@@ -251,39 +255,146 @@ const handleContentUpdate = (_content: string) => {
   // 可以在这里做自动保存等操作
 }
 
+const clearCachedContent = () => {
+  if (cacheCleared.value || !pendingCacheKey.value) return
+  cacheCleared.value = true
+  sessionStorage.removeItem(pendingCacheKey.value)
+}
+
+const applyInitialContent = () => {
+  const editor = editorInstance.value
+  if (!editor || !initialMarkdownContent.value) return
+
+  console.log('设置初始 Markdown 内容到编辑器')
+  const content = initialMarkdownContent.value.trim()
+
+  if (!content) return
+
+  const tryApplyContent = (retryCount = 0, maxRetries = 5, delay = 300) => {
+    // 检查组件是否已卸载，避免内存泄漏
+    if (isUnmounted.value) return
+    if (!editorInstance.value) return
+
+    try {
+      // 检查当前编辑器是否为空
+      const currentContent = editorInstance.value.getHTML()
+      const currentStripped = currentContent
+        ?.replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\u200B/g, '') // 零宽空格
+        .replace(/\uFEFF/g, '') // BOM
+        .trim() || ''
+
+      const isEditorEmpty =
+        !currentContent ||
+        currentContent === '<p></p>' ||
+        currentContent === '<p><br></p>' ||
+        currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
+        currentStripped === ''
+
+      console.log(`handleEditorReady 尝试 ${retryCount + 1}/${maxRetries}:`, {
+        currentContent: currentContent?.substring(0, 100),
+        currentStripped: currentStripped?.substring(0, 50),
+        isEditorEmpty,
+        isFirstLoadWithContent: isFirstLoadWithContent.value
+      })
+
+      // 首次加载有内容时强制应用，覆盖协同同步的旧内容
+      // 或者编辑器为空时应用
+      if (isFirstLoadWithContent.value || isEditorEmpty) {
+        if (isFirstLoadWithContent.value && !isEditorEmpty) {
+          console.log('首次加载模式：强制应用新内容，覆盖协同旧内容')
+          // 关键修复：先清空 Y.Doc fragment，确保旧的协同内容被删除
+          // 这会生成一个删除更新同步到服务器，然后再设置新内容
+          const currentFragment = fragment.value
+          if (ydoc.value && currentFragment) {
+            console.log('清空 Y.Doc fragment 以覆盖服务器旧内容')
+            ydoc.value.transact(() => {
+              // 删除 fragment 中的所有子节点
+              while (currentFragment.length > 0) {
+                currentFragment.delete(0, 1)
+              }
+            })
+          }
+        }
+        // 使用 emitUpdate: true 触发协同同步
+        editorInstance.value.commands.setContent(content, true)
+        console.log('初始内容已设置并同步')
+
+        const verifyTimerId = setTimeout(() => {
+          pendingTimers.value.delete(verifyTimerId)
+          if (isUnmounted.value || !editorInstance.value) return
+
+          const appliedContent = editorInstance.value.getHTML()
+          const appliedStripped = appliedContent
+            ?.replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\u200B/g, '')
+            .replace(/\uFEFF/g, '')
+            .trim() || ''
+
+          if (appliedStripped) {
+            initialMarkdownContent.value = ''
+            isFirstLoadWithContent.value = false
+            clearCachedContent()
+          } else if (retryCount < maxRetries - 1) {
+            console.warn('初始内容未生效，准备重试...')
+            tryApplyContent(retryCount + 1, maxRetries, delay)
+          }
+        }, 200)
+        pendingTimers.value.add(verifyTimerId)
+      } else {
+        // 非首次加载且编辑器有内容，保留现有内容
+        console.log('非首次加载，编辑器已有内容，保留现有内容')
+        initialMarkdownContent.value = ''
+        clearCachedContent()
+      }
+    } catch (error) {
+      console.error('设置初始内容失败:', error)
+      // 如果设置失败，尝试设置一个空段落
+      try {
+        editorInstance.value.commands.setContent('<p></p>', false)
+      } catch (e) {
+        console.error('设置空段落也失败:', e)
+      }
+      initialMarkdownContent.value = ''
+      isFirstLoadWithContent.value = false
+    }
+  }
+
+  // 初始延迟后开始尝试
+  const initialTimerId = setTimeout(() => {
+    pendingTimers.value.delete(initialTimerId)
+    tryApplyContent()
+  }, 500)
+  pendingTimers.value.add(initialTimerId)
+}
+
+const tryApplyInitialContent = () => {
+  if (!isEditorReady.value) return
+  if (!isCollaborationSynced.value && provider.value?.synced) {
+    isCollaborationSynced.value = true
+  }
+  if (!isCollaborationSynced.value && !allowApplyWithoutSync.value) {
+    const fallbackTimerId = setTimeout(() => {
+      pendingTimers.value.delete(fallbackTimerId)
+      if (isUnmounted.value) return
+      allowApplyWithoutSync.value = true
+      tryApplyInitialContent()
+    }, 1500)
+    pendingTimers.value.add(fallbackTimerId)
+    return
+  }
+  if (!initialMarkdownContent.value) return
+  applyInitialContent()
+}
+
 // 编辑器就绪回调
 const handleEditorReady = async (editor: any) => {
   editorInstance.value = editor
   console.log('Markdown 编辑器已就绪')
-
-  // 如果有初始内容，设置到编辑器中
-  if (initialMarkdownContent.value) {
-    console.log('设置初始 Markdown 内容到编辑器')
-    // 使用 setTimeout 确保协同编辑已完全初始化
-    setTimeout(() => {
-      if (editor && initialMarkdownContent.value) {
-        try {
-          // 确保内容不为空，且是有效的 HTML
-          const content = initialMarkdownContent.value.trim()
-          if (content) {
-            // 使用 setContent 并禁用发送更新，避免协同冲突
-            editor.commands.setContent(content, false)
-            console.log('初始内容已设置')
-          }
-        } catch (error) {
-          console.error('设置初始内容失败:', error)
-          // 如果设置失败，尝试设置一个空段落
-          try {
-            editor.commands.setContent('<p></p>', false)
-          } catch (e) {
-            console.error('设置空段落也失败:', e)
-          }
-        }
-        // 清空初始内容，避免重复设置
-        initialMarkdownContent.value = ''
-      }
-    }, 500)
-  }
+  isEditorReady.value = true
+  tryApplyInitialContent()
 }
 
 /**
@@ -453,6 +564,24 @@ const handleReviewRejectSubmit = async () => {
   }
 }
 
+const looksGarbled = (text: string) => {
+  if (!text) return false
+  const replacementCount = (text.match(/\uFFFD/g) || []).length
+  const total = text.length || 1
+  const replacementRatio = replacementCount / total
+  const mojibakeCount = (text.match(/[\u00C3\u00C2\u00E2\u20AC\u2122\u201C\u201D\u2022]/g) || []).length
+  return replacementRatio > 0.02 || mojibakeCount > 3
+}
+
+const decodeBytes = (bytes: Uint8Array, encoding: string) => {
+  try {
+    const decoder = new TextDecoder(encoding, { fatal: false })
+    return decoder.decode(bytes).replace(/\uFEFF/g, '')
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Base64 转文本工具函数
  * @param base64 Base64 字符串 (data URL 格式)
@@ -474,9 +603,14 @@ const base64ToText = async (base64: string): Promise<string> => {
       bytes[i] = binaryString.charCodeAt(i)
     }
 
-    // 使用 TextDecoder 解码为 UTF-8 文本
-    const decoder = new TextDecoder('utf-8')
-    return decoder.decode(bytes)
+    // 优先 UTF-8，若出现乱码则回退到 gb18030
+    const utf8Text = decodeBytes(bytes, 'utf-8')
+    if (!looksGarbled(utf8Text)) {
+      return utf8Text
+    }
+
+    const gbText = decodeBytes(bytes, 'gb18030')
+    return gbText || utf8Text
   } catch (error) {
     console.error('Base64 解码失败:', error)
     return ''
@@ -674,6 +808,17 @@ const markdownToHtml = (markdown: string): string => {
 
 // 初始 Markdown 内容（用于编辑器初始化后设置）
 const initialMarkdownContent = ref<string>('')
+// 标记是否为首次加载（有初始内容的情况）
+const isFirstLoadWithContent = ref(false)
+const isEditorReady = ref(false)
+const isCollaborationSynced = ref(false)
+const allowApplyWithoutSync = ref(false)
+// 用于清理 setTimeout 的 timer ID 集合
+const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
+// 组件是否已卸载的标记
+const isUnmounted = ref(false)
+const pendingCacheKey = ref<string | null>(null)
+const cacheCleared = ref(false)
 
 // 加载文档数据
 const loadDocument = async () => {
@@ -707,6 +852,8 @@ const loadDocument = async () => {
     if (hasContent) {
       const cachedContentKey = `markdown_content_${documentId.value}`
       const cachedContent = sessionStorage.getItem(cachedContentKey)
+      pendingCacheKey.value = cachedContentKey
+      cacheCleared.value = false
 
       if (cachedContent) {
         console.log('从缓存加载 Markdown 内容')
@@ -722,10 +869,8 @@ const loadDocument = async () => {
 
           // 存储初始内容，等编辑器就绪后设置
           initialMarkdownContent.value = htmlContent
+          isFirstLoadWithContent.value = true // 标记为首次加载有内容
         }
-
-        // 清除缓存（一次性使用）
-        sessionStorage.removeItem(cachedContentKey)
       }
     }
 
@@ -753,9 +898,28 @@ const loadDocument = async () => {
 watch(
   () => documentId.value,
   (newDocId) => {
+    initialMarkdownContent.value = ''
+    isFirstLoadWithContent.value = false
+    isEditorReady.value = false
+    isCollaborationSynced.value = false
+    allowApplyWithoutSync.value = false
+    pendingCacheKey.value = null
+    cacheCleared.value = false
+    pendingTimers.value.forEach((timerId) => {
+      clearTimeout(timerId)
+    })
+    pendingTimers.value.clear()
+
     // 使用 hook 的 reinitialize 方法重新初始化协同编辑
     loadDocument()
     reinitializeCollaboration(newDocId, documentInfo.value?.creatorId)
+  }
+)
+
+watch(
+  () => isCollaborationReady.value,
+  () => {
+    tryApplyInitialContent()
   }
 )
 
@@ -768,6 +932,15 @@ onMounted(async () => {
 // 组件卸载 - 清理非协同相关的资源
 // 注意: useCollaboration hook 会自动清理协同编辑相关的资源（ydoc, provider, 事件监听器等）
 onBeforeUnmount(() => {
+  // 标记组件已卸载，防止异步回调继续执行
+  isUnmounted.value = true
+
+  // 清理所有待执行的 setTimeout，防止内存泄漏
+  pendingTimers.value.forEach((timerId) => {
+    clearTimeout(timerId)
+  })
+  pendingTimers.value.clear()
+
   // 清理编辑器实例引用
   editorInstance.value = null
   markdownEditorRef.value = null
@@ -776,6 +949,7 @@ onBeforeUnmount(() => {
   customElements.value = []
   documentInfo.value = null
   initialMarkdownContent.value = ''
+  isFirstLoadWithContent.value = false
 
   console.log('Markdown 协同编辑组件已清理')
 })

@@ -217,7 +217,11 @@ const {
   creatorId: undefined, // 将在 loadDocument 后更新
   showConnectMessage: true,
   onConnectionChange: (status) => emit('connectionChange', status),
-  onCollaboratorsChange: (users) => emit('collaboratorsChange', users)
+  onCollaboratorsChange: (users) => emit('collaboratorsChange', users),
+  onSynced: () => {
+    isCollaborationSynced.value = true
+    tryApplyPreloadedContent()
+  }
 })
 
 // 状态
@@ -227,6 +231,17 @@ const editorInstance = ref<any>(null)
 
 // 预加载的文档内容（从权限校验接口获取的文件流）
 const preloadedContent = ref<string>('')
+const preloadedApplied = ref(false)
+const preloadedCacheCleared = ref(false)
+// 标记是否为首次加载（有预加载内容的情况）
+const isFirstLoadWithContent = ref(false)
+// 编辑器和协同同步状态
+const isEditorReady = ref(false)
+const isCollaborationSynced = ref(false)
+// 用于清理 setTimeout 的 timer ID 集合
+const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
+// 组件是否已卸载的标记
+const isUnmounted = ref(false)
 
 // 参考素材
 const referenceMaterials = ref<any[]>([])
@@ -425,58 +440,171 @@ const handleContentUpdate = (_content: string) => {
   // console.log('文档内容更新')
 }
 
+const clearPreloadedCache = async () => {
+  if (preloadedCacheCleared.value) return
+  preloadedCacheCleared.value = true
+  try {
+    await removeDocContent(documentId.value)
+  } catch (error) {
+    console.warn('清理预加载缓存失败:', error)
+  }
+}
+
+const escapeHtml = (text: string) => {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+const tryApplyPreloadedContent = () => {
+  if (preloadedApplied.value || !preloadedContent.value) return
+  if (!isEditorReady.value) return
+  if (!isCollaborationSynced.value) return
+  applyPreloadedContent()
+}
+
+const applyPreloadedContent = () => {
+  if (!editorInstance.value || !preloadedContent.value || preloadedApplied.value) {
+    console.log('applyPreloadedContent 跳过:', {
+      hasEditor: !!editorInstance.value,
+      hasPreloadedContent: !!preloadedContent.value,
+      preloadedApplied: preloadedApplied.value
+    })
+    return
+  }
+  try {
+    console.log('设置预加载内容到编辑器')
+    const content = preloadedContent.value.trim()
+    const strippedContent = content
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .trim()
+    if (content && strippedContent.length > 0) {
+      // 在协同编辑模式下，需要使用 emitUpdate: true 来触发 Yjs 同步
+      // 使用多次重试机制，确保在协同同步后正确应用预加载内容
+      const tryApplyContent = (retryCount = 0, maxRetries = 5, delay = 300) => {
+        // 检查组件是否已卸载，避免内存泄漏
+        if (isUnmounted.value) return
+        if (!editorInstance.value || preloadedApplied.value) return
+        
+        // 检查当前编辑器是否为空（只有一个空段落或仅包含空白字符）
+        const currentContent = editorInstance.value.getHTML()
+        const currentStripped = currentContent
+          ?.replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\u200B/g, '') // 零宽空格
+          .replace(/\uFEFF/g, '') // BOM
+          .trim() || ''
+        
+        const isEditorEmpty = !currentContent || 
+          currentContent === '<p></p>' || 
+          currentContent === '<p><br></p>' ||
+          currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
+          currentStripped === ''
+        
+        console.log(`applyPreloadedContent 尝试 ${retryCount + 1}/${maxRetries}:`, {
+          currentContent: currentContent?.substring(0, 100),
+          currentStripped: currentStripped?.substring(0, 50),
+          isEditorEmpty,
+          isFirstLoadWithContent: isFirstLoadWithContent.value
+        })
+        
+        // 首次加载且有预加载内容时，强制应用（即使协同同步了空内容）
+        // 或者编辑器为空时应用
+        if (isEditorEmpty || (isFirstLoadWithContent.value && currentStripped.length < 10)) {
+          console.log('应用预加载内容到编辑器')
+          // 使用 emitUpdate: true 确保触发协同同步
+          editorInstance.value.commands.setContent(content, true)
+          
+          try {
+            const { doc } = editorInstance.value.state
+            if (doc.content.size > 0) {
+              const firstPos = doc.resolve(1)
+              if (firstPos.parent.isTextblock) {
+                editorInstance.value.commands.setTextSelection(1)
+              } else {
+                editorInstance.value.commands.focus('start')
+              }
+            }
+          } catch (selectionError) {
+            console.warn('设置光标位置失败，使用默认位置:', selectionError)
+          }
+
+          const verifyTimerId = setTimeout(() => {
+            pendingTimers.value.delete(verifyTimerId)
+            if (isUnmounted.value || !editorInstance.value) return
+
+            const appliedContent = editorInstance.value.getHTML()
+            const appliedStripped = appliedContent
+              ?.replace(/<[^>]*>/g, '')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/\u200B/g, '')
+              .replace(/\uFEFF/g, '')
+              .trim() || ''
+
+            if (appliedStripped) {
+              preloadedApplied.value = true
+              isFirstLoadWithContent.value = false
+              void clearPreloadedCache()
+              ElMessage.success('文档内容已加载')
+            } else if (retryCount < maxRetries - 1) {
+              console.warn('预加载内容未生效，准备重试...')
+              if (strippedContent) {
+                const fallbackHtml = strippedContent
+                  .split(/\n+/)
+                  .filter((line) => line.trim())
+                  .map((line) => `<p>${escapeHtml(line.trim())}</p>`)
+                  .join('')
+                if (fallbackHtml) {
+                  editorInstance.value.commands.setContent(fallbackHtml, true)
+                }
+              }
+              tryApplyContent(retryCount + 1, maxRetries, delay)
+            } else {
+              console.warn('预加载内容应用失败，已达到最大重试次数')
+            }
+          }, 200)
+          pendingTimers.value.add(verifyTimerId)
+        } else if (retryCount < maxRetries - 1) {
+          // 如果编辑器有内容但可能是协同同步的旧内容，再等待一会儿重试
+          console.log(`编辑器有内容，${delay}ms 后重试...`)
+          const timerId = setTimeout(() => {
+            pendingTimers.value.delete(timerId)
+            tryApplyContent(retryCount + 1, maxRetries, delay)
+          }, delay)
+          pendingTimers.value.add(timerId)
+        } else {
+          console.log('编辑器已有实质内容，跳过预加载')
+          preloadedApplied.value = true
+          isFirstLoadWithContent.value = false
+          void clearPreloadedCache()
+        }
+      }
+      
+      // 初始延迟后开始尝试
+      const initialTimerId = setTimeout(() => {
+        pendingTimers.value.delete(initialTimerId)
+        tryApplyContent()
+      }, 500)
+      pendingTimers.value.add(initialTimerId)
+    } else {
+      console.log('预加载内容为空，跳过设置')
+    }
+  } catch (error) {
+    console.error('设置预加载内容失败:', error)
+    ElMessage.warning('文档内容加载失败，请手动输入')
+  }
+}
+
 // 编辑器就绪回调
 const handleEditorReady = async (editor: any) => {
   editorInstance.value = editor
   console.log('Tiptap 编辑器已就绪')
-
-  // 如果有预加载的内容，设置到编辑器
-  if (preloadedContent.value) {
-    try {
-      console.log('设置预加载内容到编辑器')
-      
-      // 检查内容是否有效（不为空且包含实际内容）
-      const content = preloadedContent.value.trim()
-      
-      // 检查是否是有效的非空内容
-      // 移除空标签后检查是否还有内容
-      const strippedContent = content
-        .replace(/<[^>]*>/g, '') // 移除所有 HTML 标签
-        .replace(/&nbsp;/g, ' ') // 替换 &nbsp;
-        .trim()
-      
-      if (content && strippedContent.length > 0) {
-        // 使用 setContent 设置内容，emitUpdate 为 false 避免触发不必要的更新
-        editor.commands.setContent(content, false)
-        
-        // 安全地将光标移动到文档开头
-        try {
-          // 确保文档有内容后再设置光标
-          const { doc } = editor.state
-          if (doc.content.size > 0) {
-            // 找到第一个可以放置光标的位置
-            const firstPos = doc.resolve(1)
-            if (firstPos.parent.isTextblock) {
-              editor.commands.setTextSelection(1)
-            } else {
-              // 如果第一个位置不是文本块，使用 focus 命令
-              editor.commands.focus('start')
-            }
-          }
-        } catch (selectionError) {
-          // 选区设置失败时静默处理，不影响内容加载
-          console.warn('设置光标位置失败，使用默认位置:', selectionError)
-        }
-        
-        ElMessage.success('文档内容已加载')
-      } else {
-        console.log('预加载内容为空，跳过设置')
-      }
-    } catch (error) {
-      console.error('设置预加载内容失败:', error)
-      ElMessage.warning('文档内容加载失败，请手动输入')
-    }
-  }
+  isEditorReady.value = true
+  tryApplyPreloadedContent()
 }
 
 // 保存文档 - 使用真实 DOCX 格式
@@ -593,9 +721,32 @@ const loadDocument = async () => {
 watch(
   () => documentId.value,
   (newDocId) => {
+    // 重置预加载与就绪状态，避免跨文档污染
+    preloadedContent.value = ''
+    preloadedApplied.value = false
+    preloadedCacheCleared.value = false
+    isFirstLoadWithContent.value = false
+    isEditorReady.value = false
+    isCollaborationSynced.value = false
+
+    pendingTimers.value.forEach((timerId) => {
+      clearTimeout(timerId)
+    })
+    pendingTimers.value.clear()
+
     // 使用 hook 的 reinitialize 方法重新初始化协同编辑
     loadDocument()
     reinitializeCollaboration(newDocId, documentInfo.value?.creatorId)
+  }
+)
+
+watch(
+  () => isCollaborationReady.value,
+  (ready) => {
+    if (ready && !isCollaborationSynced.value) {
+      isCollaborationSynced.value = true
+      tryApplyPreloadedContent()
+    }
   }
 )
 
@@ -604,6 +755,7 @@ onMounted(async () => {
   // 检查是否有预加载的文件内容（从 IndexedDB 中获取，避免 sessionStorage 配额限制）
   const cachedContentKey = `doc_content_${documentId.value}`
   const cachedContent = await getDocContent(documentId.value)
+  preloadedCacheCleared.value = false
   console.log(
     '文档ID:',
     documentId.value,
@@ -623,15 +775,14 @@ onMounted(async () => {
 
       if (parsedContent) {
         preloadedContent.value = parsedContent
+        isFirstLoadWithContent.value = true // 标记为首次加载有内容
         console.log('预加载内容解析成功，HTML 长度:', parsedContent.length)
+        tryApplyPreloadedContent()
       } else {
         console.warn('解析结果为空')
       }
     } catch (error) {
       console.error('解析预加载内容失败:', error)
-    } finally {
-      // 清除 IndexedDB 中的缓存
-      await removeDocContent(documentId.value)
     }
   }
 
@@ -642,6 +793,15 @@ onMounted(async () => {
 // 组件卸载 - 清理非协同相关的资源
 // 注意: useCollaboration hook 会自动清理协同编辑相关的资源（ydoc, provider, 事件监听器等）
 onBeforeUnmount(() => {
+  // 标记组件已卸载，防止异步回调继续执行
+  isUnmounted.value = true
+
+  // 清理所有待执行的 setTimeout，防止内存泄漏
+  pendingTimers.value.forEach((timerId) => {
+    clearTimeout(timerId)
+  })
+  pendingTimers.value.clear()
+
   // 清理编辑器实例引用
   editorInstance.value = null
   tiptapEditorRef.value = null
@@ -651,6 +811,7 @@ onBeforeUnmount(() => {
   documentInfo.value = null
   currentMaterial.value = null
   preloadedContent.value = ''
+  isFirstLoadWithContent.value = false
 
   console.log('协同编辑组件已清理')
 })

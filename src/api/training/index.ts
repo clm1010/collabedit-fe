@@ -176,7 +176,15 @@ const javaApi = {
    * 获取演训数据列表（带分页）- Java 后端
    * POST /getPlan/getExerciseData
    */
-  getExerciseData: async (params: { pageNo?: number; pageSize?: number }) => {
+  getExerciseData: async (params: {
+    pageNo?: number
+    pageSize?: number
+    exerciseName?: string
+    exerciseType?: string
+    level?: string
+    academy?: string
+    city?: string
+  }) => {
     return await javaRequest.post('/getPlan/getExerciseData', params)
   },
 
@@ -278,7 +286,15 @@ const mockApi = {
     return res.data
   },
 
-  getExerciseData: async (params: { pageNo?: number; pageSize?: number }) => {
+  getExerciseData: async (params: {
+    pageNo?: number
+    pageSize?: number
+    exerciseName?: string
+    exerciseType?: string
+    level?: string
+    academy?: string
+    city?: string
+  }) => {
     const { getExerciseData } = await import('@/mock/training/performance')
     const res = await getExerciseData(params)
     return res.data
