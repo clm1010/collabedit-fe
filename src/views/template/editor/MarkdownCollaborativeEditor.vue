@@ -9,6 +9,7 @@
       :is-review-mode="isReviewMode"
       :is-readonly="isReadonly"
       :is-saving="isSaving"
+      :has-unsaved-changes="hasUnsavedChanges"
       @back="goBack"
       @save="handleSave"
       @submit-audit="handleSubmitAudit"
@@ -250,9 +251,71 @@ const goBack = () => {
   router.back()
 }
 
-// 内容更新回调
+// 简单的内容哈希函数
+const getContentHash = (content: string): string => {
+  let hash = 0
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  return hash.toString()
+}
+
+// 执行自动保存
+const performAutoSave = async () => {
+  if (isUnmounted.value || !editorInstance.value || isAutoSaving.value || isSaving.value) return
+
+  const currentContent = editorInstance.value.getHTML()
+  const currentHash = getContentHash(currentContent)
+
+  // 检查内容是否有变化
+  if (currentHash === lastSavedContentHash.value) {
+    console.log('[自动保存] 内容无变化，跳过保存')
+    return
+  }
+
+  isAutoSaving.value = true
+  console.log('[自动保存] 开始保存...')
+
+  try {
+    await handleSave()
+    lastSavedContentHash.value = currentHash
+    console.log('[自动保存] 保存成功')
+  } catch (error) {
+    console.error('[自动保存] 保存失败:', error)
+  } finally {
+    isAutoSaving.value = false
+  }
+}
+
+// 内容更新回调 - 触发自动保存（防抖3秒）
 const handleContentUpdate = (_content: string) => {
-  // 可以在这里做自动保存等操作
+  // 标记用户已编辑（首次加载内容后才开始标记）
+  if (!hasUserEdited.value && initialMarkdownContent.value === '') {
+    hasUserEdited.value = true
+  }
+
+  // 首次加载完成前不触发自动保存
+  if (!hasUserEdited.value) return
+
+  // 标记有未保存的更改
+  hasUnsavedChanges.value = true
+
+  // 只读模式不触发自动保存
+  if (isReadonly.value) return
+
+  // 清除之前的自动保存定时器
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+  }
+
+  // 设置新的自动保存定时器（3秒防抖）
+  autoSaveTimer.value = setTimeout(() => {
+    if (!isUnmounted.value) {
+      performAutoSave()
+    }
+  }, 3000)
 }
 
 const clearCachedContent = () => {
@@ -445,6 +508,8 @@ const handleSave = async () => {
 
     if (result.code === 200 || result.status === 200) {
       ElMessage.success('文档已保存')
+      // 标记文档已保存
+      hasUnsavedChanges.value = false
 
       // 更新文档信息
       if (documentInfo.value) {
@@ -819,6 +884,12 @@ const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
 const isUnmounted = ref(false)
 const pendingCacheKey = ref<string | null>(null)
 const cacheCleared = ref(false)
+// 自动保存相关状态
+const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const lastSavedContentHash = ref<string>('')
+const isAutoSaving = ref(false)
+const hasUserEdited = ref(false) // 标记用户是否真的编辑过（避免首次加载触发保存）
+const hasUnsavedChanges = ref(false) // 文档是否有未保存的更改
 
 // 加载文档数据
 const loadDocument = async () => {
@@ -934,6 +1005,12 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   // 标记组件已卸载，防止异步回调继续执行
   isUnmounted.value = true
+
+  // 清理自动保存定时器
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
 
   // 清理所有待执行的 setTimeout，防止内存泄漏
   pendingTimers.value.forEach((timerId) => {

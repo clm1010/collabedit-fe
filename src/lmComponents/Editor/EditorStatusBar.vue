@@ -21,10 +21,18 @@
       </div>
     </div>
     <div class="flex items-center gap-3">
+      <!-- 保存状态 -->
+      <div class="mr-2 flex items-center text-xs text-gray-500">
+        <span
+          class="w-2 h-2 rounded-full mr-1.5 transition-colors duration-300"
+          :class="hasUnsavedChanges ? 'bg-red-500' : 'bg-green-500'"
+        ></span>
+        {{ hasUnsavedChanges ? '文档未保存' : '文档已保存' }}
+      </div>
       <!-- 连接状态 -->
       <div class="mr-4 flex items-center text-xs text-gray-500">
         <span
-          class="w-2 h-2 rounded-full mr-2 transition-colors duration-300"
+          class="w-2 h-2 rounded-full mr-1.5 transition-colors duration-300"
           :class="connectionStatusClass"
         ></span>
         {{ connectionStatus }}
@@ -73,12 +81,15 @@ interface Props {
   isReadonly?: boolean
   /** 是否正在保存 */
   isSaving?: boolean
+  /** 是否有未保存的更改 */
+  hasUnsavedChanges?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isReviewMode: false,
   isReadonly: false,
-  isSaving: false
+  isSaving: false,
+  hasUnsavedChanges: false
 })
 
 // Emits 定义

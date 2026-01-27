@@ -12,10 +12,6 @@
         {{ tab.label }}
       </button>
       <div class="tab-spacer"></div>
-      <div class="toolbar-status">
-        <span class="status-dot" :class="saveStatus"></span>
-        <span class="status-text">{{ saveStatusText }}</span>
-      </div>
       <button
         class="toggle-btn"
         @click="toggleToolbar"
@@ -42,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, provide, watch } from 'vue'
+import { ref, provide, watch } from 'vue'
 import type { Editor } from '@tiptap/vue-3'
 import { Icon } from '@/components/Icon'
 import StartToolbar from './StartToolbar.vue'
@@ -57,12 +53,9 @@ import ExportToolbar from './ExportToolbar.vue'
 // Props
 interface Props {
   editor?: Editor
-  saveStatus?: 'saved' | 'saving' | 'unsaved'
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  saveStatus: 'saved'
-})
+const props = defineProps<Props>()
 
 // 使用 ref 包装编辑器，使其响应式
 const editorRef = ref(props.editor)
@@ -92,16 +85,6 @@ const tabs = [
 // 状态
 const activeTab = ref('start')
 const collapsed = ref(false)
-
-// 保存状态文本
-const saveStatusText = computed(() => {
-  const statusMap: Record<string, string> = {
-    saved: '文档已保存',
-    saving: '保存中...',
-    unsaved: '文档未保存'
-  }
-  return statusMap[props.saveStatus] || '文档已保存'
-})
 
 // 切换工具栏
 const toggleToolbar = () => {
@@ -157,34 +140,6 @@ const toggleToolbar = () => {
     flex: 1;
   }
 
-  .toolbar-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-right: 16px;
-    font-size: 12px;
-    color: #666;
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-
-      &.saved {
-        background: #52c41a;
-      }
-
-      &.saving {
-        background: #faad14;
-        animation: pulse 1s infinite;
-      }
-
-      &.unsaved {
-        background: #ff4d4f;
-      }
-    }
-  }
-
   .toggle-btn {
     display: flex;
     align-items: center;
@@ -237,15 +192,5 @@ const toggleToolbar = () => {
 .slide-leave-from {
   opacity: 1;
   max-height: 200px;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
 }
 </style>
