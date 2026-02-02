@@ -504,12 +504,18 @@
 
 <script setup lang="ts">
 // @ts-nocheck - 忽略 Tiptap 自定义扩展命令的类型问题
-import { ref, watch, reactive, nextTick } from 'vue'
+import { ref, watch, reactive, nextTick, onBeforeUnmount } from 'vue'
 import { Icon } from '@/components/Icon'
 import { ElMessage } from 'element-plus'
 import ToolbarButton from './ToolbarButton.vue'
 import ColorPicker from './ColorPicker.vue'
-import { fontFamilyOptions, fontSizeOptions, lineHeightOptions } from './types'
+import {
+  fontFamilyOptions,
+  fontSizeOptions,
+  lineHeightOptions,
+  fontSizeLabelToPx,
+  fontSizePxToLabel
+} from './types'
 import { useEditor } from './useEditor'
 import {
   isDocFormat,
@@ -552,22 +558,322 @@ const previewContent = ref('')
 const previewZoom = ref(100)
 const previewSidebarVisible = ref(false)
 
-// 监听编辑器选区变化，更新当前样式状态
+// 字体别名映射表 - 用于将文档中的字体名称映射到选项中的字体
+const fontAliasMap: Record<string, string[]> = {
+  方正大标宋简体: ['fzdabiaosong', 'fzda biao song', 'fzdabiaosong-b06', 'fzdabiaosong-b06s'],
+  方正小标宋简体: [
+    'fzxiaobiaosong',
+    'fzxiao biao song',
+    'fzxiaobiaosong-b05',
+    'fzxiaobiaosong-b05s'
+  ],
+  方正舒体: ['fzshuti', 'fzshu ti', 'fzshuti-s05', 'fzshuti-s05s'],
+  方正姚体: ['fzyaoti'],
+  仿宋: ['fangsong', '仿宋'],
+  '仿宋-GB2312': ['fangsong_gb2312', '仿宋_gb2312', 'fangsong gb2312'],
+  黑体: ['simhei', 'heiti', '黑体'],
+  华文彩云: ['stcaiyun', '华文彩云'],
+  华文仿宋: ['stfangsong', '华文仿宋'],
+  华文细黑: ['stxihei', '华文细黑'],
+  华文楷体: ['stkaiti', '华文楷体'],
+  华文宋体: ['stsong', '华文宋体'],
+  华文琥珀: ['sthupo', '华文琥珀'],
+  华文新魏: ['stxinwei', '华文新魏'],
+  华文行楷: ['stxingkai', '华文行楷'],
+  华文中宋: ['stzhongsong', '华文中宋'],
+  楷体: ['kaiti', '楷体'],
+  '楷体-GB2312': ['kaiti_gb2312', '楷体_gb2312'],
+  隶书: ['lisu', '隶书'],
+  宋体: ['simsun', 'songti', '宋体'],
+  微软雅黑: ['microsoft yahei', 'msyh', '微软雅黑'],
+  '微软雅黑 Light': ['microsoft yahei light', 'msyh light', '微软雅黑 light'],
+  文泉驿等宽微米黑: ['wenquanyi zen hei mono', '文泉驿等宽微米黑'],
+  文泉驿微米黑: ['wenquanyi micro hei', '文泉驿微米黑'],
+  新宋体: ['nsimsun', '新宋体']
+}
+
+const GENERIC_FONTS = new Set([
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui'
+])
+
+const splitFontList = (value: string): string[] =>
+  value
+    .split(',')
+    .map((item) => item.trim().replace(/^["']|["']$/g, ''))
+    .filter(Boolean)
+
+const getOptionPrimaryFont = (optionValue: string): string => {
+  const parts = splitFontList(optionValue)
+  return parts[0] || ''
+}
+
+// 字体与字号标准化，确保能匹配下拉选项
+const normalizeFontFamilyValue = (value: string): string => {
+  if (!value) return ''
+  const cleaned = splitFontList(value)
+  if (cleaned.length === 0) return value
+
+  const cleanedLower = cleaned.map((item) => item.toLowerCase())
+  const cleanedOrdered = cleanedLower.filter((item) => !GENERIC_FONTS.has(item))
+
+  // 1) 优先匹配当前 font-family 的首个字体
+  const primary = cleanedOrdered[0]
+  if (primary) {
+    for (const option of fontFamilyOptions) {
+      if (!option.label) continue
+      const optionValue = String(option.value || '')
+      const optionPrimary = getOptionPrimaryFont(optionValue).toLowerCase()
+      if (optionPrimary && optionPrimary === primary) return optionValue
+      if (option.label.toLowerCase() === primary) return optionValue
+      const aliases = fontAliasMap[option.label]
+      if (aliases && aliases.some((alias) => primary.includes(alias))) return optionValue
+    }
+  }
+
+  // 2) 按当前字体列表顺序匹配（避免回退字体抢占）
+  for (const currentFont of cleanedOrdered) {
+    for (const option of fontFamilyOptions) {
+      if (!option.label) continue
+      const optionValue = String(option.value || '')
+      const optionPrimary = getOptionPrimaryFont(optionValue).toLowerCase()
+      if (optionPrimary && optionPrimary === currentFont) return optionValue
+      if (option.label.toLowerCase() === currentFont) return optionValue
+      const aliases = fontAliasMap[option.label]
+      if (aliases && aliases.some((alias) => currentFont.includes(alias))) {
+        return optionValue
+      }
+    }
+  }
+
+  // 3) 兜底：任意匹配（忽略通用字体族）
+  const cleanedSet = new Set(cleanedOrdered)
+  for (const option of fontFamilyOptions) {
+    const optionValue = String(option.value || '')
+    const optionFonts = splitFontList(optionValue)
+      .map((item) => item.toLowerCase())
+      .filter((item) => !GENERIC_FONTS.has(item))
+    for (const font of optionFonts) {
+      if (cleanedSet.has(font)) {
+        return optionValue
+      }
+      for (const cleanedFont of cleanedOrdered) {
+        if (cleanedFont.includes(font) || font.includes(cleanedFont)) {
+          return optionValue
+        }
+      }
+    }
+    if (option.label && cleanedSet.has(option.label.toLowerCase())) {
+      return optionValue
+    }
+  }
+
+  return value
+}
+
+const normalizeFontSizeValue = (value: string): string => {
+  if (!value) return ''
+  const trimmed = value.trim()
+
+  // 如果已经是有效的 label（如 "13.5", "五号"），直接返回
+  if (fontSizeOptions.some((opt) => opt.value === trimmed)) {
+    return trimmed
+  }
+
+  let pxSize = NaN
+
+  if (/^\d+(\.\d+)?px$/i.test(trimmed)) {
+    pxSize = parseFloat(trimmed)
+  } else if (/^\d+(\.\d+)?pt$/i.test(trimmed)) {
+    pxSize = parseFloat(trimmed) * 1.33
+  } else if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    // 纯数字，假设为 pt
+    pxSize = parseFloat(trimmed) * 1.33
+  } else {
+    return value
+  }
+
+  // 使用 px 到 label 的映射表查找精确匹配
+  const pxKey = `${pxSize.toFixed(1).replace(/\.0$/, '')}px`
+  if (fontSizePxToLabel[pxKey]) {
+    return fontSizePxToLabel[pxKey]
+  }
+
+  // 尝试四舍五入后的整数匹配
+  const roundedPxKey = `${Math.round(pxSize)}px`
+  if (fontSizePxToLabel[roundedPxKey]) {
+    return fontSizePxToLabel[roundedPxKey]
+  }
+
+  // 遍历映射表找最接近的值
+  let bestMatch = ''
+  let minDiff = Infinity
+  for (const [px, label] of Object.entries(fontSizePxToLabel)) {
+    const optPx = parseFloat(px)
+    const diff = Math.abs(optPx - pxSize)
+    if (diff < minDiff && diff <= 1.5) {
+      minDiff = diff
+      bestMatch = label
+    }
+  }
+
+  return bestMatch || ''
+}
+
+const getSelectionComputedStyle = (): {
+  fontFamily?: string
+  fontSize?: string
+  color?: string
+  backgroundColor?: string
+} => {
+  if (!editor.value || typeof window === 'undefined') return {}
+  const { from } = editor.value.state.selection
+  const domAtPos = editor.value.view.domAtPos(from)
+  let element: Element | null = null
+
+  if (domAtPos.node.nodeType === Node.TEXT_NODE) {
+    element = domAtPos.node.parentElement
+  } else if (domAtPos.node instanceof Element) {
+    element = domAtPos.node
+  }
+
+  if (!element) return {}
+
+  const style = window.getComputedStyle(element)
+  return {
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    color: style.color,
+    backgroundColor: style.backgroundColor
+  }
+}
+
+const normalizeCssColor = (value: string): string => {
+  const raw = (value || '').trim()
+  if (!raw) return ''
+  if (raw.toLowerCase() === 'transparent') return ''
+  if (raw.startsWith('#')) {
+    if (raw.length === 4) {
+      return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`
+    }
+    return raw
+  }
+  const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+  if (rgbMatch) {
+    const [r, g, b] = rgbMatch.slice(1).map((v) => parseInt(v, 10))
+    return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  }
+  const namedMap: Record<string, string> = {
+    yellow: '#FFFF00',
+    green: '#00FF00',
+    cyan: '#00FFFF',
+    magenta: '#FF00FF',
+    blue: '#0000FF',
+    red: '#FF0000',
+    darkblue: '#00008B',
+    darkcyan: '#008B8B',
+    darkgreen: '#006400',
+    darkmagenta: '#8B008B',
+    darkred: '#8B0000',
+    darkyellow: '#808000',
+    darkgray: '#A9A9A9',
+    lightgray: '#D3D3D3',
+    black: '#000000',
+    white: '#FFFFFF'
+  }
+  return namedMap[raw.toLowerCase()] || raw
+}
+
+// 更新当前样式的函数 - 根据选区更新工具栏显示
+const updateCurrentStyles = () => {
+  if (!editor.value) return
+
+  // 获取当前字体
+  const fontFamily = editor.value.getAttributes('textStyle').fontFamily
+  currentFontFamily.value = normalizeFontFamilyValue(fontFamily || '')
+
+  // 获取当前字号
+  const fontSize = editor.value.getAttributes('textStyle').fontSize
+  currentFontSize.value = normalizeFontSizeValue(fontSize || '')
+
+  // 如果没有显式样式，回退到 DOM 计算样式
+  if (!currentFontFamily.value || !currentFontSize.value) {
+    const computed = getSelectionComputedStyle()
+    if (!currentFontFamily.value && computed.fontFamily) {
+      currentFontFamily.value = normalizeFontFamilyValue(computed.fontFamily)
+    }
+    if (!currentFontSize.value && computed.fontSize) {
+      currentFontSize.value = normalizeFontSizeValue(computed.fontSize)
+    }
+  }
+
+  // 获取当前文本颜色
+  const color = editor.value.getAttributes('textStyle').color
+  let resolvedTextColor = normalizeCssColor(color || '')
+
+  // 获取当前高亮颜色
+  const highlight = editor.value.getAttributes('highlight').color
+  let resolvedHighlight = normalizeCssColor(highlight || '')
+
+  if (!resolvedTextColor || !resolvedHighlight) {
+    const computed = getSelectionComputedStyle()
+    if (!resolvedTextColor && computed.color) {
+      resolvedTextColor = normalizeCssColor(computed.color)
+    }
+    if (!resolvedHighlight && computed.backgroundColor) {
+      const bg = normalizeCssColor(computed.backgroundColor)
+      if (bg && bg.toUpperCase() !== '#FFFFFF') {
+        resolvedHighlight = bg
+      }
+    }
+  }
+
+  if (resolvedTextColor) {
+    textColor.value = resolvedTextColor
+  }
+  if (resolvedHighlight) {
+    highlightColor.value = resolvedHighlight
+  }
+
+  // 获取当前行高
+  const lineHeight = editor.value.getAttributes('paragraph').lineHeight
+  if (lineHeight) {
+    currentLineHeight.value = lineHeight
+  }
+}
+
+// 监听编辑器初始化，注册选区变化事件
 watch(
   editor,
-  (e) => {
-    if (e) {
-      // 更新当前字体
-      const fontFamily = e.getAttributes('textStyle').fontFamily
-      currentFontFamily.value = fontFamily || ''
+  (newEditor, oldEditor) => {
+    // 如果旧编辑器存在，移除事件监听
+    if (oldEditor) {
+      oldEditor.off('selectionUpdate', updateCurrentStyles)
+      oldEditor.off('transaction', updateCurrentStyles)
+    }
 
-      // 更新当前字号
-      const fontSize = e.getAttributes('textStyle').fontSize
-      currentFontSize.value = fontSize || ''
+    // 如果新编辑器存在，注册事件监听
+    if (newEditor) {
+      newEditor.on('selectionUpdate', updateCurrentStyles)
+      newEditor.on('transaction', updateCurrentStyles)
+      // 初始化时也调用一次，确保工具栏状态正确
+      updateCurrentStyles()
     }
   },
-  { deep: true }
+  { immediate: true }
 )
+
+// 组件卸载时移除事件监听
+onBeforeUnmount(() => {
+  if (editor.value) {
+    editor.value.off('selectionUpdate', updateCurrentStyles)
+    editor.value.off('transaction', updateCurrentStyles)
+  }
+})
 
 // 字体处理
 const handleFontFamily = (value: string) => {
@@ -579,62 +885,85 @@ const handleFontFamily = (value: string) => {
   }
 }
 
-// 字号处理
+// 字号处理 - 接收 label，转换为 px 值应用
 const handleFontSize = (value: string) => {
   if (!editor.value) return
   if (value) {
-    editor.value.chain().focus().setFontSize(value).run()
+    // value 现在是 label（如 "13.5", "五号"），需要转换为 px
+    const pxValue = fontSizeLabelToPx[value] || value
+    editor.value.chain().focus().setFontSize(pxValue).run()
   } else {
     editor.value.chain().focus().unsetFontSize().run()
   }
 }
 
-// 增大字号 - 使用 px 单位
-const fontSizeValues = [
-  '9px',
-  '10px',
-  '11px',
-  '12px',
-  '14px',
-  '16px',
-  '18px',
-  '19px',
-  '20px',
-  '21px',
-  '22px',
-  '24px',
-  '26px',
-  '28px',
-  '29px',
-  '32px',
-  '35px',
-  '36px',
-  '42px',
-  '48px',
-  '56px',
-  '72px',
-  '96px'
+// 按 px 排序的字号列表，用于增大/减小字号
+const sortedFontSizeLabels = [
+  '八号',
+  '5',
+  '七号',
+  '5.5',
+  '小六',
+  '6.5',
+  '六号',
+  '7.5',
+  '8',
+  '9',
+  '小五',
+  '12',
+  '10',
+  '五号',
+  '10.5',
+  '11',
+  '小四',
+  '16',
+  '13.5',
+  '18',
+  '14',
+  '四号',
+  '14.5',
+  '小三',
+  '20',
+  '三号',
+  '小二',
+  '24',
+  '22',
+  '二号',
+  '小一',
+  '一号',
+  '26',
+  '28',
+  '36',
+  '小初',
+  '48',
+  '初号',
+  '72'
 ]
+
 const increaseFontSize = () => {
   if (!editor.value) return
-  const current = editor.value.getAttributes('textStyle').fontSize || '16px'
-  const currentIndex = fontSizeValues.findIndex((s) => s === current)
-  if (currentIndex < fontSizeValues.length - 1) {
-    const newSize = fontSizeValues[currentIndex + 1]
-    editor.value.chain().focus().setFontSize(newSize).run()
-    currentFontSize.value = newSize
+  const currentPx = editor.value.getAttributes('textStyle').fontSize || '16px'
+  const currentLabel = normalizeFontSizeValue(currentPx)
+  const currentIndex = sortedFontSizeLabels.findIndex((s) => s === currentLabel)
+  if (currentIndex >= 0 && currentIndex < sortedFontSizeLabels.length - 1) {
+    const newLabel = sortedFontSizeLabels[currentIndex + 1]
+    const newPx = fontSizeLabelToPx[newLabel]
+    editor.value.chain().focus().setFontSize(newPx).run()
+    currentFontSize.value = newLabel
   }
 }
 
 // 减小字号
 const decreaseFontSize = () => {
   if (!editor.value) return
-  const current = editor.value.getAttributes('textStyle').fontSize || '16px'
-  const currentIndex = fontSizeValues.findIndex((s) => s === current)
+  const currentPx = editor.value.getAttributes('textStyle').fontSize || '16px'
+  const currentLabel = normalizeFontSizeValue(currentPx)
+  const currentIndex = sortedFontSizeLabels.findIndex((s) => s === currentLabel)
   if (currentIndex > 0) {
-    const newSize = fontSizeValues[currentIndex - 1]
-    editor.value.chain().focus().setFontSize(newSize).run()
-    currentFontSize.value = newSize
+    const newLabel = sortedFontSizeLabels[currentIndex - 1]
+    const newPx = fontSizeLabelToPx[newLabel]
+    editor.value.chain().focus().setFontSize(newPx).run()
+    currentFontSize.value = newLabel
   }
 }
 
@@ -1030,7 +1359,7 @@ const cleanWordHtml = (html: string): string => {
 
   // 移除多余的连续空段落（保留单个空段落用于间距）- 增强版，处理带 style/class 属性的空段落
   html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*){2,}/gi, '<p><br></p>')
-  
+
   // 清理中间的多余空段落（超过2个连续的压缩为1个）
   html = html.replace(/(<p[^>]*>\s*<br\s*\/?>\s*<\/p>\s*){3,}/gi, '<p><br></p>')
 
@@ -1039,33 +1368,45 @@ const cleanWordHtml = (html: string): string => {
 
   // 在移除 mso-* 样式之前，先提取并保留 text-align 样式
   // 处理块级元素的 text-align 样式 - 增强版，支持更多格式变体
-  html = html.replace(/<(p|div|h[1-6]|span)([^>]*)style="([^"]*)"/gi, (match, tag, attrs, style) => {
-    // 提取 text-align 值（支持大小写和不同空格格式）
-    const textAlignMatch = style.match(/text-align\s*:\s*(left|center|right|justify)/i)
-    
-    // 移除 mso-* 样式
-    let cleanedStyle = style.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
-    
-    // 确保 text-align 被保留
-    if (textAlignMatch) {
-      const alignValue = textAlignMatch[1].toLowerCase() // 标准化对齐值
-      // 如果清理后 text-align 丢失，重新添加
-      if (!cleanedStyle.match(/text-align\s*:\s*(left|center|right|justify)/i)) {
-        cleanedStyle = cleanedStyle ? `text-align: ${alignValue}; ${cleanedStyle}` : `text-align: ${alignValue}`
-      } else {
-        // 即使存在，也确保格式正确（标准化为小写）
-        cleanedStyle = cleanedStyle.replace(/text-align\s*:\s*(left|center|right|justify)/i, `text-align: ${alignValue}`)
+  html = html.replace(
+    /<(p|div|h[1-6]|span)([^>]*)style="([^"]*)"/gi,
+    (match, tag, attrs, style) => {
+      // 提取 text-align 值（支持大小写和不同空格格式）
+      const textAlignMatch = style.match(/text-align\s*:\s*(left|center|right|justify)/i)
+
+      // 移除 mso-* 样式
+      let cleanedStyle = style.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
+
+      // 确保 text-align 被保留
+      if (textAlignMatch) {
+        const alignValue = textAlignMatch[1].toLowerCase() // 标准化对齐值
+        // 如果清理后 text-align 丢失，重新添加
+        if (!cleanedStyle.match(/text-align\s*:\s*(left|center|right|justify)/i)) {
+          cleanedStyle = cleanedStyle
+            ? `text-align: ${alignValue}; ${cleanedStyle}`
+            : `text-align: ${alignValue}`
+        } else {
+          // 即使存在，也确保格式正确（标准化为小写）
+          cleanedStyle = cleanedStyle.replace(
+            /text-align\s*:\s*(left|center|right|justify)/i,
+            `text-align: ${alignValue}`
+          )
+        }
       }
+
+      // 清理多余的分号和空格
+      cleanedStyle = cleanedStyle
+        .replace(/;\s*;/g, ';')
+        .replace(/^\s*;\s*/, '')
+        .replace(/\s*;\s*$/, '')
+        .trim()
+
+      if (!cleanedStyle) {
+        return `<${tag}${attrs}>`
+      }
+      return `<${tag}${attrs}style="${cleanedStyle}"`
     }
-    
-    // 清理多余的分号和空格
-    cleanedStyle = cleanedStyle.replace(/;\s*;/g, ';').replace(/^\s*;\s*/, '').replace(/\s*;\s*$/, '').trim()
-    
-    if (!cleanedStyle) {
-      return `<${tag}${attrs}>`
-    }
-    return `<${tag}${attrs}style="${cleanedStyle}"`
-  })
+  )
 
   // 移除其他元素中的 Word 特有的 mso- 样式，但保留其他有用的样式（如 color, font-size 等）
   html = html.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
@@ -1359,6 +1700,12 @@ const convertBlockStylesToInline = (html: string): string => {
  */
 const preprocessHtmlForTiptap = (html: string): string => {
   try {
+    // 0. 统一将 pt 转换为 px
+    html = html.replace(/(\d+(?:\.\d+)?)\s*pt/gi, (_, size) => {
+      const pxSize = Math.round(parseFloat(size) * 1.33 * 100) / 100
+      return `${pxSize}px`
+    })
+
     // 1. 将 pt 单位转换为 px (1pt ≈ 1.33px)
     html = html.replace(/font-size:\s*(\d+(?:\.\d+)?)\s*pt/gi, (_, size) => {
       const pxSize = Math.round(parseFloat(size) * 1.33)

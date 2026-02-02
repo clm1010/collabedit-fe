@@ -1,7 +1,7 @@
 <template>
   <el-popover
     placement="bottom"
-    :width="showAdvanced ? 520 : 240"
+    :width="showAdvanced ? 600 : 300"
     trigger="click"
     :show-arrow="false"
     popper-class="color-picker-popover"
@@ -105,60 +105,163 @@
               <div class="preview-current" :style="{ backgroundColor: modelValue || '#000' }"></div>
             </div>
             <div class="color-inputs">
-              <div class="input-group">
-                <el-select v-model="colorMode" size="small" style="width: 70px">
+              <div class="input-group mode-select" @click.stop>
+                <el-select v-model="colorMode" size="small" style="width: 80px" :teleported="false">
+                  <el-option label="HEX" value="hex" />
                   <el-option label="RGB" value="rgb" />
                   <el-option label="HSL" value="hsl" />
-                  <el-option label="HEX" value="hex" />
+                  <el-option label="HSV" value="hsv" />
+                  <el-option label="CMYK" value="cmyk" />
                 </el-select>
               </div>
-              <template v-if="colorMode === 'rgb'">
-                <div class="input-group">
-                  <el-input-number
-                    v-model="rgb.r"
-                    :min="0"
-                    :max="255"
-                    size="small"
-                    controls-position="right"
-                    @change="updateFromRgb"
-                  />
-                </div>
-                <div class="input-group">
-                  <el-input-number
-                    v-model="rgb.g"
-                    :min="0"
-                    :max="255"
-                    size="small"
-                    controls-position="right"
-                    @change="updateFromRgb"
-                  />
-                </div>
-                <div class="input-group">
-                  <el-input-number
-                    v-model="rgb.b"
-                    :min="0"
-                    :max="255"
-                    size="small"
-                    controls-position="right"
-                    @change="updateFromRgb"
-                  />
-                </div>
-              </template>
-              <template v-else-if="colorMode === 'hex'">
+              <!-- HEX 模式 -->
+              <template v-if="colorMode === 'hex'">
                 <div class="input-group hex-input">
                   <el-input v-model="hexInput" size="small" @change="updateFromHex" />
                 </div>
               </template>
-              <div class="input-group">
-                <el-input-number
-                  v-model="alpha"
-                  :min="0"
-                  :max="100"
-                  size="small"
-                  controls-position="right"
-                />
-                <span class="input-suffix">%</span>
-              </div>
+              <!-- RGB 模式 -->
+              <template v-else-if="colorMode === 'rgb'">
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="rgb.r"
+                    :min="0"
+                    :max="255"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromRgb"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="rgb.g"
+                    :min="0"
+                    :max="255"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromRgb"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="rgb.b"
+                    :min="0"
+                    :max="255"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromRgb"
+                  />
+                </div>
+              </template>
+              <!-- HSL 模式 -->
+              <template v-else-if="colorMode === 'hsl'">
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="hsl.h"
+                    :min="0"
+                    :max="360"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromHsl"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="hsl.s"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromHsl"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="hsl.l"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromHsl"
+                  />
+                </div>
+              </template>
+              <!-- HSV 模式 -->
+              <template v-else-if="colorMode === 'hsv'">
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="hsv.h"
+                    :min="0"
+                    :max="360"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromHsv"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="hsv.s"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromHsv"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="hsv.v"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromHsv"
+                  />
+                </div>
+              </template>
+              <!-- CMYK 模式 -->
+              <template v-else-if="colorMode === 'cmyk'">
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="cmyk.c"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromCmyk"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="cmyk.m"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromCmyk"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="cmyk.y"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromCmyk"
+                  />
+                </div>
+                <div class="input-group num-input">
+                  <el-input-number
+                    v-model="cmyk.k"
+                    :min="0"
+                    :max="100"
+                    :controls="false"
+                    size="small"
+                    @change="updateFromCmyk"
+                  />
+                </div>
+              </template>
             </div>
           </div>
 
@@ -292,13 +395,15 @@ const standardColors = [
 
 // 状态
 const showAdvanced = ref(false)
-const colorMode = ref<'rgb' | 'hsl' | 'hex'>('rgb')
+const colorMode = ref<'hex' | 'rgb' | 'hsl' | 'hsv' | 'cmyk'>('rgb')
 const hue = ref(0)
 const saturation = ref(100)
 const lightness = ref(50)
-const alpha = ref(100)
 const hexInput = ref('#000000')
 const rgb = reactive({ r: 0, g: 0, b: 0 })
+const hsl = reactive({ h: 0, s: 100, l: 50 })
+const hsv = reactive({ h: 0, s: 100, v: 100 })
+const cmyk = reactive({ c: 0, m: 0, y: 0, k: 0 })
 
 // 拖动状态
 const saturationArea = ref<HTMLElement | null>(null)
@@ -370,36 +475,205 @@ function rgbToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
 }
 
+// HSV 转换函数
+function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+  r /= 255
+  g /= 255
+  b /= 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  let h = 0
+  const v = max
+  const d = max - min
+  const s = max === 0 ? 0 : d / max
+
+  if (max !== min) {
+    switch (max) {
+      case r:
+        h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+        break
+      case g:
+        h = ((b - r) / d + 2) / 6
+        break
+      case b:
+        h = ((r - g) / d + 4) / 6
+        break
+    }
+  }
+
+  return { h: Math.round(h * 360), s: Math.round(s * 100), v: Math.round(v * 100) }
+}
+
+function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: number } {
+  h /= 360
+  s /= 100
+  v /= 100
+  let r = 0,
+    g = 0,
+    b = 0
+  const i = Math.floor(h * 6)
+  const f = h * 6 - i
+  const p = v * (1 - s)
+  const q = v * (1 - f * s)
+  const t = v * (1 - (1 - f) * s)
+
+  switch (i % 6) {
+    case 0:
+      r = v
+      g = t
+      b = p
+      break
+    case 1:
+      r = q
+      g = v
+      b = p
+      break
+    case 2:
+      r = p
+      g = v
+      b = t
+      break
+    case 3:
+      r = p
+      g = q
+      b = v
+      break
+    case 4:
+      r = t
+      g = p
+      b = v
+      break
+    case 5:
+      r = v
+      g = p
+      b = q
+      break
+  }
+
+  return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) }
+}
+
+// CMYK 转换函数
+function rgbToCmyk(
+  r: number,
+  g: number,
+  b: number
+): { c: number; m: number; y: number; k: number } {
+  r /= 255
+  g /= 255
+  b /= 255
+  const k = 1 - Math.max(r, g, b)
+  if (k === 1) {
+    return { c: 0, m: 0, y: 0, k: 100 }
+  }
+  const c = (1 - r - k) / (1 - k)
+  const m = (1 - g - k) / (1 - k)
+  const y = (1 - b - k) / (1 - k)
+  return {
+    c: Math.round(c * 100),
+    m: Math.round(m * 100),
+    y: Math.round(y * 100),
+    k: Math.round(k * 100)
+  }
+}
+
+function cmykToRgb(
+  c: number,
+  m: number,
+  y: number,
+  k: number
+): { r: number; g: number; b: number } {
+  c /= 100
+  m /= 100
+  y /= 100
+  k /= 100
+  const r = 255 * (1 - c) * (1 - k)
+  const g = 255 * (1 - m) * (1 - k)
+  const b = 255 * (1 - y) * (1 - k)
+  return { r: Math.round(r), g: Math.round(g), b: Math.round(b) }
+}
+
+// HSL 转 RGB
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  s /= 100
+  l /= 100
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12
+    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+  }
+  return {
+    r: Math.round(255 * f(0)),
+    g: Math.round(255 * f(8)),
+    b: Math.round(255 * f(4))
+  }
+}
+
+// 同步所有颜色模式的值
+function syncAllColorModes(r: number, g: number, b: number) {
+  // 更新 RGB
+  rgb.r = r
+  rgb.g = g
+  rgb.b = b
+
+  // 更新 HEX
+  hexInput.value = rgbToHex(r, g, b)
+
+  // 更新 HSL
+  const hslVal = rgbToHsl(r, g, b)
+  hsl.h = hslVal.h
+  hsl.s = hslVal.s
+  hsl.l = hslVal.l
+  hue.value = hslVal.h
+  saturation.value = hslVal.s
+  lightness.value = hslVal.l
+
+  // 更新 HSV
+  const hsvVal = rgbToHsv(r, g, b)
+  hsv.h = hsvVal.h
+  hsv.s = hsvVal.s
+  hsv.v = hsvVal.v
+
+  // 更新 CMYK
+  const cmykVal = rgbToCmyk(r, g, b)
+  cmyk.c = cmykVal.c
+  cmyk.m = cmykVal.m
+  cmyk.y = cmykVal.y
+  cmyk.k = cmykVal.k
+}
+
 // 更新函数
 function updateFromRgb() {
-  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b)
-  hue.value = hsl.h
-  saturation.value = hsl.s
-  lightness.value = hsl.l
-  hexInput.value = rgbToHex(rgb.r, rgb.g, rgb.b)
+  syncAllColorModes(rgb.r, rgb.g, rgb.b)
 }
 
 function updateFromHex() {
   const rgbVal = hexToRgb(hexInput.value)
   if (rgbVal) {
-    rgb.r = rgbVal.r
-    rgb.g = rgbVal.g
-    rgb.b = rgbVal.b
-    const hsl = rgbToHsl(rgbVal.r, rgbVal.g, rgbVal.b)
-    hue.value = hsl.h
-    saturation.value = hsl.s
-    lightness.value = hsl.l
+    syncAllColorModes(rgbVal.r, rgbVal.g, rgbVal.b)
   }
+}
+
+function updateFromHsl() {
+  const rgbVal = hslToRgb(hsl.h, hsl.s, hsl.l)
+  syncAllColorModes(rgbVal.r, rgbVal.g, rgbVal.b)
+}
+
+function updateFromHsv() {
+  const rgbVal = hsvToRgb(hsv.h, hsv.s, hsv.v)
+  syncAllColorModes(rgbVal.r, rgbVal.g, rgbVal.b)
+}
+
+function updateFromCmyk() {
+  const rgbVal = cmykToRgb(cmyk.c, cmyk.m, cmyk.y, cmyk.k)
+  syncAllColorModes(rgbVal.r, rgbVal.g, rgbVal.b)
 }
 
 function updateRgbFromHsl() {
   const hex = hslToHex(hue.value, saturation.value, lightness.value)
   const rgbVal = hexToRgb(hex)
   if (rgbVal) {
-    rgb.r = rgbVal.r
-    rgb.g = rgbVal.g
-    rgb.b = rgbVal.b
-    hexInput.value = hex
+    syncAllColorModes(rgbVal.r, rgbVal.g, rgbVal.b)
   }
 }
 
@@ -466,18 +740,11 @@ function stopHueDrag() {
 
 // 事件处理
 function handlePopoverShow() {
-  // 初始化当前颜色
+  // 初始化当前颜色，同步所有颜色模式
   if (props.modelValue) {
     const rgbVal = hexToRgb(props.modelValue)
     if (rgbVal) {
-      rgb.r = rgbVal.r
-      rgb.g = rgbVal.g
-      rgb.b = rgbVal.b
-      const hsl = rgbToHsl(rgbVal.r, rgbVal.g, rgbVal.b)
-      hue.value = hsl.h
-      saturation.value = hsl.s
-      lightness.value = hsl.l
-      hexInput.value = props.modelValue
+      syncAllColorModes(rgbVal.r, rgbVal.g, rgbVal.b)
     }
   }
 }
@@ -548,7 +815,7 @@ function applyCustomColor() {
 }
 
 .color-main {
-  width: 220px;
+  width: 300px;
 }
 
 .color-section {
@@ -672,7 +939,7 @@ function applyCustomColor() {
 
 // 高级颜色选择器
 .color-advanced {
-  width: 260px;
+  width: 340px;
   border-left: 1px solid #eee;
   padding-left: 16px;
 
@@ -778,7 +1045,7 @@ function applyCustomColor() {
     flex: 1;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
     align-items: center;
 
     .input-group {
@@ -786,17 +1053,38 @@ function applyCustomColor() {
       align-items: center;
       gap: 2px;
 
-      :deep(.el-input-number) {
-        width: 50px;
+      &.mode-select {
+        :deep(.el-select) {
+          width: 75px;
 
-        .el-input__inner {
-          padding: 0 4px;
+          .el-input__inner {
+            padding: 0 8px;
+          }
+        }
+      }
+
+      &.num-input {
+        :deep(.el-input-number) {
+          width: 52px;
+
+          .el-input__wrapper {
+            padding: 0 8px;
+          }
+
+          .el-input__inner {
+            text-align: center;
+            padding: 0;
+          }
         }
       }
 
       &.hex-input {
         :deep(.el-input) {
           width: 80px;
+
+          .el-input__inner {
+            text-align: center;
+          }
         }
       }
 

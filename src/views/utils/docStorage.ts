@@ -82,7 +82,16 @@ export const getDocContent = async (docId: string | number): Promise<string | nu
       request.onsuccess = () => {
         db.close()
         const result = request.result
-        resolve(result ? result.content : null)
+        if (!result) {
+          resolve(null)
+          return
+        }
+        const expireTime = Date.now() - 20 * 60 * 1000
+        if (result.timestamp && result.timestamp < expireTime) {
+          resolve(null)
+          return
+        }
+        resolve(result.content || null)
       }
 
       request.onerror = () => {

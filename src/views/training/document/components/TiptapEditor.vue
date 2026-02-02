@@ -519,6 +519,12 @@ const addParagraphAfter = () => {
   if (isNil(editor.value) || isNil(currentDragNode.value)) return
 
   const { pos, node } = currentDragNode.value
+  if (!node || typeof node.nodeSize !== 'number') {
+    if (import.meta.env.DEV) {
+      console.warn('[编辑器] DragHandle 节点无效，跳过插入')
+    }
+    return
+  }
   const endPos = pos + node.nodeSize
 
   editor.value.chain().focus().insertContentAt(endPos, { type: 'paragraph' }).run()
@@ -627,6 +633,23 @@ watch(
   { immediate: true }
 )
 
+// 监听编辑器选区变化，同步气泡菜单颜色
+watch(
+  () => editor.value,
+  (newEditor, oldEditor) => {
+    if (oldEditor) {
+      oldEditor.off('selectionUpdate', updateBubbleColors)
+      oldEditor.off('transaction', updateBubbleColors)
+    }
+    if (newEditor) {
+      newEditor.on('selectionUpdate', updateBubbleColors)
+      newEditor.on('transaction', updateBubbleColors)
+      updateBubbleColors()
+    }
+  },
+  { immediate: true }
+)
+
 // 注册 BubbleMenu 插件
 const registerBubbleMenu = () => {
   if (isNil(editor.value) || isNil(bubbleMenuRef.value)) return
@@ -715,6 +738,91 @@ const handleBubbleHighlightColor = (color: string) => {
     editor.value.chain().focus().setHighlight({ color }).run()
   } else {
     editor.value.chain().focus().unsetHighlight().run()
+  }
+}
+
+const normalizeCssColor = (value: string): string => {
+  const raw = (value || '').trim()
+  if (!raw) return ''
+  if (raw.toLowerCase() === 'transparent') return ''
+  if (raw.startsWith('#')) {
+    if (raw.length === 4) {
+      return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`
+    }
+    return raw
+  }
+  const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+  if (rgbMatch) {
+    const [r, g, b] = rgbMatch.slice(1).map((v) => parseInt(v, 10))
+    return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  }
+  const namedMap: Record<string, string> = {
+    yellow: '#FFFF00',
+    green: '#00FF00',
+    cyan: '#00FFFF',
+    magenta: '#FF00FF',
+    blue: '#0000FF',
+    red: '#FF0000',
+    darkblue: '#00008B',
+    darkcyan: '#008B8B',
+    darkgreen: '#006400',
+    darkmagenta: '#8B008B',
+    darkred: '#8B0000',
+    darkyellow: '#808000',
+    darkgray: '#A9A9A9',
+    lightgray: '#D3D3D3',
+    black: '#000000',
+    white: '#FFFFFF'
+  }
+  return namedMap[raw.toLowerCase()] || raw
+}
+
+const getSelectionComputedStyle = (): { color?: string; backgroundColor?: string } => {
+  if (!editor.value || typeof window === 'undefined') return {}
+  const { from } = editor.value.state.selection
+  const domAtPos = editor.value.view.domAtPos(from)
+  let element: Element | null = null
+
+  if (domAtPos.node.nodeType === Node.TEXT_NODE) {
+    element = domAtPos.node.parentElement
+  } else if (domAtPos.node instanceof Element) {
+    element = domAtPos.node
+  }
+
+  if (!element) return {}
+  const style = window.getComputedStyle(element)
+  return {
+    color: style.color,
+    backgroundColor: style.backgroundColor
+  }
+}
+
+const updateBubbleColors = () => {
+  if (!editor.value) return
+  const textColor = editor.value.getAttributes('textStyle').color
+  const highlight = editor.value.getAttributes('highlight').color
+
+  let resolvedText = normalizeCssColor(textColor || '')
+  let resolvedHighlight = normalizeCssColor(highlight || '')
+
+  if (!resolvedText || !resolvedHighlight) {
+    const computed = getSelectionComputedStyle()
+    if (!resolvedText && computed.color) {
+      resolvedText = normalizeCssColor(computed.color)
+    }
+    if (!resolvedHighlight && computed.backgroundColor) {
+      const bg = normalizeCssColor(computed.backgroundColor)
+      if (bg && bg.toUpperCase() !== '#FFFFFF') {
+        resolvedHighlight = bg
+      }
+    }
+  }
+
+  if (resolvedText) {
+    bubbleTextColor.value = resolvedText
+  }
+  if (resolvedHighlight) {
+    bubbleHighlightColor.value = resolvedHighlight
   }
 }
 
@@ -1133,15 +1241,21 @@ defineExpose({
   :deep(.tiptap) {
     outline: none;
     min-height: 500px;
+    // 基础字体设置 - 使用中文友好的字体栈
+    font-family:
+      'SimSun', '宋体', 'Microsoft YaHei', '微软雅黑', 'PingFang SC', 'Hiragino Sans GB', serif;
+    font-size: 14px;
 
-    > * + * {
-      margin-top: 0.75em;
-    }
+    // 段落间距优化：移除通用间距规则，改为针对特定元素设置
+    // 原来的 > * + * { margin-top: 0.75em; } 会导致 Word 导入后段落间距过大
 
     p {
       line-height: 1.75;
       color: #374151;
       position: relative;
+      margin: 0;
+      // 使用较小的段落间距，更接近 Word 默认效果
+      margin-bottom: 0.25em;
 
       // 段落末尾换行符标记 - 参考 hhf-style1.jpg 样式
       &::after {
@@ -1179,9 +1293,36 @@ defineExpose({
       margin-bottom: 0.5em;
     }
 
+    // 标题 h4-h6 样式
+    h4 {
+      font-size: 1.1em;
+      font-weight: 600;
+      color: #374151;
+      margin-top: 0.75em;
+      margin-bottom: 0.5em;
+    }
+
+    h5 {
+      font-size: 1em;
+      font-weight: 600;
+      color: #4b5563;
+      margin-top: 0.5em;
+      margin-bottom: 0.25em;
+    }
+
+    h6 {
+      font-size: 0.9em;
+      font-weight: 600;
+      color: #6b7280;
+      margin-top: 0.5em;
+      margin-bottom: 0.25em;
+    }
+
     ul,
     ol {
       padding-left: 1.5em;
+      margin-top: 0.5em;
+      margin-bottom: 0.5em;
     }
 
     ul {
@@ -1201,7 +1342,7 @@ defineExpose({
       border-left: 3px solid #2563eb;
       color: #6b7280;
       font-style: italic;
-      margin: 1em 0;
+      margin: 0.75em 0;
     }
 
     code {
@@ -1219,6 +1360,7 @@ defineExpose({
       padding: 1em;
       border-radius: 8px;
       overflow-x: auto;
+      margin: 0.75em 0;
 
       code {
         background: transparent;
@@ -1687,7 +1829,7 @@ defineExpose({
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   border: 1px solid #e5e7eb;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .bubble-menu-container {

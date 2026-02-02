@@ -1,5 +1,6 @@
 import router from './router'
 import type { RouteRecordRaw } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import { isRelogin } from '@/config/axios/service'
 import { getAccessToken, isExternalTokenMode, setExternalToken } from '@/utils/auth'
 import { useTitle } from '@/hooks/web/useTitle'
@@ -8,6 +9,7 @@ import { usePageLoading } from '@/hooks/web/usePageLoading'
 import { useDictStoreWithOut } from '@/store/modules/dict'
 import { useUserStoreWithOut } from '@/store/modules/user'
 import { usePermissionStoreWithOut } from '@/store/modules/permission'
+import { useExternalUserStoreWithOut } from '@/store/modules/externalUser'
 
 const { start, done } = useNProgress()
 
@@ -49,7 +51,7 @@ const parseURL = (
 // 路由不重定向白名单
 const whiteList = [
   '/login',
-  '/MyLogin', // 外部Token登录（嵌入式场景）
+  // 【已删除】'/MyLogin' - 嵌入式场景无token时改为弹窗提示，不再跳转到单独页面
   '/social-login',
   '/auth-redirect',
   '/bind',
@@ -129,12 +131,26 @@ router.beforeEach(async (to, from, next) => {
       return
     }
 
-    // 5. 有token则放行，无token则提示错误
+    // 5. 有token则放行，无token则弹窗提示
     if (getAccessToken()) {
+      // 【新增】首次获取用户信息（通过 /api/user/info 接口）
+      const externalUserStore = useExternalUserStoreWithOut()
+      if (!externalUserStore.hasUser) {
+        await externalUserStore.fetchUserInfo()
+      }
       next()
     } else {
-      // 没有token，显示错误提示页面
-      next('/MyLogin')
+      // 【修改】没有token，弹窗提示，不跳转页面
+      ElMessageBox.alert('没有token，请先验证', '访问受限', {
+        confirmButtonText: '确定',
+        type: 'warning',
+        showClose: false,
+        closeOnClickModal: false,
+        closeOnPressEscape: false
+      })
+      done()
+      loadDone()
+      return // 不调用 next()，阻止导航
     }
     return
   }

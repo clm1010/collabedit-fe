@@ -101,6 +101,14 @@ export interface UseCollaborationOptions {
 }
 
 /**
+ * 协同初始化可选项
+ */
+export interface InitCollaborationOptions {
+  /** 是否立即建立 WebSocket 连接 */
+  autoConnect?: boolean
+}
+
+/**
  * 连接诊断信息
  */
 export interface ConnectionDiagnostics {
@@ -151,11 +159,17 @@ export interface UseCollaborationReturn {
   /** 是否协同就绪 */
   isReady: Ref<boolean>
   /** 初始化协同编辑 */
-  initCollaboration: () => void
+  initCollaboration: (options?: InitCollaborationOptions) => void
+  /** 主动连接协同服务（用于延迟连接场景） */
+  connectProvider: () => void
   /** 清理协同资源 */
   cleanup: () => void
   /** 重新初始化协同编辑（用于切换文档） */
-  reinitialize: (newDocumentId?: string, newCreatorId?: string | number) => void
+  reinitialize: (
+    newDocumentId?: string,
+    newCreatorId?: string | number,
+    options?: InitCollaborationOptions
+  ) => void
   /** 获取连接诊断信息 */
   getDiagnostics: () => ConnectionDiagnostics
   /** 输出诊断信息到控制台 */
@@ -301,7 +315,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   /**
    * 初始化协同编辑
    */
-  const initCollaboration = () => {
+  const initCollaboration = (initOptions: InitCollaborationOptions = {}) => {
     try {
       // 注册全局错误处理器，用于捕获 y-prosemirror 的已知错误
       registerYjsErrorHandler()
@@ -329,8 +343,9 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       const deviceId = user.deviceId || ''
       logConnectionEvent('WebSocket 连接参数', `URL: ${wsUrl}, deviceId: ${deviceId || '未设置'}`)
 
+      const { autoConnect = true } = initOptions
       provider.value = new WebsocketProvider(wsUrl, currentDocumentId, ydoc.value, {
-        connect: true,
+        connect: autoConnect,
         params: {
           documentId: currentDocumentId,
           userId: String(user.id),
@@ -450,6 +465,20 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   }
 
   /**
+   * 主动连接协同服务（用于延迟连接场景）
+   */
+  const connectProvider = () => {
+    if (!provider.value) return
+    if (provider.value.wsconnected) return
+    try {
+      provider.value.connect()
+      logConnectionEvent('手动连接 WebSocket')
+    } catch (e) {
+      console.warn('手动连接 WebSocket 失败:', e)
+    }
+  }
+
+  /**
    * 清理协同资源
    */
   const cleanup = () => {
@@ -523,7 +552,11 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
    * @param newDocumentId 新的文档ID
    * @param newCreatorId 新的创建者ID（可选）
    */
-  const reinitialize = (newDocumentId?: string, newCreatorId?: string | number) => {
+  const reinitialize = (
+    newDocumentId?: string,
+    newCreatorId?: string | number,
+    initOptions: InitCollaborationOptions = {}
+  ) => {
     // 先清理现有资源
     cleanup()
 
@@ -543,7 +576,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     hasShownSyncedMessage = false
 
     // 重新初始化
-    initCollaboration()
+    initCollaboration(initOptions)
   }
 
   /**
@@ -617,6 +650,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     collaborators,
     isReady,
     initCollaboration,
+    connectProvider,
     cleanup,
     reinitialize,
     getDiagnostics,

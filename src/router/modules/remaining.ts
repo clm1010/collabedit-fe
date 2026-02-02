@@ -185,16 +185,8 @@ const remainingRouter: AppRouteRecordRaw[] = [
       noTagsView: true
     }
   },
-  {
-    path: '/MyLogin',
-    component: () => import('@/views/Login/MyLogin.vue'),
-    name: 'MyLogin',
-    meta: {
-      hidden: true,
-      title: '外部登录',
-      noTagsView: true
-    }
-  },
+  // 【已删除】外部Token登录页面 MyLogin.vue
+  // 嵌入式场景下无token时改为弹窗提示，不再跳转到单独页面
   {
     path: '/sso',
     component: () => import('@/views/Login/Login.vue'),

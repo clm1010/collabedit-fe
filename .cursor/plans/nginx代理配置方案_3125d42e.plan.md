@@ -20,6 +20,7 @@ todos:
   - id: docker-compose
     content: 可选：创建 docker-compose.yml 部署配置
     status: pending
+isProject: false
 ---
 
 # Nginx 代理配置方案
@@ -69,7 +70,7 @@ VITE_WS_URL=/ws
 
 需要修改 WebSocket URL 的解析逻辑，支持相对路径自动转换：
 
-**修改 [src/views/training/document/config/editorConfig.ts](src/views/training/document/config/editorConfig.ts)**
+**修改 [src/views/training/document/config/editorConfig.ts**](src/views/training/document/config/editorConfig.ts)
 
 ```typescript
 const resolveWsUrl = () => {
@@ -89,7 +90,7 @@ const resolveWsUrl = () => {
 }
 ```
 
-**修改 [src/views/template/editor/config/markdownConfig.ts](src/views/template/editor/config/markdownConfig.ts)**
+**修改 [src/views/template/editor/config/markdownConfig.ts**](src/views/template/editor/config/markdownConfig.ts)
 
 ```typescript
 const getWsBaseUrl = (): string => {

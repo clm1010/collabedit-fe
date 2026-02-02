@@ -526,14 +526,22 @@
                   <Icon icon="mdi:format-strikethrough" />
                 </button>
                 <div class="bubble-menu-divider"></div>
-                <button
-                  class="bubble-menu-btn"
-                  :class="{ 'is-active': editor?.isActive('highlight') }"
-                  @click="editor?.chain().focus().toggleHighlight().run()"
-                  title="高亮"
-                >
-                  <Icon icon="mdi:format-color-highlight" />
-                </button>
+                <!-- 字体颜色 -->
+                <ColorPicker
+                  v-model="textColor"
+                  icon="mdi:format-color-text"
+                  title="字体颜色"
+                  :show-clear="true"
+                  @change="handleTextColor"
+                />
+                <!-- 字体背景颜色 -->
+                <ColorPicker
+                  v-model="highlightColor"
+                  icon="mdi:format-color-highlight"
+                  title="字体背景颜色"
+                  :show-clear="true"
+                  @change="handleHighlightColor"
+                />
                 <button
                   class="bubble-menu-btn"
                   :class="{ 'is-active': editor?.isActive('code') }"
@@ -638,7 +646,7 @@ import {
   exportMarkdown,
   generatePreviewHtml,
   htmlToMarkdown
-} from '../utils/fileParser'
+} from '../utils'
 // Link Popover 组件
 import LinkPopover from './LinkPopover.vue'
 // 颜色选择器组件
@@ -868,6 +876,12 @@ const editor = useEditor({
     // 防止组件销毁后触发回调
     if (isComponentDestroyed) return
     emit('ready', editor)
+  },
+  onSelectionUpdate: () => {
+    // 防止组件销毁后触发回调
+    if (isComponentDestroyed) return
+    // 更新工具栏/气泡菜单的颜色状态以匹配选中文本
+    updateColorFromSelection()
   }
 })
 
@@ -885,6 +899,12 @@ const addParagraphAfter = () => {
   if (isNil(editor.value) || isNil(currentDragNode.value)) return
 
   const { pos, node } = currentDragNode.value
+  if (!node || typeof node.nodeSize !== 'number') {
+    if (import.meta.env.DEV) {
+      console.warn('[编辑器] DragHandle 节点无效，跳过插入')
+    }
+    return
+  }
   const endPos = pos + node.nodeSize
 
   editor.value.chain().focus().insertContentAt(endPos, { type: 'paragraph' }).run()
@@ -1285,6 +1305,27 @@ const handleHighlightColor = (color: string) => {
     editor.value.chain().focus().setHighlight({ color }).run()
   } else {
     editor.value.chain().focus().unsetHighlight().run()
+  }
+}
+
+// 更新选中文本的颜色到工具栏（颜色联动）
+const updateColorFromSelection = () => {
+  if (isNil(editor.value)) return
+
+  // 获取字体颜色
+  const color = editor.value.getAttributes('textStyle').color
+  if (color) {
+    textColor.value = color
+  } else {
+    textColor.value = '#000000'
+  }
+
+  // 获取背景颜色（高亮）
+  const highlight = editor.value.getAttributes('highlight').color
+  if (highlight) {
+    highlightColor.value = highlight
+  } else {
+    highlightColor.value = ''
   }
 }
 

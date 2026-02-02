@@ -34,7 +34,7 @@ isProject: false
 
 ## 后端配置对齐
 
-- 环境变量文件：[`e:/job-project/collabedit-node-backend/.env.example`](e:/job-project/collabedit-node-backend/.env.example)
+- 环境变量文件：`[e:/job-project/collabedit-node-backend/.env.example](e:/job-project/collabedit-node-backend/.env.example)`
 - 需要的关键配置：
 - `DATABASE_URL="mysql://root:password@localhost:3306/collabedit"`
 - `MINIO_ENDPOINT=127.0.0.1`
@@ -46,7 +46,7 @@ isProject: false
 
 ## 后端启动步骤
 
-- 进入后端目录：[`e:/job-project/collabedit-node-backend`](e:/job-project/collabedit-node-backend)
+- 进入后端目录：`[e:/job-project/collabedit-node-backend](e:/job-project/collabedit-node-backend)`
 - 安装依赖、初始化 Prisma、启动服务
 - 验证接口：
 - `GET /dict/list?dictType=FILE_TYPE`
@@ -54,7 +54,7 @@ isProject: false
 
 ## 前端联调对齐
 
-- 前端请求配置参考：[`e:/job-project/collabedit-fe/src/config/axios/service.ts`](e:/job-project/collabedit-fe/src/config/axios/service.ts)
+- 前端请求配置参考：`[e:/job-project/collabedit-fe/src/config/axios/service.ts](e:/job-project/collabedit-fe/src/config/axios/service.ts)`
 - 确认前端 `baseURL` 指向后端服务地址
 - 验证：列表接口、上传接口、下载接口
 

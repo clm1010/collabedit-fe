@@ -20,6 +20,7 @@ todos:
   - id: optional-docker-compose
     content: 可选：创建 docker-compose.yml 部署配置
     status: completed
+isProject: false
 ---
 
 # WebSocket 相对路径与 Nginx 统一代理整合方案
@@ -91,7 +92,7 @@ const resolveWsUrl = (basePath: string, suffix: string): string => {
 
 ### 3.2 修改文件清单
 
-**文件 1: [src/lmHooks/useEditorConfig.ts](src/lmHooks/useEditorConfig.ts)**
+**文件 1: [src/lmHooks/useEditorConfig.ts**](src/lmHooks/useEditorConfig.ts)
 
 当前代码 (第 60-67 行)：
 
@@ -127,7 +128,7 @@ const getWsBaseUrl = (): string => {
 
 ---
 
-**文件 2: [src/views/training/document/config/editorConfig.ts](src/views/training/document/config/editorConfig.ts)**
+**文件 2: [src/views/training/document/config/editorConfig.ts**](src/views/training/document/config/editorConfig.ts)
 
 当前代码 (第 24-28 行)：
 
@@ -161,7 +162,7 @@ const resolveWsUrl = () => {
 
 ---
 
-**文件 3: [src/views/template/editor/config/markdownConfig.ts](src/views/template/editor/config/markdownConfig.ts)**
+**文件 3: [src/views/template/editor/config/markdownConfig.ts**](src/views/template/editor/config/markdownConfig.ts)
 
 当前代码 (第 23-30 行)：
 
@@ -197,7 +198,7 @@ const getWsBaseUrl = (): string => {
 
 ---
 
-**文件 4: `.env.prod`**
+**文件 4: `.env.prod**`
 
 修改为相对路径：
 

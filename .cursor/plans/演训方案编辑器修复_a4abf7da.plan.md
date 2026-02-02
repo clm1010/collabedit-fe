@@ -20,6 +20,7 @@ todos:
   - id: test-all
     content: 全面测试：图片导入、红头文件排版、链接功能
     status: completed
+isProject: false
 ---
 
 # 演训方案编辑器三项功能修复
@@ -35,7 +36,7 @@ todos:
 ### 问题2：Word 红头文件排版问题
 
 - **场景**：导入红头文件 Word 文档后文字排版/对齐不正确
-- **参考**：需对照 https://corp3.ai.zhongshuruizhi.com/#/ai 网站效果
+- **参考**：需对照 [https://corp3.ai.zhongshuruizhi.com/#/ai](https://corp3.ai.zhongshuruizhi.com/#/ai) 网站效果
 
 ### 问题3：链接功能使用 window.prompt
 
@@ -48,7 +49,7 @@ todos:
 
 ### 修复1：图片解析问题
 
-**文件**：[`TiptapEditor.vue`](e:/job-project/collabedit-fe/src/views/training/document/components/TiptapEditor.vue)
+**文件**：`[TiptapEditor.vue](e:/job-project/collabedit-fe/src/views/training/document/components/TiptapEditor.vue)`
 
 **方案**：确保图片 HTML 被正确解析
 
@@ -63,7 +64,7 @@ todos:
 
 ### 修复2：Word 红头文件排版
 
-**文件**：[`wordParser.ts`](e:/job-project/collabedit-fe/src/views/training/document/utils/wordParser.ts)
+**文件**：`[wordParser.ts](e:/job-project/collabedit-fe/src/views/training/document/utils/wordParser.ts)`
 
 **方案**：优化 HTML 清理逻辑，保留文本对齐样式
 
@@ -81,8 +82,8 @@ todos:
 
 **文件**：
 
-- [`TiptapEditor.vue`](e:/job-project/collabedit-fe/src/views/training/document/components/TiptapEditor.vue)
-- [`InsertToolbar.vue`](e:/job-project/collabedit-fe/src/views/training/document/components/toolbar/InsertToolbar.vue)
+- `[TiptapEditor.vue](e:/job-project/collabedit-fe/src/views/training/document/components/TiptapEditor.vue)`
+- `[InsertToolbar.vue](e:/job-project/collabedit-fe/src/views/training/document/components/toolbar/InsertToolbar.vue)`
 
 **方案**：复制并集成 `LinkPopover.vue` 组件
 
@@ -97,7 +98,7 @@ todos:
 - 将 `insertLink` 方法改为打开 LinkPopover
 - 删除原有的链接对话框
 
-**参考实现**：[`MarkdownEditor.vue`](e:/job-project/collabedit-fe/src/views/template/editor/components/MarkdownEditor.vue) 第 591-599 行、705-709 行、1032-1063 行
+**参考实现**：`[MarkdownEditor.vue](e:/job-project/collabedit-fe/src/views/template/editor/components/MarkdownEditor.vue)` 第 591-599 行、705-709 行、1032-1063 行
 
 ---
 
@@ -110,18 +111,18 @@ todos:
 - 修改气泡菜单链接按钮逻辑
 - 添加链接点击事件监听
 
-3. 修改 `InsertToolbar.vue`：
+1. 修改 `InsertToolbar.vue`：
 
 - 集成 LinkPopover（通过 props/events 与父组件通信）
 - 移除原有对话框
 
-4. 修复图片解析问题：
+1. 修复图片解析问题：
 
 - 检查并修复 `ResizableImage` 扩展
 - 优化 Word 导入时的 HTML 处理
 
-5. 修复红头文件排版：
+1. 修复红头文件排版：
 
 - 优化 `cleanWordHtml` 保留对齐样式
 
-6. 测试验证所有功能
+1. 测试验证所有功能

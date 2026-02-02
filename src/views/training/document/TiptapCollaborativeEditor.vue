@@ -22,9 +22,9 @@
       <!-- 编辑器容器 -->
       <div class="flex-1 flex flex-col overflow-hidden bg-gray-100 p-4">
         <div class="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-          <!-- 协同编辑器：等待 ydoc、fragment 和 provider 都就绪后再渲染，避免 Yjs sync-plugin 初始化错误 -->
+          <!-- 协同编辑器：只要 ydoc/fragment/provider 就绪即可渲染，避免卡在加载态 -->
           <TiptapEditor
-            v-if="isCollaborationReady && provider && ydoc && fragment"
+            v-if="provider && ydoc && fragment"
             ref="tiptapEditorRef"
             :ydoc="ydoc!"
             :fragment="fragment!"
@@ -141,6 +141,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isNil, isEmpty } from 'lodash-es'
 import dayjs from 'dayjs'
+import { createNodeFromContent } from '@tiptap/core'
+import { Selection } from '@tiptap/pm/state'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import CollaborationPanel from '@/lmComponents/collaboration/CollaborationPanel.vue'
 import { EditorStatusBar } from '@/lmComponents/Editor'
@@ -210,6 +212,7 @@ const {
   collaborators,
   isReady: isCollaborationReady,
   initCollaboration,
+  connectProvider,
   reinitialize: reinitializeCollaboration
 } = useCollaboration({
   documentId: documentId.value,
@@ -236,6 +239,9 @@ const preloadedApplied = ref(false)
 const preloadedCacheCleared = ref(false)
 // 标记是否为首次加载（有预加载内容的情况）
 const isFirstLoadWithContent = ref(false)
+// 是否需要延迟协同连接（优先应用预加载内容）
+const shouldDelayCollaborationConnect = ref(false)
+const pendingConnectTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 // 编辑器和协同同步状态
 const isEditorReady = ref(false)
 const isCollaborationSynced = ref(false)
@@ -446,7 +452,7 @@ const getContentHash = (content: string): string => {
   let hash = 0
   for (let i = 0; i < content.length; i++) {
     const char = content.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
+    hash = (hash << 5) - hash + char
     hash = hash & hash
   }
   return hash.toString()
@@ -527,10 +533,80 @@ const escapeHtml = (text: string) => {
     .replace(/'/g, '&#39;')
 }
 
+const normalizePreloadedHtml = (html: string) => {
+  const trimmed = (html || '').trim()
+  if (!trimmed) return '<p></p>'
+
+  const textblockTags = new Set([
+    'p',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'blockquote',
+    'pre',
+    'li'
+  ])
+  const emptyParagraph = '<p></p>'
+  let result = trimmed
+
+  if (!/^\s*</.test(trimmed)) {
+    result = `<p>${trimmed}</p>`
+  } else {
+    const match = trimmed.match(/^<([a-zA-Z0-9-]+)/)
+    const firstTag = match ? match[1].toLowerCase() : ''
+    if (firstTag && !textblockTags.has(firstTag)) {
+      result = `${emptyParagraph}${trimmed}`
+    }
+  }
+
+  if (!/<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>\s*$/i.test(result)) {
+    result = `${result}${emptyParagraph}`
+  }
+
+  return result
+}
+
+const hasStyleHints = (html: string) => {
+  if (!html) return false
+  return /font-family:|font-size:|color:|background-color:|text-align:|data-text-align|<h[1-6]\b|<mark\b/i.test(
+    html
+  )
+}
+
+const setContentSafely = (content: string, emitUpdate = true) => {
+  const editor = editorInstance.value
+  if (!editor) return
+
+  const { state, view, schema } = editor
+  const tr = state.tr
+  const newContent = createNodeFromContent(content, schema, {
+    parseOptions: { preserveWhitespace: 'full' },
+    errorOnInvalidContent: false
+  })
+
+  tr.replaceWith(0, tr.doc.content.size, newContent as any)
+
+  if (tr.doc.content.size === 0 && schema.nodes.paragraph) {
+    tr.insert(0, schema.nodes.paragraph.create())
+  }
+
+  try {
+    tr.setSelection(Selection.atStart(tr.doc))
+  } catch (selectionError) {
+    console.warn('设置初始选区失败，跳过:', selectionError)
+  }
+
+  tr.setMeta('preventUpdate', !emitUpdate)
+  view.dispatch(tr)
+}
+
 const tryApplyPreloadedContent = () => {
   if (preloadedApplied.value || !preloadedContent.value) return
   if (!isEditorReady.value) return
-  if (!isCollaborationSynced.value) return
+  if (!isCollaborationSynced.value && !shouldDelayCollaborationConnect.value) return
   applyPreloadedContent()
 }
 
@@ -546,6 +622,7 @@ const applyPreloadedContent = () => {
   try {
     console.log('设置预加载内容到编辑器')
     const content = preloadedContent.value.trim()
+    const normalizedContent = normalizePreloadedHtml(content)
     const strippedContent = content
       .replace(/<[^>]*>/g, '')
       .replace(/&nbsp;/g, ' ')
@@ -557,48 +634,57 @@ const applyPreloadedContent = () => {
         // 检查组件是否已卸载，避免内存泄漏
         if (isUnmounted.value) return
         if (!editorInstance.value || preloadedApplied.value) return
-        
+
         // 检查当前编辑器是否为空（只有一个空段落或仅包含空白字符）
         const currentContent = editorInstance.value.getHTML()
-        const currentStripped = currentContent
-          ?.replace(/<[^>]*>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\u200B/g, '') // 零宽空格
-          .replace(/\uFEFF/g, '') // BOM
-          .trim() || ''
-        
-        const isEditorEmpty = !currentContent || 
-          currentContent === '<p></p>' || 
+        const currentStripped =
+          currentContent
+            ?.replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\u200B/g, '') // 零宽空格
+            .replace(/\uFEFF/g, '') // BOM
+            .trim() || ''
+
+        const currentHasStyle = hasStyleHints(currentContent || '')
+        const preloadedHasStyle = hasStyleHints(normalizedContent || '')
+        const shouldForceApply = preloadedHasStyle && !currentHasStyle
+
+        const isEditorEmpty =
+          !currentContent ||
+          currentContent === '<p></p>' ||
           currentContent === '<p><br></p>' ||
           currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
           currentStripped === ''
-        
+
         console.log(`applyPreloadedContent 尝试 ${retryCount + 1}/${maxRetries}:`, {
           currentContent: currentContent?.substring(0, 100),
           currentStripped: currentStripped?.substring(0, 50),
           isEditorEmpty,
+          currentHasStyle,
+          preloadedHasStyle,
+          shouldForceApply,
           isFirstLoadWithContent: isFirstLoadWithContent.value
         })
-        
+
         // 首次加载且有预加载内容时，强制应用（即使协同同步了空内容）
         // 或者编辑器为空时应用
-        if (isEditorEmpty || (isFirstLoadWithContent.value && currentStripped.length < 10)) {
+        if (
+          isEditorEmpty ||
+          shouldForceApply ||
+          (isFirstLoadWithContent.value && currentStripped.length < 10)
+        ) {
           console.log('应用预加载内容到编辑器')
           // 使用 emitUpdate: true 确保触发协同同步
-          editorInstance.value.commands.setContent(content, true)
-          
           try {
-            const { doc } = editorInstance.value.state
-            if (doc.content.size > 0) {
-              const firstPos = doc.resolve(1)
-              if (firstPos.parent.isTextblock) {
-                editorInstance.value.commands.setTextSelection(1)
-              } else {
-                editorInstance.value.commands.focus('start')
-              }
+            setContentSafely(normalizedContent, true)
+          } catch (setContentError) {
+            // 如果 chain 命令失败，尝试分步执行
+            console.warn('chain 命令失败，尝试分步设置内容:', setContentError)
+            try {
+              setContentSafely(normalizedContent, false)
+            } catch (fallbackError) {
+              console.error('设置内容失败:', fallbackError)
             }
-          } catch (selectionError) {
-            console.warn('设置光标位置失败，使用默认位置:', selectionError)
           }
 
           const verifyTimerId = setTimeout(() => {
@@ -606,20 +692,42 @@ const applyPreloadedContent = () => {
             if (isUnmounted.value || !editorInstance.value) return
 
             const appliedContent = editorInstance.value.getHTML()
-            const appliedStripped = appliedContent
-              ?.replace(/<[^>]*>/g, '')
-              .replace(/&nbsp;/g, ' ')
-              .replace(/\u200B/g, '')
-              .replace(/\uFEFF/g, '')
-              .trim() || ''
+            const appliedStripped =
+              appliedContent
+                ?.replace(/<[^>]*>/g, '')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/\u200B/g, '')
+                .replace(/\uFEFF/g, '')
+                .trim() || ''
 
-            if (appliedStripped) {
+            const appliedHasStyle = hasStyleHints(appliedContent || '')
+            const preloadedHasStyle = hasStyleHints(normalizedContent || '')
+
+            if (appliedStripped && !(preloadedHasStyle && !appliedHasStyle)) {
               preloadedApplied.value = true
               isFirstLoadWithContent.value = false
               void clearPreloadedCache()
               ElMessage.success('文档内容已加载')
+              if (shouldDelayCollaborationConnect.value) {
+                shouldDelayCollaborationConnect.value = false
+                connectProvider()
+              }
+            } else if (appliedStripped && preloadedHasStyle && !appliedHasStyle) {
+              console.warn('预加载内容样式被覆盖，强制恢复样式...')
+              try {
+                setContentSafely(normalizedContent, true)
+              } catch (styleRestoreError) {
+                console.warn('强制恢复样式失败:', styleRestoreError)
+              }
+              preloadedApplied.value = true
+              isFirstLoadWithContent.value = false
+              void clearPreloadedCache()
+              if (shouldDelayCollaborationConnect.value) {
+                shouldDelayCollaborationConnect.value = false
+                connectProvider()
+              }
             } else if (retryCount < maxRetries - 1) {
-              console.warn('预加载内容未生效，准备重试...')
+              console.info('预加载内容未生效，准备重试...')
               if (strippedContent) {
                 const fallbackHtml = strippedContent
                   .split(/\n+/)
@@ -627,7 +735,11 @@ const applyPreloadedContent = () => {
                   .map((line) => `<p>${escapeHtml(line.trim())}</p>`)
                   .join('')
                 if (fallbackHtml) {
-                  editorInstance.value.commands.setContent(fallbackHtml, true)
+                  try {
+                    setContentSafely(fallbackHtml, true)
+                  } catch (fallbackSetError) {
+                    console.warn('fallback 内容设置失败:', fallbackSetError)
+                  }
                 }
               }
               tryApplyContent(retryCount + 1, maxRetries, delay)
@@ -649,9 +761,13 @@ const applyPreloadedContent = () => {
           preloadedApplied.value = true
           isFirstLoadWithContent.value = false
           void clearPreloadedCache()
+          if (shouldDelayCollaborationConnect.value) {
+            shouldDelayCollaborationConnect.value = false
+            connectProvider()
+          }
         }
       }
-      
+
       // 初始延迟后开始尝试
       const initialTimerId = setTimeout(() => {
         pendingTimers.value.delete(initialTimerId)
@@ -846,6 +962,7 @@ onMounted(async () => {
       if (parsedContent) {
         preloadedContent.value = parsedContent
         isFirstLoadWithContent.value = true // 标记为首次加载有内容
+        shouldDelayCollaborationConnect.value = true
         console.log('预加载内容解析成功，HTML 长度:', parsedContent.length)
         tryApplyPreloadedContent()
       } else {
@@ -857,7 +974,19 @@ onMounted(async () => {
   }
 
   loadDocument()
-  initCollaboration()
+  initCollaboration({ autoConnect: !shouldDelayCollaborationConnect.value })
+  if (shouldDelayCollaborationConnect.value) {
+    if (pendingConnectTimer.value) {
+      clearTimeout(pendingConnectTimer.value)
+    }
+    pendingConnectTimer.value = setTimeout(() => {
+      pendingConnectTimer.value = null
+      if (preloadedApplied.value) return
+      console.warn('预加载内容未及时应用，强制建立协同连接')
+      shouldDelayCollaborationConnect.value = false
+      connectProvider()
+    }, 4000)
+  }
 })
 
 // 组件卸载 - 清理非协同相关的资源
@@ -877,6 +1006,10 @@ onBeforeUnmount(() => {
     clearTimeout(timerId)
   })
   pendingTimers.value.clear()
+  if (pendingConnectTimer.value) {
+    clearTimeout(pendingConnectTimer.value)
+    pendingConnectTimer.value = null
+  }
 
   // 清理编辑器实例引用
   editorInstance.value = null

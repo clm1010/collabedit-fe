@@ -9,13 +9,15 @@ import {
   getTenantId,
   getVisitTenantId,
   removeToken,
-  setToken
+  setToken,
+  isExternalTokenMode
 } from '@/utils/auth'
 import errorCode from './errorCode'
 
 import { resetRouter } from '@/router'
 import { deleteUserCache } from '@/hooks/web/useCache'
 import { ApiEncrypt } from '@/utils/encrypt'
+import { useExternalUserStoreWithOut } from '@/store/modules/externalUser'
 
 const tenantEnable = import.meta.env.VITE_APP_TENANT_ENABLE
 const { result_code, base_url, request_timeout } = config
@@ -132,6 +134,8 @@ service.interceptors.response.use(
       }
     }
 
+    // 【已删除】T-User 响应头提取逻辑，改为通过 /api/user/info 接口获取用户信息
+
     const { t } = useI18n()
     // 未设置状态码则默认成功状态
     // 二进制数据则直接返回，例如说 Excel 导出
@@ -208,7 +212,8 @@ service.interceptors.response.use(
           '<div>5 分钟搭建本地环境</div>'
       })
       return Promise.reject(new Error(msg))
-    } else if (code !== 200) {
+    } else if (code !== 200 && code !== 0) {
+      // 兼容 Java 后端 (code: 0) 和 Node 后端 (code: 200) 的成功码
       if (msg === '无效的刷新令牌') {
         // hard coding：忽略这个提示，直接登出
         console.log(msg)
@@ -218,6 +223,7 @@ service.interceptors.response.use(
       }
       return Promise.reject('error')
     } else {
+      // code === 200 (Node) 或 code === 0 (Java) 都视为成功
       return data
     }
   },
@@ -243,6 +249,14 @@ const refreshToken = async () => {
 }
 const handleAuthorized = () => {
   const { t } = useI18n()
+
+  // 【新增】外部Token模式下，同步清除用户信息
+  if (isExternalTokenMode()) {
+    const externalUserStore = useExternalUserStoreWithOut()
+    externalUserStore.clearUser()
+    console.log('[External User] Token过期，已清除用户信息')
+  }
+
   if (!isRelogin.show) {
     // 如果已经到登录页面则不进行弹窗提示
     if (window.location.href.includes('login')) {

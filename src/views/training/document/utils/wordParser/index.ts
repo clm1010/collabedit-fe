@@ -14,38 +14,6 @@
  * ```
  */
 
-// 导出类型定义
 export * from './types'
-
-// 导出工具函数
 export * from './utils'
-
-// 从原始文件重新导出（向后兼容）
-// 注意：后续重构时可逐步将这些函数迁移到对应的子模块
-export {
-  // mammoth 相关
-  mammothStyleMap,
-  parseWordDocument,
-
-  // 主要解析函数
-  parseFileContent,
-  validateDocxFile,
-
-  // OOXML 解析
-  parseOoxmlDocument,
-  parseOoxmlDocumentEnhanced,
-
-  // 红头文件解析
-  isRedHeadDocument,
-  parseRedHeadDocument,
-
-  // 智能解析
-  parseWordDocumentSmart,
-  smartParseDocument,
-
-  // docx-preview 解析
-  parseWithDocxPreview,
-
-  // Worker 解析
-  parseWithWorker
-} from '../wordParser.ts'
+export * from '../wordParser'

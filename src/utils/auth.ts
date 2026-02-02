@@ -33,16 +33,17 @@ export const removeToken = () => {
 
 // ========== 外部Token登录（嵌入式场景）==========
 
-// 外部Token默认过期时间（秒）：8小时
-const EXTERNAL_TOKEN_EXPIRE = 8 * 60 * 60
+// 【已删除】外部Token默认过期时间设置，改为依赖后端 JWT 校验
+// const EXTERNAL_TOKEN_EXPIRE = 8 * 60 * 60
 
 /**
  * 设置外部token（用于嵌入式场景）
+ * 【优化】不设置前端过期时间，完全依赖后端 JWT 校验
  * @param token - 外部系统传递的token
- * @param expireSeconds - 过期时间（秒），默认8小时
  */
-export const setExternalToken = (token: string, expireSeconds: number = EXTERNAL_TOKEN_EXPIRE) => {
-  wsCache.set(AccessTokenKey, token, { exp: expireSeconds })
+export const setExternalToken = (token: string) => {
+  // 不设置过期时间，由后端 JWT 控制有效性
+  wsCache.set(AccessTokenKey, token)
 }
 
 /**

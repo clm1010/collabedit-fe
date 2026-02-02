@@ -102,6 +102,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isNil, isEmpty } from 'lodash-es'
 import dayjs from 'dayjs'
+import { createNodeFromContent } from '@tiptap/core'
+import { Selection } from '@tiptap/pm/state'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import CollaborationPanel from '@/lmComponents/collaboration/CollaborationPanel.vue'
 import { EditorStatusBar } from '@/lmComponents/Editor'
@@ -118,7 +120,7 @@ import {
   type SubmitAuditReqVO
 } from './api/markdownApi'
 import type { ElementItem } from '@/types/management'
-import { htmlToMarkdown } from './utils/fileParser'
+import { htmlToMarkdown, markdownToHtml } from './utils'
 
 // Props
 interface Props {
@@ -256,7 +258,7 @@ const getContentHash = (content: string): string => {
   let hash = 0
   for (let i = 0; i < content.length; i++) {
     const char = content.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
+    hash = (hash << 5) - hash + char
     hash = hash & hash
   }
   return hash.toString()
@@ -324,12 +326,76 @@ const clearCachedContent = () => {
   sessionStorage.removeItem(pendingCacheKey.value)
 }
 
+const normalizePreloadedHtml = (html: string) => {
+  const trimmed = (html || '').trim()
+  if (!trimmed) return '<p></p>'
+
+  const textblockTags = new Set([
+    'p',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'blockquote',
+    'pre',
+    'li'
+  ])
+  const emptyParagraph = '<p></p>'
+  let result = trimmed
+
+  if (!/^\s*</.test(trimmed)) {
+    result = `<p>${trimmed}</p>`
+  } else {
+    const match = trimmed.match(/^<([a-zA-Z0-9-]+)/)
+    const firstTag = match ? match[1].toLowerCase() : ''
+    if (firstTag && !textblockTags.has(firstTag)) {
+      result = `${emptyParagraph}${trimmed}`
+    }
+  }
+
+  if (!/<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>\s*$/i.test(result)) {
+    result = `${result}${emptyParagraph}`
+  }
+
+  return result
+}
+
+const setContentSafely = (content: string, emitUpdate = true) => {
+  const editor = editorInstance.value
+  if (!editor) return
+
+  const { state, view, schema } = editor
+  const tr = state.tr
+  const newContent = createNodeFromContent(content, schema, {
+    parseOptions: { preserveWhitespace: 'full' },
+    errorOnInvalidContent: false
+  })
+
+  tr.replaceWith(0, tr.doc.content.size, newContent as any)
+
+  if (tr.doc.content.size === 0 && schema.nodes.paragraph) {
+    tr.insert(0, schema.nodes.paragraph.create())
+  }
+
+  try {
+    tr.setSelection(Selection.atStart(tr.doc))
+  } catch (selectionError) {
+    console.warn('设置初始选区失败，跳过:', selectionError)
+  }
+
+  tr.setMeta('preventUpdate', !emitUpdate)
+  view.dispatch(tr)
+}
+
 const applyInitialContent = () => {
   const editor = editorInstance.value
   if (!editor || !initialMarkdownContent.value) return
 
   console.log('设置初始 Markdown 内容到编辑器')
   const content = initialMarkdownContent.value.trim()
+  const normalizedContent = normalizePreloadedHtml(content)
 
   if (!content) return
 
@@ -341,12 +407,13 @@ const applyInitialContent = () => {
     try {
       // 检查当前编辑器是否为空
       const currentContent = editorInstance.value.getHTML()
-      const currentStripped = currentContent
-        ?.replace(/<[^>]*>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\u200B/g, '') // 零宽空格
-        .replace(/\uFEFF/g, '') // BOM
-        .trim() || ''
+      const currentStripped =
+        currentContent
+          ?.replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\u200B/g, '') // 零宽空格
+          .replace(/\uFEFF/g, '') // BOM
+          .trim() || ''
 
       const isEditorEmpty =
         !currentContent ||
@@ -380,21 +447,33 @@ const applyInitialContent = () => {
             })
           }
         }
-        // 使用 emitUpdate: true 触发协同同步
-        editorInstance.value.commands.setContent(content, true)
-        console.log('初始内容已设置并同步')
+        // 使用 setContentSafely 直接更新，避免首次载入时选区错误
+        try {
+          setContentSafely(normalizedContent, true)
+          console.log('初始内容已设置并同步')
+        } catch (setContentError) {
+          // 如果 chain 命令失败，尝试分步执行
+          console.warn('chain 命令失败，尝试分步设置内容:', setContentError)
+          try {
+            setContentSafely(normalizedContent, false)
+            console.log('初始内容已通过分步方式设置')
+          } catch (fallbackError) {
+            console.error('设置内容失败:', fallbackError)
+          }
+        }
 
         const verifyTimerId = setTimeout(() => {
           pendingTimers.value.delete(verifyTimerId)
           if (isUnmounted.value || !editorInstance.value) return
 
           const appliedContent = editorInstance.value.getHTML()
-          const appliedStripped = appliedContent
-            ?.replace(/<[^>]*>/g, '')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/\u200B/g, '')
-            .replace(/\uFEFF/g, '')
-            .trim() || ''
+          const appliedStripped =
+            appliedContent
+              ?.replace(/<[^>]*>/g, '')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/\u200B/g, '')
+              .replace(/\uFEFF/g, '')
+              .trim() || ''
 
           if (appliedStripped) {
             initialMarkdownContent.value = ''
@@ -416,7 +495,7 @@ const applyInitialContent = () => {
       console.error('设置初始内容失败:', error)
       // 如果设置失败，尝试设置一个空段落
       try {
-        editorInstance.value.commands.setContent('<p></p>', false)
+        setContentSafely('<p></p>', false)
       } catch (e) {
         console.error('设置空段落也失败:', e)
       }
@@ -634,7 +713,8 @@ const looksGarbled = (text: string) => {
   const replacementCount = (text.match(/\uFFFD/g) || []).length
   const total = text.length || 1
   const replacementRatio = replacementCount / total
-  const mojibakeCount = (text.match(/[\u00C3\u00C2\u00E2\u20AC\u2122\u201C\u201D\u2022]/g) || []).length
+  const mojibakeCount = (text.match(/[\u00C3\u00C2\u00E2\u20AC\u2122\u201C\u201D\u2022]/g) || [])
+    .length
   return replacementRatio > 0.02 || mojibakeCount > 3
 }
 
@@ -680,195 +760,6 @@ const base64ToText = async (base64: string): Promise<string> => {
     console.error('Base64 解码失败:', error)
     return ''
   }
-}
-
-/**
- * 将普通 Markdown 内容转换为 HTML（不包含红头文件标记）
- * @param content Markdown 内容
- * @returns HTML 内容
- */
-const convertMarkdownContent = (content: string): string => {
-  if (!content || content.trim() === '') return ''
-
-  // 提取并保护特殊内容，防止被错误转义
-  const placeholders: { placeholder: string; html: string }[] = []
-  let placeholderIndex = 0
-
-  // 处理代码块 ```language\ncode\n```
-  let html = content.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
-    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
-    const escapedCode = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const langClass = lang ? ` class="language-${lang}"` : ''
-    placeholders.push({
-      placeholder,
-      html: `<pre><code${langClass}>${escapedCode}</code></pre>`
-    })
-    placeholderIndex++
-    return placeholder
-  })
-
-  // 处理块级 AI 模块标记 :::ai ... :::
-  html = html.replace(/:::ai\s+([\s\S]*?)\s*:::/g, (_match, aiContent) => {
-    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
-    const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    // 将内容按换行分割为段落
-    const trimmedContent = aiContent.trim()
-    let innerHtml = ''
-    if (trimmedContent) {
-      // 将换行转换为段落
-      const paragraphs = trimmedContent
-        .split(/\n\n|\n/)
-        .filter((p: string) => p.trim())
-        .map((p: string) => `<p>${p.trim()}</p>`)
-      innerHtml = paragraphs.length > 0 ? paragraphs.join('') : `<p>${trimmedContent}</p>`
-    } else {
-      innerHtml = '<p></p>'
-    }
-    placeholders.push({
-      placeholder,
-      html: `<div data-type="ai-block-node" data-ai-id="${id}" class="ai-block-node">${innerHtml}</div>`
-    })
-    placeholderIndex++
-    return placeholder
-  })
-
-  // 处理行内 AI 模块标记 ==AI[内容]AI== - 转换为块级 AI 模块
-  html = html.replace(/==AI\[([\s\S]*?)\]AI==/g, (_match, aiContent) => {
-    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
-    const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const innerHtml = aiContent.trim() ? `<p>${aiContent.trim()}</p>` : '<p></p>'
-    placeholders.push({
-      placeholder,
-      html: `<div data-type="ai-block-node" data-ai-id="${id}" class="ai-block-node">${innerHtml}</div>`
-    })
-    placeholderIndex++
-    return placeholder
-  })
-
-  // 处理图片 ![alt](url)
-  html = html.replace(/!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)/g, (_match, alt, url) => {
-    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
-    placeholders.push({
-      placeholder,
-      html: `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`
-    })
-    placeholderIndex++
-    return placeholder
-  })
-
-  // 处理 Markdown 链接 [text](url)
-  html = html.replace(/\[((?:[^\[\]]|\[[^\]]*\])+)\]\(([^)]+)\)/g, (_match, text, url) => {
-    const placeholder = `XYZPLACEHOLDER${placeholderIndex}XYZ`
-    placeholders.push({
-      placeholder,
-      html: `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${text}</a>`
-    })
-    placeholderIndex++
-    return placeholder
-  })
-
-  html = html
-    // 转义 HTML 特殊字符
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // 标题
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // 粗体和斜体
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/___(.+?)___/g, '<strong><em>$1</em></strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    .replace(/_(.+?)_/g, '<em>$1</em>')
-    // 行内代码
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // 删除线
-    .replace(/~~(.+?)~~/g, '<s>$1</s>')
-    // 水平线
-    .replace(/^---$/gm, '<hr>')
-    .replace(/^\*\*\*$/gm, '<hr>')
-    // 引用
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    // 无序列表
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/^\* (.+)$/gm, '<li>$1</li>')
-    // 有序列表
-    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    // 自动链接裸 URL
-    .replace(/(\(|（)?(https?:\/\/[^\s<>]+)(\)|）)?/g, (_m, l, url, r) => {
-      const left = l || ''
-      const right = r || ''
-      return `${left}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${url}</a>${right}`
-    })
-    // 段落
-    .replace(/\n\n/g, '</p><p>')
-
-  // 包裹在段落中
-  html = '<p>' + html + '</p>'
-
-  // 清理多余的空段落
-  html = html.replace(/<p><\/p>/g, '')
-  html = html.replace(/<p>(<h[1-6]>)/g, '$1')
-  html = html.replace(/(<\/h[1-6]>)<\/p>/g, '$1')
-  html = html.replace(/<p>(<hr>)<\/p>/g, '$1')
-  html = html.replace(/<p>(<blockquote>)/g, '$1')
-  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1')
-  html = html.replace(/<p>(<li>)/g, '<ul>$1')
-  html = html.replace(/(<\/li>)<\/p>/g, '$1</ul>')
-  html = html.replace(/<p>(XYZPLACEHOLDER\d+XYZ)<\/p>/g, '$1') // 清理代码块周围的段落
-
-  // 合并连续的列表项
-  html = html.replace(/<\/ul><ul>/g, '')
-
-  // 恢复占位符内容
-  placeholders.forEach((item) => {
-    html = html.replace(item.placeholder, item.html)
-  })
-
-  return html
-}
-
-/**
- * Markdown 转 HTML
- * 支持红头文件标记块 <!-- REDHEADER:type -->...<!-- /REDHEADER -->
- * @param markdown Markdown 文本
- * @returns HTML 内容
- */
-const markdownToHtml = (markdown: string): string => {
-  if (isEmpty(markdown)) return ''
-
-  // 调试：打印原始 Markdown 内容
-  console.log('markdownToHtml 输入内容前100字符:', markdown.substring(0, 100))
-  console.log('是否包含 REDHEADER 标记:', markdown.includes('<!-- REDHEADER:'))
-
-  // 检查是否包含红头文件标记（更宽松的正则，允许空格和换行）
-  const redHeaderPattern = /<!--\s*REDHEADER:(\w+)\s*-->\s*([\s\S]*?)\s*<!--\s*\/REDHEADER\s*-->/
-  const match = markdown.match(redHeaderPattern)
-
-  if (match) {
-    console.log('检测到红头文件标记，类型:', match[1])
-    // 提取红头文件 HTML 和剩余内容
-    const redHeaderHtml = match[2].trim()
-    const restContent = markdown.replace(redHeaderPattern, '').trim()
-
-    console.log('红头文件 HTML 长度:', redHeaderHtml.length)
-    console.log('剩余内容长度:', restContent.length)
-
-    // 转换剩余内容为 HTML
-    const restHtml = restContent ? convertMarkdownContent(restContent) : ''
-
-    // 组合红头文件 HTML 和剩余内容
-    const result = (redHeaderHtml + restHtml).trim()
-    console.log('组合后 HTML 长度:', result.length)
-    return result
-  }
-
-  console.log('未检测到红头文件标记，使用普通转换')
-  // 没有红头文件标记，使用普通转换
-  return convertMarkdownContent(markdown)
 }
 
 // 初始 Markdown 内容（用于编辑器初始化后设置）

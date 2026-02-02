@@ -27,7 +27,7 @@ isProject: false
 2. 协同服务器把**旧 Y.Doc** 同步给客户端
 3. 当前代码检测到"编辑器已有内容"就**跳过**了新内容应用
 
-关键代码位置 [`MarkdownCollaborativeEditor.vue`](e:\job-project\collabedit-fe\src\views\template\editor\MarkdownCollaborativeEditor.vue) 第 304 行：
+关键代码位置 `[MarkdownCollaborativeEditor.vue](e:\job-project\collabedit-fe\src\views\template\editor\MarkdownCollaborativeEditor.vue)` 第 304 行：
 
 ```typescript
 // 当前逻辑：编辑器有内容（>10字符）就跳过
@@ -44,7 +44,7 @@ if (isEditorEmpty || (isFirstLoadWithContent.value && currentStripped.length < 1
 
 ### 修改点 1：强制应用逻辑
 
-修改 [`MarkdownCollaborativeEditor.vue`](e:\job-project\collabedit-fe\src\views\template\editor\MarkdownCollaborativeEditor.vue) 第 302-344 行的判断逻辑：
+修改 `[MarkdownCollaborativeEditor.vue](e:\job-project\collabedit-fe\src\views\template\editor\MarkdownCollaborativeEditor.vue)` 第 302-344 行的判断逻辑：
 
 ```typescript
 // 修改前：检查编辑器是否为空

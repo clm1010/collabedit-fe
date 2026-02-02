@@ -37,7 +37,7 @@ isProject: false
 - 检查并整理 `@collabedit-fe/src/views/training/performance/index.vue` 中写作流程：文件流获取、base64 转换、`saveDocContent` 写入成功后再跳转编辑器。
 - 若写入未完成即跳转，调整为确保 IndexedDB 写入完成后再进入编辑器。
 
-2. **编辑器预加载与协同同步的统一调度**
+1. **编辑器预加载与协同同步的统一调度**
 
 - 在 `@collabedit-fe/src/views/training/document/TiptapCollaborativeEditor.vue` 中引入“加载状态机/栅栏”：
 - 解析完成（preloadedContent ready）
@@ -46,19 +46,19 @@ isProject: false
 - 只有当以上条件满足时，才执行 `applyPreloadedContent`。
 - 将 IndexedDB 清理延后到“内容成功写入编辑器并确认应用”后。
 
-3. **Tiptap 子组件初始化时序检查**
+1. **Tiptap 子组件初始化时序检查**
 
 - 在 `@collabedit-fe/src/views/training/document/components/` 下确认 `TiptapEditor.vue` 的 `onCreate` / collaboration 绑定时序，避免 `onCreate` 先于协同同步完成导致内容覆盖。
 - 必要时增加一个事件/回调，由父组件在“协同同步完成”后才触发初次 `setContent`。
 
-4. **协同中间件同步策略修正**
+1. **协同中间件同步策略修正**
 
 - 在 `@collaborative-middleware/src/collaboration/collaboration.gateway.ts` 中验证：
 - 新文档同步空更新时是否会导致客户端“空文档覆盖”。
 - 如果存在持久化内容，应在首次连接时注入 Y.Doc（或延迟空同步）。
 - 为“首次加载带预置内容”场景增加策略：允许客户端优先写入预加载内容或服务端主动返回已持久化内容。
 
-5. **验证与回归**
+1. **验证与回归**
 
 - 以 `51af594f-d40d-43c2-b905-8ca9f06644c2` 文档复测：
 - 进入“写作”后，内容稳定显示。

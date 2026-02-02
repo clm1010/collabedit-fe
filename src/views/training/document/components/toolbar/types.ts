@@ -22,65 +22,189 @@ export interface DropdownOption {
 
 // 字体选项 - 参考 https://tiptap.dev/docs/editor/extensions/functionality/fontfamily
 export const fontFamilyOptions: DropdownOption[] = [
-  { label: '默认字体', value: '' },
-  { label: '宋体', value: 'SimSun, serif' },
-  { label: '黑体', value: 'SimHei, sans-serif' },
-  { label: '楷体', value: 'KaiTi, serif' },
-  { label: '楷体_GB2312', value: 'KaiTi_GB2312, KaiTi, serif' },
+  {
+    label: '方正大标宋简体',
+    value: 'FZDaBiaoSong-B06S, "方正大标宋简体", SimSun, serif'
+  },
+  { label: '方正舒体', value: 'FZShuTi-S05S, "方正舒体", KaiTi, serif' },
+  { label: '方正小标宋简体', value: 'FZXiaoBiaoSong-B05S, "方正小标宋简体", SimSun, serif' },
+  { label: '方正姚体', value: 'FZYaoTi, "方正姚体", KaiTi, serif' },
   { label: '仿宋', value: 'FangSong, serif' },
-  { label: '仿宋_GB2312', value: 'FangSong_GB2312, FangSong, serif' },
-  { label: '华文宋体', value: 'STSong, SimSun, serif' },
-  { label: '华文仿宋', value: 'STFangsong, FangSong, serif' },
-  { label: '方正仿宋简体', value: 'FZFangSong-Z02S, FangSong, serif' },
-  { label: '方正小标宋', value: 'FZXiaoBiaoSong-B05S, SimSun, serif' },
+  { label: '仿宋-GB2312', value: 'FangSong_GB2312, FangSong, serif' },
+  { label: '黑体', value: 'SimHei, sans-serif' },
+  { label: '华文彩云', value: 'STCaiyun, "华文彩云", cursive' },
+  { label: '华文仿宋', value: 'STFangsong, "华文仿宋", FangSong, serif' },
+  { label: '华文细黑', value: 'STXihei, "华文细黑", "Microsoft YaHei", sans-serif' },
+  { label: '华文楷体', value: 'STKaiti, "华文楷体", KaiTi, serif' },
+  { label: '华文宋体', value: 'STSong, "华文宋体", SimSun, serif' },
+  { label: '华文琥珀', value: 'STHupo, "华文琥珀", cursive' },
+  { label: '华文新魏', value: 'STXinwei, "华文新魏", serif' },
+  { label: '华文行楷', value: 'STXingkai, "华文行楷", KaiTi, serif' },
+  { label: '华文中宋', value: 'STZhongsong, "华文中宋", SimSun, serif' },
+  { label: '楷体', value: 'KaiTi, serif' },
+  { label: '楷体-GB2312', value: 'KaiTi_GB2312, KaiTi, serif' },
+  { label: '隶书', value: 'LiSu, serif' },
+  { label: '宋体', value: 'SimSun, serif' },
   { label: '微软雅黑', value: 'Microsoft YaHei, sans-serif' },
-  { label: 'Arial', value: 'Arial, sans-serif' },
-  { label: 'Times New Roman', value: 'Times New Roman, serif' },
-  { label: 'Verdana', value: 'Verdana, sans-serif' },
-  { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
-  { label: 'Calibri', value: 'Calibri, sans-serif' },
-  { label: 'Cambria', value: 'Cambria, serif' },
-  { label: 'Tahoma', value: 'Tahoma, sans-serif' },
-  { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Comic Sans MS', value: 'Comic Sans MS, cursive' },
-  { label: 'Impact', value: 'Impact, sans-serif' }
+  {
+    label: '微软雅黑 Light',
+    value: '"Microsoft YaHei Light", "Microsoft YaHei", "微软雅黑", sans-serif'
+  },
+  {
+    label: '文泉驿等宽微米黑',
+    value: '"WenQuanYi Zen Hei Mono", "文泉驿等宽微米黑", "Microsoft YaHei", sans-serif'
+  },
+  {
+    label: '文泉驿微米黑',
+    value: '"WenQuanYi Micro Hei", "文泉驿微米黑", "Microsoft YaHei", sans-serif'
+  },
+  { label: '新宋体', value: 'NSimSun, "新宋体", SimSun, serif' }
 ]
 
 // 字号选项 - 使用 px 单位，参考 https://tiptap.dev/docs/editor/extensions/functionality/fontsize
-// 中文字号与px对应关系: 初号=56px, 小初=48px, 一号=34.7px≈35px, 小一=32px, 二号=29.3px≈29px
-// 小二=24px, 三号=21.3px≈21px, 小三=20px, 四号=18.7px≈19px, 小四=16px, 五号=14px, 小五=12px, 小六=8.7px≈9px
+// 中文字号与px对应关系（1pt≈1.33px，按 Word 下拉顺序）:
+// 字号选项 - 使用 label 作为唯一标识符 (value)，避免重复值导致下拉框多选高亮
+// 初号=42pt=56px, 小初=36pt=48px, 一号=26pt≈34.7px, 小一=24pt=32px
+// 二号=22pt≈29.3px, 小二=18pt=24px, 三号=16pt≈21.3px, 小三=15pt=20px
+// 四号=14pt≈18.7px, 小四=12pt=16px, 五号=10.5pt=14px, 小五=9pt=12px
+// 六号=7.5pt=10px, 小六=6.5pt≈8.7px, 七号=5.5pt≈7.3px, 八号=5pt≈6.7px
 export const fontSizeOptions: DropdownOption[] = [
-  { label: '初号', value: '56px' },
-  { label: '小初', value: '48px' },
-  { label: '一号', value: '35px' },
-  { label: '小一', value: '32px' },
-  { label: '二号', value: '29px' },
-  { label: '小二', value: '24px' },
-  { label: '三号', value: '21px' },
-  { label: '小三', value: '20px' },
-  { label: '四号', value: '19px' },
-  { label: '小四', value: '16px' },
-  { label: '五号', value: '14px' },
-  { label: '小五', value: '12px' },
-  { label: '小六', value: '9px' },
-  { label: '默认', value: '' },
-  { label: '10px', value: '10px' },
-  { label: '11px', value: '11px' },
-  { label: '12px', value: '12px' },
-  { label: '16px', value: '16px' },
-  { label: '18px', value: '18px' },
-  { label: '20px', value: '20px' },
-  { label: '22px', value: '22px' },
-  { label: '24px', value: '24px' },
-  { label: '26px', value: '26px' },
-  { label: '28px', value: '28px' },
-  { label: '32px', value: '32px' },
-  { label: '36px', value: '36px' },
-  { label: '42px', value: '42px' },
-  { label: '48px', value: '48px' },
-  { label: '72px', value: '72px' },
-  { label: '96px', value: '96px' }
+  { label: '初号', value: '初号' },
+  { label: '小初', value: '小初' },
+  { label: '一号', value: '一号' },
+  { label: '小一', value: '小一' },
+  { label: '二号', value: '二号' },
+  { label: '小二', value: '小二' },
+  { label: '三号', value: '三号' },
+  { label: '小三', value: '小三' },
+  { label: '四号', value: '四号' },
+  { label: '小四', value: '小四' },
+  { label: '五号', value: '五号' },
+  { label: '小五', value: '小五' },
+  { label: '六号', value: '六号' },
+  { label: '小六', value: '小六' },
+  { label: '七号', value: '七号' },
+  { label: '八号', value: '八号' },
+  { label: '5', value: '5' },
+  { label: '5.5', value: '5.5' },
+  { label: '6.5', value: '6.5' },
+  { label: '7.5', value: '7.5' },
+  { label: '8', value: '8' },
+  { label: '9', value: '9' },
+  { label: '10', value: '10' },
+  { label: '10.5', value: '10.5' },
+  { label: '11', value: '11' },
+  { label: '12', value: '12' },
+  { label: '13.5', value: '13.5' },
+  { label: '14', value: '14' },
+  { label: '14.5', value: '14.5' },
+  { label: '16', value: '16' },
+  { label: '18', value: '18' },
+  { label: '20', value: '20' },
+  { label: '22', value: '22' },
+  { label: '24', value: '24' },
+  { label: '26', value: '26' },
+  { label: '28', value: '28' },
+  { label: '36', value: '36' },
+  { label: '48', value: '48' },
+  { label: '72', value: '72' }
 ]
+
+// 字号 label 到 px 值的映射表
+export const fontSizeLabelToPx: Record<string, string> = {
+  初号: '56px',
+  小初: '48px',
+  一号: '35px',
+  小一: '32px',
+  二号: '29px',
+  小二: '24px',
+  三号: '21px',
+  小三: '20px',
+  四号: '19px',
+  小四: '16px',
+  五号: '14px',
+  小五: '12px',
+  六号: '10px',
+  小六: '8.7px',
+  七号: '7.3px',
+  八号: '6.7px',
+  '5': '6.7px',
+  '5.5': '7.3px',
+  '6.5': '8.7px',
+  '7.5': '10px',
+  '8': '10.6px',
+  '9': '12px',
+  '10': '13.3px',
+  '10.5': '14px',
+  '11': '14.7px',
+  '12': '16px',
+  '13.5': '18px',
+  '14': '18.7px',
+  '14.5': '19.3px',
+  '16': '21.3px',
+  '18': '24px',
+  '20': '26.7px',
+  '22': '29.3px',
+  '24': '32px',
+  '26': '34.7px',
+  '28': '37.3px',
+  '36': '48px',
+  '48': '64px',
+  '72': '96px'
+}
+
+// px 值到字号 label 的反向映射（用于从文档读取时匹配）
+// 标准字号优先用中文名称，非标准字号使用数字标签
+export const fontSizePxToLabel: Record<string, string> = {
+  // 中文字号
+  '6.7px': '八号', // 5pt
+  '7.3px': '七号', // 5.5pt
+  '8.7px': '小六', // 6.5pt
+  '10px': '六号', // 7.5pt
+  '12px': '小五', // 9pt
+  '14px': '五号', // 10.5pt
+  '16px': '小四', // 12pt
+  '18.7px': '四号', // 14pt
+  '20px': '小三', // 15pt
+  '21.3px': '三号', // 16pt
+  '24px': '小二', // 18pt
+  '29.3px': '二号', // 22pt
+  '32px': '小一', // 24pt
+  '35px': '一号', // 26pt
+  '48px': '小初', // 36pt
+  '56px': '初号', // 42pt
+  // 数字字号（非标准或更细粒度）
+  '7px': '5', // 近似
+  '9px': '6.5', // 近似
+  '10.6px': '8', // 8pt
+  '11px': '8', // 近似
+  '13px': '10', // 近似
+  '13.3px': '10', // 10pt
+  '14.7px': '11', // 11pt
+  '15px': '11', // 近似
+  '17px': '13.5', // 近似
+  '17.9px': '13.5', // 13.5pt 精确
+  '18px': '13.5', // 13.5pt
+  '18.6px': '14', // 14pt 近似
+  '19px': '14', // 近似
+  '19.3px': '14.5', // 14.5pt
+  '21px': '16', // 近似
+  '22px': '16', // 近似
+  '25px': '18', // 近似
+  '26px': '20', // 近似
+  '26.7px': '20', // 20pt
+  '27px': '20', // 近似
+  '29px': '22', // 近似
+  '30px': '22', // 近似
+  '33px': '24', // 近似
+  '34.7px': '26', // 26pt
+  '36px': '28', // 近似
+  '37px': '28', // 近似
+  '37.3px': '28', // 28pt
+  '64px': '48', // 48pt
+  '72px': '72', // 近似
+  '96px': '72' // 72pt
+}
 
 // 行高选项
 export const lineHeightOptions: DropdownOption[] = [
