@@ -158,9 +158,15 @@ import {
   type DocumentInfo,
   type SubmitAuditReqVO
 } from './api/documentApi'
-import { parseFileContent } from './utils/wordParser'
+import {
+  docModelToDocx,
+  normalizeHtmlThroughDocModel,
+  parseFileContent,
+  parseHtmlToDocModel,
+  validateAndFixImages,
+  ImageStore
+} from './utils/wordParser'
 import { getDocContent, removeDocContent } from '@/views/utils/docStorage'
-import { htmlToDocx } from '@/views/utils/htmlToDocx'
 
 // Props
 interface Props {
@@ -569,11 +575,244 @@ const normalizePreloadedHtml = (html: string) => {
   return result
 }
 
+const sanitizePreloadedImages = (html: string) => {
+  if (!html || !/data:image\//i.test(html)) return html
+  return html.replace(/<img\b[^>]*>/gi, (tag) => {
+    if (!/src=(["'])data:image\//i.test(tag)) return tag
+    let next = tag
+    if (!/data-imported=/i.test(next)) {
+      next = next.replace(/<img\b/i, '<img data-imported="true"')
+    }
+    // 移除高度属性，避免重新进入后按错误高度裁剪
+    next = next.replace(/\sheight=(["']).*?\1/gi, '')
+    next = next.replace(/\sstyle=(["'])([^"']*)\1/gi, (_m, quote, style) => {
+      const cleaned = String(style)
+        .replace(/height\s*:\s*[^;]+;?/gi, '')
+        .replace(/;\s*;/g, ';')
+        .replace(/^\s*;\s*/, '')
+        .replace(/\s*;\s*$/, '')
+        .trim()
+      return cleaned ? ` style=${quote}${cleaned}${quote}` : ''
+    })
+    return next
+  })
+}
+
+const sanitizeImagesIfNeeded = (html: string, source: string) => {
+  if (!html) return html
+  if (!/<img\b/i.test(html) && !/data:image\//i.test(html)) return html
+  const normalized = source === 'preload' ? sanitizePreloadedImages(html) : html
+  const sanitized = validateAndFixImages(normalized)
+  if (sanitized !== html) {
+    const count = (html.match(/data:image\//gi) || []).length
+    console.info(
+      `[tiptap] 修复 data:image: source=${source}, count=${count}, before=${html.length}, after=${sanitized.length}`
+    )
+  }
+  return sanitized
+}
+
 const hasStyleHints = (html: string) => {
   if (!html) return false
   return /font-family:|font-size:|color:|background-color:|text-align:|data-text-align|<h[1-6]\b|<mark\b/i.test(
     html
   )
+}
+
+const imageStore = new ImageStore()
+
+const replaceDataImagesWithBlobUrls = async (html: string) => {
+  if (!html) return html
+  if (!/data:image\//i.test(html)) return html
+  return imageStore.replaceDataImagesWithBlobUrls(html)
+}
+
+const downloadTextFile = (content: string, filename: string, mimeType: string) => {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+type DebugLogEntry = {
+  ts: string
+  level: 'error' | 'warn' | 'info'
+  message: string
+  stack?: string
+  args?: string[]
+}
+
+const debugLogLimit = 300
+const debugLogs: DebugLogEntry[] = []
+let detachErrorHandlers: (() => void) | null = null
+
+const safeStringify = (value: unknown): string => {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const formatArgs = (args: unknown[]): { message: string; stack?: string; args?: string[] } => {
+  const normalized = args.map((arg) => {
+    if (arg instanceof Error) {
+      return `${arg.name}: ${arg.message}`
+    }
+    if (typeof arg === 'string') return arg
+    return safeStringify(arg)
+  })
+  const firstError = args.find((arg) => arg instanceof Error) as Error | undefined
+  return {
+    message: normalized.join(' '),
+    stack: firstError?.stack,
+    args: normalized
+  }
+}
+
+const pushDebugLog = (level: DebugLogEntry['level'], args: unknown[]) => {
+  const entry = formatArgs(args)
+  debugLogs.push({
+    ts: new Date().toISOString(),
+    level,
+    message: entry.message,
+    stack: entry.stack,
+    args: entry.args
+  })
+  if (debugLogs.length > debugLogLimit) {
+    debugLogs.splice(0, debugLogs.length - debugLogLimit)
+  }
+}
+
+const installDebugCollectors = () => {
+  const globalAny = globalThis as any
+  if (!globalAny.__docDebugConsolePatched) {
+    globalAny.__docDebugConsolePatched = true
+    globalAny.__docDebugConsoleOriginal = {
+      error: console.error,
+      warn: console.warn,
+      info: console.info
+    }
+    console.error = (...args: unknown[]) => {
+      pushDebugLog('error', args)
+      globalAny.__docDebugConsoleOriginal.error(...args)
+    }
+    console.warn = (...args: unknown[]) => {
+      pushDebugLog('warn', args)
+      globalAny.__docDebugConsoleOriginal.warn(...args)
+    }
+    console.info = (...args: unknown[]) => {
+      pushDebugLog('info', args)
+      globalAny.__docDebugConsoleOriginal.info(...args)
+    }
+  }
+
+  const handleError = (event: ErrorEvent) => {
+    const err = event.error instanceof Error ? event.error : undefined
+    pushDebugLog('error', [event.message, err || event.filename])
+  }
+  const handleRejection = (event: PromiseRejectionEvent) => {
+    pushDebugLog('error', [event.reason || 'Unhandled rejection'])
+  }
+
+  window.addEventListener('error', handleError)
+  window.addEventListener('unhandledrejection', handleRejection)
+  detachErrorHandlers = () => {
+    window.removeEventListener('error', handleError)
+    window.removeEventListener('unhandledrejection', handleRejection)
+  }
+}
+
+const exportDebugArtifacts = () => {
+  const title = documentTitle.value || 'document'
+  const stamp = dayjs().format('YYYYMMDD-HHmmss')
+  const safeTitle = title.replace(/[\\/:*?"<>|]+/g, '_')
+
+  const summarizeHtml = (html: string) => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('root')
+    if (!root) return { error: 'parse_failed' }
+
+    const count = (selector: string) => root.querySelectorAll(selector).length
+    const textOf = (selector: string, limit = 5) =>
+      Array.from(root.querySelectorAll(selector))
+        .slice(0, limit)
+        .map((el) => (el.textContent || '').trim())
+        .filter(Boolean)
+
+    return {
+      length: html.length,
+      paragraphs: count('p'),
+      headings: count('h1,h2,h3,h4,h5,h6'),
+      images: count('img'),
+      tables: count('table'),
+      lists: count('ul,ol'),
+      listItems: count('li'),
+      lineBreaks: count('br'),
+      dataImages: (html.match(/data:image\//gi) || []).length,
+      blobImages: (html.match(/blob:/gi) || []).length,
+      headingSamples: textOf('h1,h2,h3,h4,h5,h6'),
+      listItemSamples: textOf('li')
+    }
+  }
+
+  const rawHtml = editorInstance.value?.getHTML?.() || ''
+  const normalizedHtml = normalizeHtmlThroughDocModel(rawHtml, {
+    source: 'html',
+    method: 'debug-export'
+  })
+  const docModel = parseHtmlToDocModel(normalizedHtml, {
+    source: 'html',
+    method: 'debug-export'
+  })
+
+  const preloadHtml = preloadedContent.value || ''
+  const summary = {
+    editor: summarizeHtml(rawHtml),
+    normalized: summarizeHtml(normalizedHtml),
+    preload: preloadHtml ? summarizeHtml(preloadHtml) : { length: 0 }
+  }
+
+  downloadTextFile(rawHtml, `${safeTitle}-editor-${stamp}.html`, 'text/html')
+  downloadTextFile(normalizedHtml, `${safeTitle}-normalized-${stamp}.html`, 'text/html')
+  downloadTextFile(
+    JSON.stringify(docModel, null, 2),
+    `${safeTitle}-docmodel-${stamp}.json`,
+    'application/json'
+  )
+
+  if (preloadHtml) {
+    downloadTextFile(preloadHtml, `${safeTitle}-preload-${stamp}.html`, 'text/html')
+  }
+
+  downloadTextFile(
+    JSON.stringify(summary, null, 2),
+    `${safeTitle}-summary-${stamp}.json`,
+    'application/json'
+  )
+
+  downloadTextFile(
+    JSON.stringify(
+      {
+        collectedAt: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        documentId: documentId.value,
+        logs: debugLogs
+      },
+      null,
+      2
+    ),
+    `${safeTitle}-errors-${stamp}.json`,
+    'application/json'
+  )
+
+  ElMessage.success('诊断文件已导出')
 }
 
 const setContentSafely = (content: string, emitUpdate = true) => {
@@ -607,10 +846,10 @@ const tryApplyPreloadedContent = () => {
   if (preloadedApplied.value || !preloadedContent.value) return
   if (!isEditorReady.value) return
   if (!isCollaborationSynced.value && !shouldDelayCollaborationConnect.value) return
-  applyPreloadedContent()
+  void applyPreloadedContent()
 }
 
-const applyPreloadedContent = () => {
+const applyPreloadedContent = async () => {
   if (!editorInstance.value || !preloadedContent.value || preloadedApplied.value) {
     console.log('applyPreloadedContent 跳过:', {
       hasEditor: !!editorInstance.value,
@@ -623,6 +862,7 @@ const applyPreloadedContent = () => {
     console.log('设置预加载内容到编辑器')
     const content = preloadedContent.value.trim()
     const normalizedContent = normalizePreloadedHtml(content)
+    const safeContent = sanitizeImagesIfNeeded(normalizedContent, 'preload')
     const strippedContent = content
       .replace(/<[^>]*>/g, '')
       .replace(/&nbsp;/g, ' ')
@@ -630,7 +870,7 @@ const applyPreloadedContent = () => {
     if (content && strippedContent.length > 0) {
       // 在协同编辑模式下，需要使用 emitUpdate: true 来触发 Yjs 同步
       // 使用多次重试机制，确保在协同同步后正确应用预加载内容
-      const tryApplyContent = (retryCount = 0, maxRetries = 5, delay = 300) => {
+      const tryApplyContent = async (retryCount = 0, maxRetries = 5, delay = 300) => {
         // 检查组件是否已卸载，避免内存泄漏
         if (isUnmounted.value) return
         if (!editorInstance.value || preloadedApplied.value) return
@@ -646,7 +886,7 @@ const applyPreloadedContent = () => {
             .trim() || ''
 
         const currentHasStyle = hasStyleHints(currentContent || '')
-        const preloadedHasStyle = hasStyleHints(normalizedContent || '')
+        const preloadedHasStyle = hasStyleHints(safeContent || '')
         const shouldForceApply = preloadedHasStyle && !currentHasStyle
 
         const isEditorEmpty =
@@ -674,14 +914,17 @@ const applyPreloadedContent = () => {
           (isFirstLoadWithContent.value && currentStripped.length < 10)
         ) {
           console.log('应用预加载内容到编辑器')
+          const contentWithBlobs = /data:image\//i.test(safeContent)
+            ? await replaceDataImagesWithBlobUrls(safeContent)
+            : safeContent
           // 使用 emitUpdate: true 确保触发协同同步
           try {
-            setContentSafely(normalizedContent, true)
+            setContentSafely(contentWithBlobs, true)
           } catch (setContentError) {
             // 如果 chain 命令失败，尝试分步执行
             console.warn('chain 命令失败，尝试分步设置内容:', setContentError)
             try {
-              setContentSafely(normalizedContent, false)
+              setContentSafely(contentWithBlobs, false)
             } catch (fallbackError) {
               console.error('设置内容失败:', fallbackError)
             }
@@ -701,7 +944,7 @@ const applyPreloadedContent = () => {
                 .trim() || ''
 
             const appliedHasStyle = hasStyleHints(appliedContent || '')
-            const preloadedHasStyle = hasStyleHints(normalizedContent || '')
+            const preloadedHasStyle = hasStyleHints(contentWithBlobs || '')
 
             if (appliedStripped && !(preloadedHasStyle && !appliedHasStyle)) {
               preloadedApplied.value = true
@@ -802,9 +1045,17 @@ const handleSave = async () => {
   try {
     // 获取编辑器的 HTML 内容
     const content = editorInstance.value.getHTML()
+    const normalizedHtml = normalizeHtmlThroughDocModel(content, {
+      source: 'html',
+      method: 'tiptap-html'
+    })
+    const docModel = parseHtmlToDocModel(normalizedHtml, {
+      source: 'html',
+      method: 'tiptap-html'
+    })
 
-    // 使用 htmlToDocx 生成真实的 DOCX 文件
-    const blob = await htmlToDocx(content, documentTitle.value)
+    // 使用 DocModel 生成真实的 DOCX 文件
+    const blob = await docModelToDocx(docModel, documentTitle.value)
     const filename = `${documentTitle.value}.docx`
     console.log(
       '保存文件，文档ID:',
@@ -938,6 +1189,9 @@ watch(
 
 // 组件挂载
 onMounted(async () => {
+  ;(globalThis as any).__exportDocDebug = exportDebugArtifacts
+  ;(globalThis as any).__replaceDataImages = replaceDataImagesWithBlobUrls
+  installDebugCollectors()
   // 检查是否有预加载的文件内容（从 IndexedDB 中获取，避免 sessionStorage 配额限制）
   const cachedContentKey = `doc_content_${documentId.value}`
   const cachedContent = await getDocContent(documentId.value)
@@ -957,7 +1211,10 @@ onMounted(async () => {
       console.log('发现预加载的文件内容，正在解析...', '内容长度:', cachedContent.length)
 
       // 解析 base64 文件流为文档内容
-      const parsedContent = await parseFileContent(cachedContent)
+      const parsedContent = await parseFileContent(cachedContent, undefined, {
+        // 重新进入编辑器时避免 docx-preview 裁剪图片
+        useDocxPreview: false
+      })
 
       if (parsedContent) {
         preloadedContent.value = parsedContent
@@ -992,6 +1249,17 @@ onMounted(async () => {
 // 组件卸载 - 清理非协同相关的资源
 // 注意: useCollaboration hook 会自动清理协同编辑相关的资源（ydoc, provider, 事件监听器等）
 onBeforeUnmount(() => {
+  const globalAny = globalThis as any
+  if (globalAny.__exportDocDebug === exportDebugArtifacts) {
+    delete globalAny.__exportDocDebug
+  }
+  if (globalAny.__replaceDataImages === replaceDataImagesWithBlobUrls) {
+    delete globalAny.__replaceDataImages
+  }
+  if (detachErrorHandlers) {
+    detachErrorHandlers()
+    detachErrorHandlers = null
+  }
   // 标记组件已卸载，防止异步回调继续执行
   isUnmounted.value = true
 
@@ -1014,6 +1282,8 @@ onBeforeUnmount(() => {
   // 清理编辑器实例引用
   editorInstance.value = null
   tiptapEditorRef.value = null
+
+  imageStore.clear()
 
   // 清理其他响应式引用
   referenceMaterials.value = []
@@ -1052,4 +1322,5 @@ onBeforeUnmount(() => {
     pointer-events: auto;
   }
 }
+
 </style>

@@ -234,7 +234,8 @@ const applyParagraphBackground = (pPr: any, styleArr: string[]) => {
 function convertParagraphToHtml(
   para: any,
   stylesMap: Record<string, any>,
-  imageMap?: Map<string, string>
+  imageMap?: Map<string, string>,
+  hyperlinkMap?: Map<string, string>
 ): string {
   if (!para) return ''
 
@@ -347,11 +348,22 @@ function convertParagraphToHtml(
 
   const hyperlink = para['w:hyperlink']
   if (hyperlink) {
-    const hyperlinkRuns = hyperlink['w:r']
-    if (hyperlinkRuns) {
+    const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
+    for (const linkItem of hyperlinkList) {
+      const hyperlinkRuns = linkItem?.['w:r']
+      if (!hyperlinkRuns) continue
       const runsList = Array.isArray(hyperlinkRuns) ? hyperlinkRuns : [hyperlinkRuns]
+      let linkContent = ''
       for (const run of runsList) {
-        content += convertRunToHtml(run, stylesMap, imageMap, baseRPr)
+        linkContent += convertRunToHtml(run, stylesMap, imageMap, baseRPr)
+      }
+      const linkId = linkItem?.['@_r:id']
+      const anchor = linkItem?.['@_w:anchor']
+      const href = linkId ? hyperlinkMap?.get(linkId) : anchor ? `#${anchor}` : ''
+      if (href) {
+        content += `<a href="${href}">${linkContent}</a>`
+      } else {
+        content += linkContent
       }
     }
   }
@@ -648,6 +660,34 @@ async function processImages(
 }
 
 /**
+ * 处理超链接关系
+ */
+async function processHyperlinks(relsContent: string): Promise<Map<string, string>> {
+  const hyperlinkMap = new Map<string, string>()
+  try {
+    const { XMLParser } = await import('fast-xml-parser')
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_'
+    })
+    const relsObj = parser.parse(relsContent)
+    const relationships = relsObj?.['Relationships']?.['Relationship'] || []
+    const relsList = Array.isArray(relationships) ? relationships : [relationships]
+    for (const rel of relsList) {
+      const type = rel['@_Type'] || ''
+      const target = rel['@_Target'] || ''
+      const id = rel['@_Id'] || ''
+      if (type.includes('hyperlink') && id && target) {
+        hyperlinkMap.set(id, target)
+      }
+    }
+  } catch (e) {
+    console.warn('处理超链接映射失败:', e)
+  }
+  return hyperlinkMap
+}
+
+/**
  * 普通文件 - OOXML 完整解析方案
  * 达到 95%+ 还原度
  */
@@ -691,9 +731,11 @@ export async function parseOoxmlDocument(
 
     const relsFile = zip.file('word/_rels/document.xml.rels')
     let imageMap = new Map<string, string>()
+    let hyperlinkMap = new Map<string, string>()
     if (relsFile) {
       const relsContent = await relsFile.async('string')
       imageMap = await processImages(zip, documentXml, relsContent)
+      hyperlinkMap = await processHyperlinks(relsContent)
     }
 
     onProgress?.(60, '正在生成 HTML...')
@@ -728,9 +770,9 @@ export async function parseOoxmlDocument(
       if (Array.isArray(bodyContent)) {
         for (const item of bodyContent) {
           if (item['w:p'] !== undefined) {
-            elements.push(convertParagraphToHtml(item, stylesMap, imageMap))
+            elements.push(convertParagraphToHtml(item, stylesMap, imageMap, hyperlinkMap))
           } else if (item['w:tbl'] !== undefined) {
-            elements.push(convertTableToHtml(item['w:tbl'], stylesMap, imageMap))
+            elements.push(convertTableToHtml(item['w:tbl'], stylesMap, imageMap, hyperlinkMap))
           }
         }
         return
@@ -740,7 +782,7 @@ export async function parseOoxmlDocument(
       if (paragraphs) {
         const paraList = Array.isArray(paragraphs) ? paragraphs : [paragraphs]
         for (const para of paraList) {
-          elements.push(convertParagraphToHtml(para, stylesMap, imageMap))
+          elements.push(convertParagraphToHtml(para, stylesMap, imageMap, hyperlinkMap))
         }
       }
 
@@ -748,7 +790,7 @@ export async function parseOoxmlDocument(
       if (tables) {
         const tableList = Array.isArray(tables) ? tables : [tables]
         for (const table of tableList) {
-          elements.push(convertTableToHtml(table, stylesMap, imageMap))
+          elements.push(convertTableToHtml(table, stylesMap, imageMap, hyperlinkMap))
         }
       }
     }
@@ -780,7 +822,8 @@ export async function parseOoxmlDocument(
 function convertTableToHtml(
   table: any,
   stylesMap: Record<string, any>,
-  imageMap?: Map<string, string>
+  imageMap?: Map<string, string>,
+  hyperlinkMap?: Map<string, string>
 ): string {
   if (!table) return ''
 
@@ -833,6 +876,27 @@ function convertTableToHtml(
               const runsList = Array.isArray(runs) ? runs : [runs]
               for (const run of runsList) {
                 cellContent += convertRunToHtml(run, stylesMap, imageMap)
+              }
+            }
+            const hyperlink = para['w:hyperlink']
+            if (hyperlink) {
+              const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
+              for (const linkItem of hyperlinkList) {
+                const hyperlinkRuns = linkItem?.['w:r']
+                if (!hyperlinkRuns) continue
+                const linkRuns = Array.isArray(hyperlinkRuns) ? hyperlinkRuns : [hyperlinkRuns]
+                let linkContent = ''
+                for (const run of linkRuns) {
+                  linkContent += convertRunToHtml(run, stylesMap, imageMap)
+                }
+                const linkId = linkItem?.['@_r:id']
+                const anchor = linkItem?.['@_w:anchor']
+                const href = linkId ? hyperlinkMap?.get(linkId) : anchor ? `#${anchor}` : ''
+                if (href) {
+                  cellContent += `<a href="${href}">${linkContent}</a>`
+                } else {
+                  cellContent += linkContent
+                }
               }
             }
           }

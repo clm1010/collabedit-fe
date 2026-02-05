@@ -26,8 +26,16 @@ const convertMarkdownContent = (content: string): string => {
   // 处理块级 AI 模块标记 :::ai ... :::
   html = html.replace(/:::ai\s+([\s\S]*?)\s*:::/g, (_match, aiContent) => {
     const id = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    // 将内容按换行分割为段落
     const trimmedContent = aiContent.trim()
+
+    // 提取 title 属性（格式：title: xxx），用于设置 data-ai-title 属性
+    let title = ''
+    const titleMatch = trimmedContent.match(/^title:\s*(.+?)(?:\n|$)/i)
+    if (titleMatch) {
+      title = titleMatch[1].trim()
+    }
+
+    // 将内容按换行分割为段落（保留 title 行作为内容的一部分）
     let innerHtml = ''
     if (trimmedContent) {
       // 将换行转换为段落
@@ -39,8 +47,10 @@ const convertMarkdownContent = (content: string): string => {
     } else {
       innerHtml = '<p></p>'
     }
+
+    const titleAttr = title ? ` data-ai-title="${title}"` : ''
     return pm.add(
-      `<div data-type="ai-block-node" data-ai-id="${id}" class="ai-block-node">${innerHtml}</div>`
+      `<div data-type="ai-block-node" data-ai-id="${id}"${titleAttr} class="ai-block-node">${innerHtml}</div>`
     )
   })
 
@@ -54,24 +64,16 @@ const convertMarkdownContent = (content: string): string => {
   })
 
   // 处理图片 ![alt](url)
-  html = html.replace(
-    /!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)/g,
-    (_match, alt, url) => {
-      return pm.add(
-        `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`
-      )
-    }
-  )
+  html = html.replace(/!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)/g, (_match, alt, url) => {
+    return pm.add(`<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`)
+  })
 
   // 处理 Markdown 链接 [text](url)
-  html = html.replace(
-    /\[((?:[^\[\]]|\[[^\]]*\])+)\]\(([^)]+)\)/g,
-    (_match, text, url) => {
-      return pm.add(
-        `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${text}</a>`
-      )
-    }
-  )
+  html = html.replace(/\[((?:[^\[\]]|\[[^\]]*\])+)\]\(([^)]+)\)/g, (_match, text, url) => {
+    return pm.add(
+      `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${text}</a>`
+    )
+  })
 
   // 保留带对齐样式的 HTML 标签（段落和标题）
   // 这些是从 htmlToMarkdown 保存时保留的原始 HTML
@@ -81,9 +83,8 @@ const convertMarkdownContent = (content: string): string => {
   )
 
   // 保留带颜色样式的 span 标签（字体颜色）
-  html = html.replace(
-    /<span[^>]*style="[^"]*color\s*:[^"]*"[^>]*>[\s\S]*?<\/span>/gi,
-    (match) => pm.add(match)
+  html = html.replace(/<span[^>]*style="[^"]*color\s*:[^"]*"[^>]*>[\s\S]*?<\/span>/gi, (match) =>
+    pm.add(match)
   )
 
   // 保留带背景色的 mark 标签（背景高亮）
@@ -169,8 +170,7 @@ export const markdownToHtml = (markdown: string): string => {
   if (!markdown || markdown.trim() === '') return ''
 
   // 检查是否包含红头文件标记（更宽松的正则，允许空格和换行）
-  const redHeaderPattern =
-    /<!--\s*REDHEADER:(\w+)\s*-->\s*([\s\S]*?)\s*<!--\s*\/REDHEADER\s*-->/
+  const redHeaderPattern = /<!--\s*REDHEADER:(\w+)\s*-->\s*([\s\S]*?)\s*<!--\s*\/REDHEADER\s*-->/
   const match = markdown.match(redHeaderPattern)
 
   if (match) {

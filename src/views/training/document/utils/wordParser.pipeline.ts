@@ -3,7 +3,8 @@ import {
   base64ToUint8Array,
   detectWordFormat,
   isDocFormat,
-  isZipFormat
+  isZipFormat,
+  validateAndFixImages
 } from './wordParser.shared'
 import { convertInlineStylesToTiptap } from './wordParser.postprocess'
 import { parseWordDocument } from './wordParser.mammoth'
@@ -14,6 +15,9 @@ import {
   validateDocxFile
 } from './wordParser.ooxml'
 import { isRedHeadDocument, parseRedHeadDocument } from './wordParser.redhead'
+import { parseDocxToDocModel } from './docModel/parser'
+import { serializeDocModelToHtml } from './docModel/serializer'
+import { parseWithWorker } from './wordParser.worker'
 
 /**
  * 解析文件内容
@@ -21,14 +25,29 @@ import { isRedHeadDocument, parseRedHeadDocument } from './wordParser.redhead'
  */
 export const parseFileContent = async (
   base64Data: string,
-  onProgress?: ParseProgressCallback
+  onProgress?: ParseProgressCallback,
+  options: { useDocxPreview?: boolean } = {}
 ): Promise<string> => {
   try {
     console.log('开始解析文件内容, 数据长度:', base64Data.length)
+    const allowDocxPreview = options.useDocxPreview !== false
 
     onProgress?.(15, '正在分析文件格式...')
 
     const base64Index = base64Data.indexOf(',')
+    const sanitizeImagesIfNeeded = (html: string, source: string): string => {
+      if (!html) return html
+      if (!/<img\b/i.test(html) && !/data:image\//i.test(html)) return html
+      const sanitized = validateAndFixImages(html)
+      if (sanitized !== html) {
+        const count = (html.match(/data:image\//gi) || []).length
+        console.info(
+          `[wordParser] 修复 data:image: source=${source}, count=${count}, before=${html.length}, after=${sanitized.length}`
+        )
+      }
+      return sanitized
+    }
+
     if (base64Index === -1) {
       console.warn('无效的 base64 数据格式，尝试直接作为 base64 解码')
       try {
@@ -47,20 +66,32 @@ export const parseFileContent = async (
               console.log('检测到红头文件格式，使用红头文件解析器...')
               onProgress?.(25, '检测到红头文件，使用专用解析器...')
               console.info('[wordParser] parseFileContent: parser=redhead')
-              return await parseRedHeadDocument(arrayBuffer, onProgress)
+              return sanitizeImagesIfNeeded(
+                await parseRedHeadDocument(arrayBuffer, onProgress),
+                'redhead'
+              )
             }
           } catch (e) {
             console.warn('红头文件检测失败，继续使用标准解析器:', e)
           }
 
           try {
-            const html = await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
-            console.info('[wordParser] parseFileContent: parser=ooxml-enhanced')
-            return convertInlineStylesToTiptap(html)
+            const model = await parseDocxToDocModel(arrayBuffer, {
+              onProgress,
+              useDocxPreview: allowDocxPreview,
+              useMammothFallback: true,
+              useZipJs: true
+            })
+            const html = serializeDocModelToHtml(model)
+            console.info('[wordParser] parseFileContent: parser=docmodel')
+            return sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
           } catch (e) {
-            console.warn('增强 OOXML 解析失败，回退到 mammoth:', e)
+            console.warn('DocModel 解析失败，回退到 mammoth:', e)
             console.info('[wordParser] parseFileContent: parser=mammoth')
-            return await parseWordDocument(arrayBuffer, onProgress)
+            return sanitizeImagesIfNeeded(
+              await parseWordDocument(arrayBuffer, onProgress),
+              'mammoth'
+            )
           }
         }
       } catch (e) {
@@ -85,7 +116,7 @@ export const parseFileContent = async (
       console.log('处理为文本类型')
       onProgress?.(80, '正在处理文本内容...')
       const decoder = new TextDecoder('utf-8')
-      return decoder.decode(bytes)
+      return sanitizeImagesIfNeeded(decoder.decode(bytes), 'text')
     } else if (
       mimeType.includes('application/vnd.openxmlformats') ||
       mimeType.includes('application/msword') ||
@@ -121,9 +152,9 @@ export const parseFileContent = async (
           onProgress?.(80, '正在处理 HTML 内容...')
           const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
           if (bodyMatch) {
-            return bodyMatch[1].trim()
+            return sanitizeImagesIfNeeded(bodyMatch[1].trim(), 'html-body')
           }
-          return text
+          return sanitizeImagesIfNeeded(text, 'html-full')
         }
 
         throw new Error('不支持的文件格式，请上传 .docx 文件')
@@ -142,20 +173,29 @@ export const parseFileContent = async (
           console.log('检测到红头文件格式，使用红头文件解析器...')
           onProgress?.(30, '检测到红头文件，正在解析...')
           console.info('[wordParser] parseFileContent: parser=redhead')
-          return await parseRedHeadDocument(arrayBuffer, onProgress)
+          return sanitizeImagesIfNeeded(
+            await parseRedHeadDocument(arrayBuffer, onProgress),
+            'redhead'
+          )
         }
       } catch (e) {
         console.warn('红头文件检测失败，继续使用标准解析器:', e)
       }
 
       try {
-        const html = await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
-        console.info('[wordParser] parseFileContent: parser=ooxml-enhanced')
-        return convertInlineStylesToTiptap(html)
+        const model = await parseDocxToDocModel(arrayBuffer, {
+          onProgress,
+          useDocxPreview: allowDocxPreview,
+          useMammothFallback: true,
+          useZipJs: true
+        })
+        const html = serializeDocModelToHtml(model)
+        console.info('[wordParser] parseFileContent: parser=docmodel')
+        return sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
       } catch (e) {
-        console.warn('增强 OOXML 解析失败，回退到 mammoth:', e)
+        console.warn('DocModel 解析失败，回退到 mammoth:', e)
         console.info('[wordParser] parseFileContent: parser=mammoth')
-        return await parseWordDocument(arrayBuffer, onProgress)
+        return sanitizeImagesIfNeeded(await parseWordDocument(arrayBuffer, onProgress), 'mammoth')
       }
     }
 
@@ -267,44 +307,4 @@ export async function smartParseDocument(
 /**
  * 使用 Web Worker 解析（大文件）
  */
-export function parseWithWorker(
-  arrayBuffer: ArrayBuffer,
-  onProgress?: ParseProgressCallback
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    try {
-      const worker = new Worker(new URL('./wordParserWorker.ts', import.meta.url), {
-        type: 'module'
-      })
-
-      worker.onmessage = (e) => {
-        const { type, html, progress, text, error, reason } = e.data
-
-        if (type === 'progress') {
-          onProgress?.(progress, text)
-        } else if (type === 'success') {
-          resolve(html)
-          worker.terminate()
-        } else if (type === 'fallback') {
-          worker.terminate()
-          console.log('Worker 需要 DOM，回退到主线程:', reason)
-          parseWithDocxPreview(arrayBuffer, onProgress).then(resolve).catch(reject)
-        } else if (type === 'error') {
-          reject(new Error(error))
-          worker.terminate()
-        }
-      }
-
-      worker.onerror = (e) => {
-        console.error('Worker 错误:', e)
-        worker.terminate()
-        parseWithDocxPreview(arrayBuffer, onProgress).then(resolve).catch(reject)
-      }
-
-      worker.postMessage({ arrayBuffer, method: 'ooxml' }, [arrayBuffer])
-    } catch (e) {
-      console.warn('Worker 创建失败，回退到 docx-preview:', e)
-      parseWithDocxPreview(arrayBuffer, onProgress).then(resolve).catch(reject)
-    }
-  })
-}
+export { parseWithWorker }

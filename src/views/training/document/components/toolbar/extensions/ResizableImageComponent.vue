@@ -214,7 +214,7 @@ let dragStartPreviewY = 0
 // 当前对齐方式
 const currentAlign = computed(() => props.node.attrs.align || 'center')
 
-// wrapper 样式（用于对齐）
+// wrapper 样式（用于对齐）- 强制覆盖 ProseMirror 可能的默认样式
 const wrapperStyle = computed(() => {
   const align = props.node.attrs.align || 'center'
   let justifyContent = 'center'
@@ -227,12 +227,17 @@ const wrapperStyle = computed(() => {
 
   return {
     display: 'flex',
-    justifyContent
+    justifyContent,
+    width: '100%',
+    height: 'auto',
+    minHeight: 'fit-content',
+    overflow: 'visible'
   }
 })
 
 // 编辑器可用宽度（A4 页面宽度 794px - 左右边距 120*2 = 554px，留一些余量）
 const MAX_IMAGE_WIDTH = 540
+const editorMaxWidth = ref(MAX_IMAGE_WIDTH)
 
 // 调整大小的状态
 let startX = 0
@@ -242,51 +247,73 @@ let startHeight = 0
 let resizeDirection = ''
 
 const containerStyle = computed(() => {
-  let width = props.node.attrs.width || currentWidth.value
-  let height = props.node.attrs.height || currentHeight.value
-
-  // 确保宽度不超过最大限制
-  if (width && parseFloat(String(width)) > MAX_IMAGE_WIDTH) {
-    const ratio = aspectRatio.value || 1
-    width = MAX_IMAGE_WIDTH
-    height = width / ratio
-  }
-
+  // 完全不限制容器尺寸，让图片自然显示
   return {
-    width: width ? `${width}px` : 'auto',
-    height: height ? `${height}px` : 'auto',
     maxWidth: '100%'
   }
 })
 
-const imageStyle = computed(() => ({
-  width: '100%',
-  height: '100%',
-  objectFit: 'fill' as const, // 改为 fill 以填满容器
-  display: imageError.value ? 'none' : 'block'
-}))
+const imageStyle = computed(() => {
+  // 图片最大宽度为编辑器宽度，高度自动按比例缩放
+  return {
+    maxWidth: `${editorMaxWidth.value}px`,
+    width: 'auto',
+    height: 'auto',
+    display: imageError.value ? 'none' : 'block'
+  }
+})
 
 const handleImageLoad = () => {
   imageError.value = false
   if (imageRef.value) {
+    const editorEl = imageRef.value.closest('.ProseMirror') as HTMLElement | null
+    if (editorEl?.clientWidth) {
+      editorMaxWidth.value = editorEl.clientWidth
+    }
     naturalWidth.value = imageRef.value.naturalWidth
     naturalHeight.value = imageRef.value.naturalHeight
     aspectRatio.value = naturalWidth.value / naturalHeight.value
 
     // 如果没有设置宽高，使用自然尺寸（限制最大宽度）
     if (!props.node.attrs.width) {
-      currentWidth.value = Math.min(naturalWidth.value, MAX_IMAGE_WIDTH)
+      currentWidth.value = Math.min(naturalWidth.value, editorMaxWidth.value)
       currentHeight.value = currentWidth.value / aspectRatio.value
     } else {
       let parsedWidth = parseFloat(props.node.attrs.width) || naturalWidth.value
       // 限制宽度不超过编辑器可用宽度
-      if (parsedWidth > MAX_IMAGE_WIDTH) {
-        parsedWidth = MAX_IMAGE_WIDTH
+      if (parsedWidth > editorMaxWidth.value) {
+        parsedWidth = editorMaxWidth.value
+      }
+      // 只有宽度且没有高度时，使用自然宽度（避免导入后被过度压缩）
+      if (!props.node.attrs.height && naturalWidth.value) {
+        parsedWidth = Math.min(naturalWidth.value, editorMaxWidth.value)
+        props.updateAttributes({
+          width: Math.round(parsedWidth)
+        })
       }
       currentWidth.value = parsedWidth
-      currentHeight.value = props.node.attrs.height
-        ? parseFloat(props.node.attrs.height)
-        : currentWidth.value / aspectRatio.value
+      const parsedHeight = props.node.attrs.height ? parseFloat(props.node.attrs.height) : undefined
+      if (parsedHeight) {
+        const expectedRatio = naturalHeight.value / naturalWidth.value
+        const actualRatio = parsedHeight / parsedWidth
+        if (expectedRatio && Math.abs(actualRatio - expectedRatio) > 0.02) {
+          console.warn('[image] height mismatch, drop height', {
+            src: String(props.node.attrs.src || '').slice(0, 80),
+            parsedWidth,
+            parsedHeight,
+            naturalWidth: naturalWidth.value,
+            naturalHeight: naturalHeight.value
+          })
+          props.updateAttributes({
+            height: null
+          })
+          currentHeight.value = currentWidth.value / aspectRatio.value
+        } else {
+          currentHeight.value = parsedHeight
+        }
+      } else {
+        currentHeight.value = currentWidth.value / aspectRatio.value
+      }
 
       // 如果宽度被限制了，更新节点属性
       if (parsedWidth !== parseFloat(props.node.attrs.width)) {
@@ -578,14 +605,15 @@ onMounted(() => {
   if (props.node.attrs.width) {
     let parsedWidth = parseFloat(props.node.attrs.width)
     // 限制宽度不超过编辑器可用宽度
-    if (parsedWidth > MAX_IMAGE_WIDTH) {
-      parsedWidth = MAX_IMAGE_WIDTH
+    if (parsedWidth > editorMaxWidth.value) {
+      parsedWidth = editorMaxWidth.value
     }
     currentWidth.value = parsedWidth
   }
   if (props.node.attrs.height) {
     currentHeight.value = parseFloat(props.node.attrs.height)
   }
+
 })
 
 onBeforeUnmount(() => {
@@ -599,11 +627,15 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 .resizable-image-wrapper {
-  display: flex;
+  display: flex !important;
   position: relative;
   line-height: 0;
   margin: 8px 0;
-  justify-content: center; // 默认居中
+  justify-content: center;
+  width: 100% !important;
+  height: auto !important;
+  min-height: fit-content !important;
+  overflow: visible !important;
 
   &.is-selected .image-container {
     outline: 2px solid #1a73e8;
@@ -629,16 +661,20 @@ onBeforeUnmount(() => {
 
 .image-container {
   position: relative;
-  display: block; // 改为 block
+  display: block !important;
   border-radius: 4px;
-  overflow: visible;
+  overflow: visible !important;
   transition: outline 0.15s ease;
+  height: auto !important;
+  min-height: fit-content !important;
 
   img {
     border-radius: 4px;
     cursor: default;
     user-select: none;
-    display: block; // 确保图片是块级显示，消除底部间隙
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
   }
 }
 

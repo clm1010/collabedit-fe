@@ -148,6 +148,8 @@ import { ref, computed } from 'vue'
 import { Icon } from '@/components/Icon'
 import { ElMessage } from 'element-plus'
 import { useEditor } from './useEditor'
+import { docModelToDocx, normalizeHtmlThroughDocModel, parseHtmlToDocModel } from '../../utils/wordParser'
+import { downloadBlob } from '@/views/utils/documentExport'
 
 // 获取编辑器实例
 const editor = useEditor()
@@ -172,7 +174,11 @@ const formattedHtml = computed(() => {
 const generateFullHtml = () => {
   if (!editor.value) return ''
 
-  const content = editor.value.getHTML()
+  const raw = editor.value.getHTML()
+  const content = normalizeHtmlThroughDocModel(raw, {
+    source: 'html',
+    method: 'tiptap-html'
+  })
   const title = '文档'
 
   return `<!DOCTYPE html>
@@ -218,7 +224,11 @@ const previewHtml = () => {
     ElMessage.warning('编辑器未就绪')
     return
   }
-  previewContent.value = editor.value.getHTML()
+  const content = editor.value.getHTML()
+  previewContent.value = normalizeHtmlThroughDocModel(content, {
+    source: 'html',
+    method: 'tiptap-html'
+  })
   previewMode.value = 'preview'
   htmlPreviewVisible.value = true
 }
@@ -231,31 +241,26 @@ const exportHtml = () => {
 }
 
 // 导出 Word (使用 HTML 格式)
-const exportWord = () => {
+const exportWord = async () => {
   if (!editor.value) return
 
-  const content = editor.value.getHTML()
-  const htmlContent = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office"
-          xmlns:w="urn:schemas-microsoft-com:office:word"
-          xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-      <meta charset="utf-8">
-      <style>
-        body { font-family: '宋体', SimSun; font-size: 12pt; line-height: 1.5; }
-        h1 { font-size: 22pt; font-weight: bold; }
-        h2 { font-size: 16pt; font-weight: bold; }
-        h3 { font-size: 14pt; font-weight: bold; }
-        p { margin: 0.5em 0; }
-        table { border-collapse: collapse; width: 100%; }
-        td, th { border: 1px solid #000; padding: 4px 8px; }
-      </style>
-    </head>
-    <body>${content}</body>
-    </html>
-  `
-  downloadFile(htmlContent, '文档.doc', 'application/msword')
-  ElMessage.success('Word 文档已导出')
+  try {
+    const content = editor.value.getHTML()
+    const normalizedHtml = normalizeHtmlThroughDocModel(content, {
+      source: 'html',
+      method: 'tiptap-html'
+    })
+    const docModel = parseHtmlToDocModel(normalizedHtml, {
+      source: 'html',
+      method: 'tiptap-html'
+    })
+    const blob = await docModelToDocx(docModel, '文档')
+    downloadBlob(blob, '文档.docx')
+    ElMessage.success('Word 文档已导出')
+  } catch (error) {
+    console.error('导出 Word 失败:', error)
+    ElMessage.error('导出失败')
+  }
 }
 
 // 导出 PDF

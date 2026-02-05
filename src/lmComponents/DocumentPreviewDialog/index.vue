@@ -310,6 +310,15 @@ watch(
     padding: 1em;
     border-radius: 8px;
     overflow-x: auto;
+
+    // 代码块内的 code 标签样式
+    code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      color: inherit;
+      font-size: inherit;
+    }
   }
 
   :deep(table) {
@@ -338,6 +347,90 @@ watch(
   :deep(a) {
     color: #2563eb;
     text-decoration: underline;
+  }
+
+  // 水平线样式
+  :deep(hr) {
+    border: none;
+    border-top: 2px solid #e5e7eb;
+    margin: 2em 0;
+
+    &.red-line,
+    &[data-line-color='red'] {
+      border-top-color: #ff0000;
+    }
+  }
+
+  // AI 模块块级样式
+  :deep(.ai-block-node),
+  :deep(div[data-type='ai-block-node']) {
+    display: block;
+    width: 100%;
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid #e8a849;
+    border-radius: 4px;
+    background-color: #fff;
+    position: relative;
+
+    p {
+      margin: 0.5em 0;
+      line-height: 1.75;
+      text-indent: 2em;
+    }
+
+    strong,
+    b {
+      font-weight: 700;
+      color: #333;
+    }
+
+    ul,
+    ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+    }
+
+    li {
+      text-indent: 0;
+    }
+  }
+
+  // AI 模块行内样式
+  :deep(.ai-block),
+  :deep(span[data-type='ai-block']) {
+    background-color: #e3f2fd;
+    border: 1px solid #90caf9;
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+
+  // 红头文件表格样式
+  :deep(table.red-header-table),
+  :deep(table.editor-table) {
+    border: none !important;
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+
+    td,
+    th {
+      border: none !important;
+      padding: 0;
+      background: transparent !important;
+    }
+  }
+
+  // 高亮标记样式
+  :deep(mark) {
+    background-color: #ffff00;
+    color: inherit;
+    padding: 0 2px;
+  }
+
+  // 字体颜色样式
+  :deep(span[style*='color']) {
+    color: inherit;
   }
 }
 

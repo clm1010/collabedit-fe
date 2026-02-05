@@ -477,7 +477,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, onActivated, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import * as TemplateApi from '@/api/template'
 import type { TemplateSubclassVO } from '@/types/management'
@@ -488,7 +488,7 @@ import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
 import { blobToBase64, blobToText } from '@/views/utils/fileUtils'
 import ElementsEditor from './components/ElementsEditor.vue'
-import MarkdownIt from 'markdown-it'
+import { markdownToHtml } from '@/views/template/editor/utils'
 import type { ElementItem } from '@/types/management'
 
 defineOptions({ name: 'TemplateManagement' })
@@ -1198,9 +1198,8 @@ const handlePreview = async (row: TemplateApi.TemplateVO) => {
     // 使用 blobToText 读取内容（防止中文乱码）
     const text = await blobToText(blob)
 
-    // 使用 markdown-it 解析 Markdown 为 HTML
-    const md = new MarkdownIt()
-    const htmlContent = md.render(text)
+    // 使用自定义 markdownToHtml 转换器解析（支持红头文件、AI模块等自定义语法）
+    const htmlContent = markdownToHtml(text)
     previewContent.value = htmlContent
     previewTitle.value = row.templateName || '文档预览'
     previewDialogVisible.value = true
@@ -1377,8 +1376,11 @@ const openExamRecordDialog = async (row: TemplateApi.TemplateVO) => {
   examRecordList.value = []
 
   try {
+    console.log('获取审核记录:', row.id)
     const res = await TemplateApi.getExamRecordList(row.id)
-    examRecordList.value = res.data || []
+    console.log('获取审核记录结果:', res)
+    // 兼容两种返回格式：数组或 { data: [...] }
+    examRecordList.value = Array.isArray(res) ? res : (res.data || [])
   } catch (error) {
     console.error('获取审核记录失败:', error)
     ElMessage.error('获取审核记录失败')
@@ -1390,6 +1392,11 @@ const openExamRecordDialog = async (row: TemplateApi.TemplateVO) => {
 // 页面初始化
 onMounted(async () => {
   await initCategories()
+  getList()
+})
+
+// 页面重新激活时刷新数据（从编辑器返回时触发）
+onActivated(() => {
   getList()
 })
 

@@ -269,6 +269,20 @@ export const convertInlineStylesToTiptap = (html: string): string => {
     }
   )
 
+  html = html.replace(/<p([^>]*)>/gi, (match, attrs) => {
+    if (/text-spacing-trim|hanging-punctuation/i.test(attrs)) {
+      return match
+    }
+    const spacingCss = 'text-spacing-trim: normal; hanging-punctuation: first allow-end last;'
+    const styleMatch = attrs.match(/style="([^"]*)"/i)
+    if (styleMatch) {
+      const current = styleMatch[1].trim()
+      const next = current ? `${current.replace(/;?\s*$/, '; ')}${spacingCss}` : spacingCss
+      return `<p${attrs.replace(styleMatch[0], `style="${next}"`)}>`
+    }
+    return `<p${attrs} style="${spacingCss}">`
+  })
+
   return html
 }
 

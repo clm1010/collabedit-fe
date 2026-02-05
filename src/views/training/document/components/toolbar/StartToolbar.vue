@@ -330,6 +330,12 @@
           <span class="btn-text">打印</span>
         </button>
       </el-tooltip>
+      <el-tooltip content="导出诊断文件" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" @click="exportDebugArtifacts">
+          <Icon icon="mdi:bug-outline" class="btn-icon-large" />
+          <span class="btn-text">诊断导出</span>
+        </button>
+      </el-tooltip>
     </div>
 
     <!-- Word 导入对话框 -->
@@ -392,6 +398,16 @@
         </div>
       </div>
       <template #footer>
+        <el-button text @click="exportDocModelJson" :disabled="!wordImportDocModel">
+          导出 DocModel
+        </el-button>
+        <el-button
+          text
+          @click="exportComparisonHtml"
+          :disabled="!wordImportNormalizedHtml && !wordImportDocxPreviewHtml"
+        >
+          导出对比 HTML
+        </el-button>
         <el-button @click="cancelWordImport">取消</el-button>
         <el-button
           type="primary"
@@ -520,12 +536,21 @@ import { useEditor } from './useEditor'
 import {
   isDocFormat,
   isZipFormat,
+  isHtmlFormat,
+  isMhtmlFormat,
+  isRtfFormat,
+  validateAndFixImages,
   validateDocxFile,
   parseOoxmlDocument,
   parseRedHeadDocument,
-  smartParseDocument,
   parseWithDocxPreview,
-  parseOoxmlDocumentEnhanced
+  parseOoxmlDocumentEnhanced,
+  parseHtmlDocument,
+  parseMhtmlDocument,
+  parseDocxToDocModel,
+  parseHtmlToDocModel,
+  serializeDocModelToHtml,
+  ImageStore
 } from '../../utils/wordParser'
 
 // 获取编辑器实例
@@ -557,6 +582,15 @@ const documentTitle = ref('')
 const previewContent = ref('')
 const previewZoom = ref(100)
 const previewSidebarVisible = ref(false)
+
+const exportDebugArtifacts = () => {
+  const fn = (globalThis as any).__exportDocDebug
+  if (typeof fn === 'function') {
+    fn()
+    return
+  }
+  ElMessage.warning('诊断导出未就绪，请稍后重试')
+}
 
 // 字体别名映射表 - 用于将文档中的字体名称映射到选项中的字体
 const fontAliasMap: Record<string, string[]> = {
@@ -1039,6 +1073,10 @@ const handleLineHeight = (value: string) => {
 const wordImportDialogVisible = ref(false)
 const wordImportLoading = ref(false)
 const wordImportPreview = ref('')
+const wordImportRawHtml = ref('')
+const wordImportNormalizedHtml = ref('')
+const wordImportDocxPreviewHtml = ref('')
+const wordImportDocModel = ref<any | null>(null)
 const wordImportFile = ref<File | null>(null)
 const wordImportOptions = reactive({
   preserveStyles: true,
@@ -1050,12 +1088,105 @@ const wordImportOptions = reactive({
 const wordArrayBuffer = ref<ArrayBuffer | null>(null)
 const importProgress = ref(0)
 const importProgressText = ref('')
+const wordImportBlobUrls = ref<string[]>([])
+const wordImportImageStore = new ImageStore()
+
+const clearImportBlobUrls = () => {
+  wordImportImageStore.clear()
+  wordImportBlobUrls.value = []
+}
+
+const clearWordImportContent = () => {
+  wordImportPreview.value = ''
+  wordImportRawHtml.value = ''
+  wordImportNormalizedHtml.value = ''
+  wordImportDocxPreviewHtml.value = ''
+  wordImportDocModel.value = null
+  clearImportBlobUrls()
+}
+
+const replaceDataImagesWithBlobUrls = async (html: string): Promise<string> => {
+  const replaced = await wordImportImageStore.replaceDataImagesWithBlobUrls(html)
+  const detectedUrls = replaced.match(/blob:[^"']+/g) || []
+  if (detectedUrls.length > 0) {
+    wordImportBlobUrls.value = Array.from(new Set(detectedUrls))
+  }
+  return replaced
+}
+
+const downloadTextFile = (content: string, filename: string, mimeType: string) => {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const buildComparisonHtml = (): string => {
+  const left = wordImportDocxPreviewHtml.value || '<p>无 docx-preview 渲染结果</p>'
+  const right = wordImportNormalizedHtml.value || '<p>无 DocModel 规范化结果</p>'
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docx 解析对比</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; background: #f5f6f8; }
+    .wrap { display: flex; gap: 12px; padding: 12px; }
+    .panel { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: auto; }
+    .panel-header { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; background: #fafafa; font-weight: 600; }
+    .panel-body { padding: 16px; }
+    img { max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ddd; padding: 6px 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="panel-header">docx-preview 渲染</div>
+      <div class="panel-body">${left}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">DocModel 规范化</div>
+      <div class="panel-body">${right}</div>
+    </div>
+  </div>
+</body>
+</html>`
+}
+
+const exportDocModelJson = () => {
+  if (!wordImportDocModel.value) {
+    ElMessage.warning('暂无 DocModel 结果')
+    return
+  }
+  const json = JSON.stringify(wordImportDocModel.value, null, 2)
+  const filename = `${wordImportFile.value?.name || 'docx'}-docmodel.json`
+  downloadTextFile(json, filename, 'application/json')
+}
+
+const exportComparisonHtml = () => {
+  if (!wordImportNormalizedHtml.value && !wordImportDocxPreviewHtml.value) {
+    ElMessage.warning('暂无对比结果')
+    return
+  }
+  const html = buildComparisonHtml()
+  const filename = `${wordImportFile.value?.name || 'docx'}-compare.html`
+  downloadTextFile(html, filename, 'text/html')
+}
 
 // 导入 Word
 const importWord = () => {
   // 重置所有状态
   wordImportDialogVisible.value = true
-  wordImportPreview.value = ''
+  clearWordImportContent()
   wordImportFile.value = null
   wordArrayBuffer.value = null
   importProgress.value = 0
@@ -1086,14 +1217,65 @@ const handleWordFileSelect = async (uploadFile: any) => {
     // 检测文件格式
     const isDoc = isDocFormat(bytes)
     const isDocx = isZipFormat(bytes)
+    const isHtml = isHtmlFormat(bytes)
+    const isMhtml = isMhtmlFormat(bytes)
+    const isRtf = isRtfFormat(bytes)
 
-    console.log('文件格式检测:', { isDoc, isDocx, filename: file.name })
+    console.log('文件格式检测:', { isDoc, isDocx, isHtml, isMhtml, isRtf, filename: file.name })
 
     // 如果是 .doc 格式，提示不支持
     if (isDoc) {
       ElMessage.error('不支持旧版 .doc 格式，请将文件另存为 .docx 格式后重试')
-      wordImportPreview.value = ''
+      clearWordImportContent()
       wordImportFile.value = null
+      wordImportLoading.value = false
+      return
+    }
+
+    // 如果是 RTF 格式，提示不支持
+    if (isRtf) {
+      ElMessage.error('检测到 RTF 格式，请将文件另存为 .docx 格式后重试')
+      clearWordImportContent()
+      wordImportFile.value = null
+      wordImportLoading.value = false
+      return
+    }
+
+    // 如果是 HTML/MHTML 格式（假 docx 文件）
+    if (isHtml || isMhtml) {
+      console.log('检测到 HTML/MHTML 格式的伪 docx 文件')
+      importProgressText.value = '检测到 HTML 格式，正在转换...'
+      importProgress.value = 20
+
+      let html: string
+      try {
+        if (isMhtml) {
+          html = await parseMhtmlDocument(arrayBuffer, updateProgress)
+        } else {
+          html = await parseHtmlDocument(arrayBuffer, updateProgress)
+        }
+
+        // 清理和验证图片
+        html = cleanWordHtml(html)
+        html = validateAndFixImages(html)
+
+        wordImportDocModel.value = parseHtmlToDocModel(html, {
+          source: 'html',
+          method: 'html-import'
+        })
+        wordImportNormalizedHtml.value = html
+        wordImportRawHtml.value = html
+        wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
+        wordArrayBuffer.value = arrayBuffer
+        importProgress.value = 100
+        importProgressText.value = '解析完成'
+        console.log('HTML/MHTML 格式解析成功，HTML长度:', html.length)
+      } catch (e) {
+        console.error('HTML/MHTML 解析失败:', e)
+        ElMessage.error('文件解析失败，请检查文件内容是否正确')
+        clearWordImportContent()
+        wordImportFile.value = null
+      }
       wordImportLoading.value = false
       return
     }
@@ -1101,7 +1283,7 @@ const handleWordFileSelect = async (uploadFile: any) => {
     // 验证是否为有效的 .docx 格式
     if (!isDocx) {
       ElMessage.error('无效的文件格式，请上传有效的 .docx 文件')
-      wordImportPreview.value = ''
+      clearWordImportContent()
       wordImportFile.value = null
       wordImportLoading.value = false
       return
@@ -1114,7 +1296,7 @@ const handleWordFileSelect = async (uploadFile: any) => {
 
     if (!validation.valid) {
       ElMessage.error(validation.error || '文件已损坏，无法导入')
-      wordImportPreview.value = ''
+      clearWordImportContent()
       wordImportFile.value = null
       wordImportLoading.value = false
       return
@@ -1129,16 +1311,21 @@ const handleWordFileSelect = async (uploadFile: any) => {
 
     let html: string
 
-    // 使用智能解析策略，根据文件大小和类型自动选择最佳方案
-    // - 小文件 (<2MB): docx-preview 高保真解析
-    // - 中等文件 (2-5MB): docx-preview 高保真解析
-    // - 大文件 (>5MB): Web Worker 非阻塞解析
-    // - 红头文件: altChunk HTML 提取
     try {
-      html = await smartParseDocument(file, arrayBuffer, updateProgress)
-      console.log('智能解析完成，原始HTML长度:', html?.length || 0)
+      const docModel = await parseDocxToDocModel(arrayBuffer, {
+        fileName: file.name,
+        onProgress: updateProgress,
+        useDocxPreview: true,
+        useMammothFallback: true,
+        useZipJs: true,
+        useWorkerForLargeFiles: true,
+        mergeRedheadOoxml: true
+      })
+      wordImportDocModel.value = docModel
+      html = serializeDocModelToHtml(docModel)
+      console.log('DocModel 解析完成，原始HTML长度:', html?.length || 0)
     } catch (e) {
-      console.warn('智能解析失败，尝试后备方案:', e)
+      console.warn('DocModel 解析失败，尝试后备方案:', e)
       // 回退到原有的解析方案
       if (validation.hasAltChunk) {
         console.log('回退到红头文件方案')
@@ -1169,7 +1356,19 @@ const handleWordFileSelect = async (uploadFile: any) => {
       return
     }
 
-    wordImportPreview.value = html
+    // 验证和修复图片 base64 数据，解决 ERR_INVALID_URL 错误
+    html = validateAndFixImages(html)
+
+    wordImportNormalizedHtml.value = html
+    wordImportRawHtml.value = html
+    wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
+
+    try {
+      const previewHtml = await parseWithDocxPreview(arrayBuffer, updateProgress)
+      wordImportDocxPreviewHtml.value = cleanWordHtml(previewHtml)
+    } catch (e) {
+      console.warn('docx-preview 对比渲染失败:', e)
+    }
     importProgress.value = 100
     importProgressText.value = '解析完成'
 
@@ -1187,7 +1386,7 @@ const handleWordFileSelect = async (uploadFile: any) => {
     }
 
     ElMessage.error('Word 文档解析失败: ' + (error as Error).message)
-    wordImportPreview.value = ''
+    clearWordImportContent()
   } finally {
     wordImportLoading.value = false
   }
@@ -1263,8 +1462,10 @@ const parseWithMammothFallback = async () => {
 
   let html = result.value
   html = cleanWordHtml(html)
+  html = validateAndFixImages(html)
 
-  wordImportPreview.value = html
+  wordImportRawHtml.value = html
+  wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
   importProgress.value = 100
   importProgressText.value = '解析完成（后备方案）'
 
@@ -1751,22 +1952,129 @@ const preprocessHtmlForTiptap = (html: string): string => {
   }
 }
 
+const replaceImageSourcesFromPreview = (html: string, previewHtml: string): string => {
+  if (!html || !previewHtml) return html
+  try {
+    const parser = new DOMParser()
+    const contentDoc = parser.parseFromString(
+      `<div id="word-import-root">${html}</div>`,
+      'text/html'
+    )
+    const previewDoc = parser.parseFromString(
+      `<div id="word-import-root">${previewHtml}</div>`,
+      'text/html'
+    )
+    const contentRoot = contentDoc.getElementById('word-import-root')
+    const previewRoot = previewDoc.getElementById('word-import-root')
+    if (!contentRoot || !previewRoot) return html
+    const previewImages = Array.from(previewRoot.querySelectorAll('img'))
+      .map((img) => img.getAttribute('src') || img.getAttribute('data-origin-src') || '')
+      .filter((src) => /^data:image\//i.test(src))
+    if (!previewImages.length) return html
+    const contentImages = Array.from(contentRoot.querySelectorAll('img'))
+    contentImages.forEach((img, index) => {
+      const src = previewImages[index]
+      if (!src) return
+      img.setAttribute('src', src)
+      img.setAttribute('data-origin-src', src)
+      img.removeAttribute('height')
+      const style = img.getAttribute('style')
+      if (style && /height\s*:/i.test(style)) {
+        const cleaned = style
+          .replace(/height\s*:\s*[^;]+;?/gi, '')
+          .replace(/;\s*;/g, ';')
+          .replace(/^\s*;\s*/, '')
+          .replace(/\s*;\s*$/, '')
+          .trim()
+        if (cleaned) {
+          img.setAttribute('style', cleaned)
+        } else {
+          img.removeAttribute('style')
+        }
+      }
+    })
+    return contentRoot.innerHTML
+  } catch (e) {
+    console.warn('replaceImageSourcesFromPreview failed:', e)
+    return html
+  }
+}
+
+const protectDataImages = (
+  html: string
+): { html: string; images: Array<{ key: string; src: string }> } => {
+  const images: Array<{ key: string; src: string }> = []
+  try {
+    if (!/data:image\//i.test(html)) return { html, images }
+    let index = 0
+    const replaceAttr = (input: string, attr: 'src' | 'data-origin-src') => {
+      const regex = new RegExp(`${attr}=(["'])(data:image\\/[^"']+)\\1`, 'gi')
+      return input.replace(regex, (_match, quote, src) => {
+        const key = `__DATA_IMAGE_${attr.toUpperCase()}_${index}__`
+        images.push({ key, src })
+        index += 1
+        return `${attr}=${quote}${key}${quote}`
+      })
+    }
+    let nextHtml = html
+    nextHtml = replaceAttr(nextHtml, 'src')
+    nextHtml = replaceAttr(nextHtml, 'data-origin-src')
+    return { html: nextHtml, images }
+  } catch (e) {
+    console.warn('protectDataImages failed:', e)
+    return { html, images }
+  }
+}
+
+const restoreDataImages = (html: string, images: Array<{ key: string; src: string }>): string => {
+  if (!images.length) return html
+  let restored = html
+  images.forEach(({ key, src }) => {
+    restored = restored.split(key).join(src)
+  })
+  return restored
+}
+
+const tagImportedImages = (html: string): string => {
+  if (!html) return html
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="word-import-root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('word-import-root')
+    if (!root) return html
+    root.querySelectorAll('img').forEach((img) => {
+      img.setAttribute('data-imported', 'true')
+    })
+    return root.innerHTML
+  } catch (e) {
+    console.warn('tagImportedImages failed:', e)
+    return html
+  }
+}
+
 // 确认导入 Word
 const confirmWordImport = async () => {
-  if (!editor.value || !wordImportPreview.value) {
+  if (!editor.value || (!wordImportRawHtml.value && !wordImportPreview.value)) {
     ElMessage.warning('没有可导入的内容')
     return
   }
 
   try {
-    // 确保导入的内容至少包含一个段落
-    let content = wordImportPreview.value.trim()
+    // 优先使用 DocModel 解析结果（与预览一致，避免 docx-preview 图片被裁剪）
+    const rawContent = wordImportRawHtml.value?.trim()
+    const previewContent = wordImportDocxPreviewHtml.value?.trim()
+    let content = (rawContent || previewContent || wordImportPreview.value).trim()
     if (!content) {
       ElMessage.warning('导入内容为空')
       return
     }
 
     console.log('原始预览内容长度:', content.length)
+
+    // 仅在 docmodel 不可用时才用 docx-preview 补图，避免引入裁剪后的图片
+    if (!rawContent && previewContent) {
+      content = replaceImageSourcesFromPreview(content, previewContent)
+    }
 
     // 清理开头的空段落和空白 - 解决"总是空出一行"的问题
     // 但要小心不要删除所有内容
@@ -1791,8 +2099,24 @@ const confirmWordImport = async () => {
       content += '<p></p>'
     }
 
+    const protectedImages = protectDataImages(content)
+    content = protectedImages.html
+
     // 预处理 HTML，确保样式格式正确且能被 Tiptap 识别
     content = preprocessHtmlForTiptap(content)
+
+    // 再次清理图片 base64，避免 data URL 损坏导致渲染报错
+    content = validateAndFixImages(content)
+
+    content = restoreDataImages(content, protectedImages.images)
+
+    content = tagImportedImages(content)
+
+    // 暂时保留 data:image，绕过 blob 转换以排查截断问题
+    // const replaceDataImages = (globalThis as any).__replaceDataImages
+    // if (typeof replaceDataImages === 'function') {
+    //   content = await replaceDataImages(content)
+    // }
 
     console.log('处理后内容长度:', content.length)
     console.log('内容前100字符:', content.substring(0, 100))
@@ -1854,7 +2178,7 @@ const confirmWordImport = async () => {
     }
 
     wordImportDialogVisible.value = false
-    wordImportPreview.value = ''
+    clearWordImportContent()
     wordImportFile.value = null
     wordArrayBuffer.value = null
   } catch (error) {
@@ -1866,7 +2190,7 @@ const confirmWordImport = async () => {
 // 清除 Word 文件选择
 const clearWordImport = () => {
   wordImportFile.value = null
-  wordImportPreview.value = ''
+  clearWordImportContent()
   wordArrayBuffer.value = null
   importProgress.value = 0
   importProgressText.value = ''
@@ -1875,7 +2199,7 @@ const clearWordImport = () => {
 // 取消导入
 const cancelWordImport = () => {
   wordImportDialogVisible.value = false
-  wordImportPreview.value = ''
+  clearWordImportContent()
   wordImportFile.value = null
   wordArrayBuffer.value = null
   importProgress.value = 0

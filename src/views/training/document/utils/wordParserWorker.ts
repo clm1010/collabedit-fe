@@ -218,12 +218,50 @@ async function processAllImages(zip: any): Promise<Map<string, string>> {
 }
 
 /**
+ * 处理超链接关系
+ */
+async function processAllHyperlinks(zip: any): Promise<Map<string, string>> {
+  const hyperlinkMap = new Map<string, string>()
+
+  try {
+    const relsFile = zip.file('word/_rels/document.xml.rels')
+    if (!relsFile) return hyperlinkMap
+
+    const relsContent = await relsFile.async('string')
+    const { XMLParser } = await import('fast-xml-parser')
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_'
+    })
+
+    const relsObj = parser.parse(relsContent)
+    const relationships = relsObj?.['Relationships']?.['Relationship'] || []
+    const relsList = Array.isArray(relationships) ? relationships : [relationships]
+
+    for (const rel of relsList) {
+      if (!rel) continue
+      const type = rel['@_Type'] || ''
+      const target = rel['@_Target'] || ''
+      const id = rel['@_Id'] || ''
+      if (type.includes('hyperlink') && id && target) {
+        hyperlinkMap.set(id, target)
+      }
+    }
+  } catch (e) {
+    console.warn('处理超链接映射失败:', e)
+  }
+
+  return hyperlinkMap
+}
+
+/**
  * 转换段落为 HTML
  */
 function convertParagraphToHtml(
   para: any,
   _stylesMap: Record<string, any>,
-  imageMap?: Map<string, string>
+  imageMap?: Map<string, string>,
+  hyperlinkMap?: Map<string, string>
 ): string {
   if (!para) return ''
 
@@ -309,11 +347,22 @@ function convertParagraphToHtml(
   // 处理超链接
   const hyperlink = para['w:hyperlink']
   if (hyperlink) {
-    const hyperlinkRuns = hyperlink['w:r']
-    if (hyperlinkRuns) {
+    const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
+    for (const linkItem of hyperlinkList) {
+      const hyperlinkRuns = linkItem?.['w:r']
+      if (!hyperlinkRuns) continue
       const runsList = Array.isArray(hyperlinkRuns) ? hyperlinkRuns : [hyperlinkRuns]
+      let linkContent = ''
       for (const run of runsList) {
-        content += convertRunToHtml(run, _stylesMap, imageMap)
+        linkContent += convertRunToHtml(run, _stylesMap, imageMap)
+      }
+      const linkId = linkItem?.['@_r:id']
+      const anchor = linkItem?.['@_w:anchor']
+      const href = linkId ? hyperlinkMap?.get(linkId) : anchor ? `#${anchor}` : ''
+      if (href) {
+        content += `<a href="${href}">${linkContent}</a>`
+      } else {
+        content += linkContent
       }
     }
   }
@@ -520,7 +569,8 @@ function extractImageFromInlineOrAnchor(element: any, imageMap: Map<string, stri
 function convertTableToHtml(
   table: any,
   stylesMap: Record<string, any>,
-  imageMap?: Map<string, string>
+  imageMap?: Map<string, string>,
+  hyperlinkMap?: Map<string, string>
 ): string {
   if (!table) return ''
 
@@ -577,6 +627,27 @@ function convertTableToHtml(
                 cellContent += convertRunToHtml(run, stylesMap, imageMap)
               }
             }
+            const hyperlink = para['w:hyperlink']
+            if (hyperlink) {
+              const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
+              for (const linkItem of hyperlinkList) {
+                const hyperlinkRuns = linkItem?.['w:r']
+                if (!hyperlinkRuns) continue
+                const runsList = Array.isArray(hyperlinkRuns) ? hyperlinkRuns : [hyperlinkRuns]
+                let linkContent = ''
+                for (const run of runsList) {
+                  linkContent += convertRunToHtml(run, stylesMap, imageMap)
+                }
+                const linkId = linkItem?.['@_r:id']
+                const anchor = linkItem?.['@_w:anchor']
+                const href = linkId ? hyperlinkMap?.get(linkId) : anchor ? `#${anchor}` : ''
+                if (href) {
+                  cellContent += `<a href="${href}">${linkContent}</a>`
+                } else {
+                  cellContent += linkContent
+                }
+              }
+            }
           }
         }
 
@@ -618,6 +689,9 @@ async function parseOoxmlDocumentWorker(
   // 4. 处理图片
   onProgress(50, '正在处理图片...')
   const imageMap = await processAllImages(zip)
+
+  // 4.1 处理超链接
+  const hyperlinkMap = await processAllHyperlinks(zip)
 
   // 5. 解析文档内容
   onProgress(60, '正在解析文档内容...')
@@ -671,9 +745,9 @@ async function parseOoxmlDocumentWorker(
     if (Array.isArray(bodyContent)) {
       for (const item of bodyContent) {
         if (item['w:p'] !== undefined) {
-          elements.push(convertParagraphToHtml(item, stylesMap, imageMap))
+          elements.push(convertParagraphToHtml(item, stylesMap, imageMap, hyperlinkMap))
         } else if (item['w:tbl'] !== undefined) {
-          elements.push(convertTableToHtml(item['w:tbl'], stylesMap, imageMap))
+          elements.push(convertTableToHtml(item['w:tbl'], stylesMap, imageMap, hyperlinkMap))
         }
       }
       return
@@ -683,7 +757,7 @@ async function parseOoxmlDocumentWorker(
     if (paragraphs) {
       const paraList = Array.isArray(paragraphs) ? paragraphs : [paragraphs]
       for (const para of paraList) {
-        elements.push(convertParagraphToHtml(para, stylesMap, imageMap))
+        elements.push(convertParagraphToHtml(para, stylesMap, imageMap, hyperlinkMap))
       }
     }
 
@@ -691,7 +765,7 @@ async function parseOoxmlDocumentWorker(
     if (tables) {
       const tableList = Array.isArray(tables) ? tables : [tables]
       for (const table of tableList) {
-        elements.push(convertTableToHtml(table, stylesMap, imageMap))
+        elements.push(convertTableToHtml(table, stylesMap, imageMap, hyperlinkMap))
       }
     }
   }

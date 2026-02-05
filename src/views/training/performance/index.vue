@@ -280,7 +280,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, onMounted, nextTick, computed, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onActivated, nextTick, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as PerformanceApi from '@/api/training'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
@@ -920,7 +920,8 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
 
     // 尝试判断是否为 Word 文档（docx/doc）
     const mimeType = blob.type || ''
-    let isWordDoc = mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
+    let isWordDoc =
+      mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
 
     if (!isWordDoc) {
       // 通过文件头判断是否为 docx（ZIP: PK）
@@ -980,7 +981,8 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
 
     // 判断是否为 Word 文档（docx/doc）
     const mimeType = blob.type || ''
-    let isWordDoc = mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
+    let isWordDoc =
+      mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
 
     if (!isWordDoc) {
       // 通过文件头判断是否为 docx（ZIP: PK）
@@ -1032,7 +1034,8 @@ const openExamRecordDialog = async (row: PerformanceApi.TrainingPerformanceVO) =
 
   try {
     const res = await PerformanceApi.getExamRecordList(row.id)
-    examRecordList.value = res.data || []
+    // 兼容两种返回格式：数组或 { data: [...] }
+    examRecordList.value = Array.isArray(res) ? res : (res.data || [])
   } catch (error) {
     console.error('获取审核记录失败:', error)
     ElMessage.error('获取审核记录失败')
@@ -1274,6 +1277,11 @@ const getStatusClass = (status?: string) => {
 onMounted(() => {
   getCategories() // 获取文档分类
   getList() // 获取表格数据
+})
+
+// 页面重新激活时刷新数据（从编辑器返回时触发）
+onActivated(() => {
+  getList()
 })
 
 // 页面销毁时清理

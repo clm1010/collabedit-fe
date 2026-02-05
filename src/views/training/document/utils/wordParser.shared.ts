@@ -296,3 +296,251 @@ export const escapeHtml = (text: string): string => {
   }
   return text.replace(/[&<>"']/g, (m) => map[m])
 }
+
+export const normalizeBase64 = (rawBase64: string): string => {
+  if (!rawBase64) return ''
+  let cleanBase64 = rawBase64
+  if (cleanBase64.includes('%')) {
+    try {
+      cleanBase64 = decodeURIComponent(cleanBase64)
+    } catch {
+      // ignore decode errors and continue with raw input
+    }
+  }
+  if (cleanBase64.includes(' ') && !cleanBase64.includes('+')) {
+    cleanBase64 = cleanBase64.replace(/ /g, '+')
+  }
+  cleanBase64 = cleanBase64.replace(/[\r\n\t\u200B\uFEFF]/g, '')
+  cleanBase64 = cleanBase64.replace(/-/g, '+').replace(/_/g, '/')
+  cleanBase64 = cleanBase64.replace(/[^A-Za-z0-9+/=]/g, '')
+  // padding must be at the end; drop all '=' and re-pad later
+  cleanBase64 = cleanBase64.replace(/=+/g, '')
+  if (!cleanBase64) return ''
+  while (cleanBase64.length % 4 === 1 && cleanBase64.length > 1) {
+    cleanBase64 = cleanBase64.slice(0, -1)
+  }
+  if (!cleanBase64) return ''
+  const pad = cleanBase64.length % 4
+  if (pad) {
+    cleanBase64 += '='.repeat(4 - pad)
+  }
+  return cleanBase64
+}
+
+export const normalizeDataImageUrl = (
+  dataUrl: string
+): { normalized: string; mime: string } | null => {
+  if (!dataUrl || !dataUrl.startsWith('data:')) return null
+  const match = dataUrl.match(/^data:([^;]+);base64,([\s\S]*)$/i)
+  if (!match) return null
+  const mime = match[1]
+  const cleanBase64 = normalizeBase64(match[2])
+  if (!cleanBase64) return null
+  return { normalized: `data:${mime};base64,${cleanBase64}`, mime }
+}
+
+/**
+ * 检测文件是否为 HTML 格式
+ * 用于识别伪装成 .docx 的 HTML 文件
+ * @param bytes 文件字节数组
+ * @returns 是否为 HTML 格式
+ */
+export const isHtmlFormat = (bytes: Uint8Array): boolean => {
+  const decoder = new TextDecoder('utf-8', { fatal: false })
+  const text = decoder.decode(bytes.slice(0, 1000)).trim()
+
+  // 移除 UTF-8 BOM
+  const cleanText = text.replace(/^\ufeff/, '')
+
+  return (
+    cleanText.startsWith('<!DOCTYPE') ||
+    cleanText.startsWith('<html') ||
+    cleanText.startsWith('<HTML') ||
+    cleanText.startsWith('<!doctype') ||
+    (cleanText.startsWith('<?xml') && cleanText.toLowerCase().includes('<html'))
+  )
+}
+
+/**
+ * 检测文件是否为 MHTML 格式
+ * MHTML 是 Word/WPS 另存为网页时常用的格式
+ * @param bytes 文件字节数组
+ * @returns 是否为 MHTML 格式
+ */
+export const isMhtmlFormat = (bytes: Uint8Array): boolean => {
+  const decoder = new TextDecoder('utf-8', { fatal: false })
+  const text = decoder.decode(bytes.slice(0, 500))
+
+  return (
+    text.includes('MIME-Version:') ||
+    text.includes('Content-Type: multipart/related') ||
+    text.includes('Content-Type:multipart/related') ||
+    text.includes('Content-Type: multipart/alternative')
+  )
+}
+
+/**
+ * 检测文件是否为 RTF 格式
+ * @param bytes 文件字节数组
+ * @returns 是否为 RTF 格式
+ */
+export const isRtfFormat = (bytes: Uint8Array): boolean => {
+  const decoder = new TextDecoder('ascii', { fatal: false })
+  const text = decoder.decode(bytes.slice(0, 10))
+  return text.startsWith('{\\rtf')
+}
+
+/**
+ * 命名颜色映射表
+ * 将 Word 中常用的颜色名称映射到标准十六进制值
+ */
+export const namedColorMap: Record<string, string> = {
+  yellow: '#FFFF00',
+  green: '#00FF00',
+  cyan: '#00FFFF',
+  magenta: '#FF00FF',
+  blue: '#0000FF',
+  red: '#FF0000',
+  darkblue: '#00008B',
+  darkcyan: '#008B8B',
+  darkgreen: '#006400',
+  darkmagenta: '#8B008B',
+  darkred: '#8B0000',
+  darkyellow: '#808000',
+  darkgray: '#A9A9A9',
+  darkgrey: '#A9A9A9',
+  lightgray: '#D3D3D3',
+  lightgrey: '#D3D3D3',
+  black: '#000000',
+  white: '#FFFFFF',
+  gray: '#808080',
+  grey: '#808080',
+  orange: '#FFA500',
+  purple: '#800080',
+  pink: '#FFC0CB',
+  brown: '#A52A2A',
+  navy: '#000080',
+  teal: '#008080',
+  maroon: '#800000',
+  olive: '#808000',
+  aqua: '#00FFFF',
+  fuchsia: '#FF00FF',
+  silver: '#C0C0C0',
+  lime: '#00FF00'
+}
+
+/**
+ * 统一的颜色规范化函数
+ * 将各种颜色格式转换为标准 #RRGGBB 格式
+ * @param value 颜色值（可以是十六进制、rgb()、命名颜色等）
+ * @returns 标准化的颜色值，无效时返回空字符串
+ */
+export const normalizeColor = (value: string): string => {
+  const raw = value.trim()
+  if (!raw) return ''
+
+  const lowered = raw.toLowerCase()
+  if (lowered === 'auto' || lowered === 'none' || lowered === 'transparent') return ''
+
+  // 处理纯 6 位十六进制
+  if (/^[0-9a-f]{6}$/i.test(raw)) return `#${raw.toUpperCase()}`
+
+  // 处理纯 3 位十六进制
+  if (/^[0-9a-f]{3}$/i.test(raw)) {
+    return `#${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}`.toUpperCase()
+  }
+
+  // 处理带 # 的十六进制
+  if (raw.startsWith('#')) {
+    if (raw.length === 4) {
+      return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`.toUpperCase()
+    }
+    return raw.toUpperCase()
+  }
+
+  // 处理 rgb() 格式
+  const rgbMatch = raw.match(/rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i)
+  if (rgbMatch) {
+    const [, r, g, b] = rgbMatch
+    return (
+      '#' +
+      [r, g, b]
+        .map((v) => parseInt(v, 10).toString(16).padStart(2, '0'))
+        .join('')
+        .toUpperCase()
+    )
+  }
+
+  // 处理 rgba() 格式
+  const rgbaMatch = raw.match(/rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[\d.]+\s*\)/i)
+  if (rgbaMatch) {
+    const [, r, g, b] = rgbaMatch
+    return (
+      '#' +
+      [r, g, b]
+        .map((v) => parseInt(v, 10).toString(16).padStart(2, '0'))
+        .join('')
+        .toUpperCase()
+    )
+  }
+
+  // 处理命名颜色
+  if (namedColorMap[lowered]) {
+    return namedColorMap[lowered]
+  }
+
+  return raw
+}
+
+/**
+ * 验证和修复图片 base64 数据
+ * 解决 ERR_INVALID_URL 错误
+ * @param html HTML 字符串
+ * @returns 修复后的 HTML 字符串
+ */
+export const validateAndFixImages = (html: string): string => {
+  const emptyImagePlaceholder =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Qq7/7QAAAABJRU5ErkJggg=='
+  const detectImageType = (base64Data: string): string | undefined => {
+    const head = base64Data.replace(/[\s\r\n]/g, '').slice(0, 16)
+    if (head.startsWith('iVBOR')) return 'png'
+    if (head.startsWith('/9j/')) return 'jpeg'
+    if (head.startsWith('R0lGOD')) return 'gif'
+    if (head.startsWith('Qk')) return 'bmp'
+    return undefined
+  }
+
+  html = html.replace(
+    /<img([^>]*)src=(["'])data:application\/octet-stream;base64,([^"']*)\2([^>]*)>/gi,
+    (_match, before, quote, base64Data, after) => {
+      const cleanBase64 = normalizeBase64(base64Data)
+      if (!cleanBase64) {
+        console.warn('图片 base64 数据为空')
+        return `<img${before}src=${quote}data:image/png;base64,${emptyImagePlaceholder}${quote} data-image-invalid="true"${after}>`
+      }
+      const detected = detectImageType(cleanBase64)
+      const type = detected || 'octet-stream'
+      const mime = detected ? `image/${type}` : 'application/octet-stream'
+      return `<img${before}src=${quote}data:${mime};base64,${cleanBase64}${quote}${after}>`
+    }
+  )
+
+  // 匹配 data:image 格式的图片（支持双引号和单引号）
+  return html.replace(
+    /<img([^>]*)src=(["'])data:image\/([^;]+);base64,([^"']*)\2([^>]*)>/gi,
+    (_match, before, quote, type, base64Data, after) => {
+      const cleanBase64 = normalizeBase64(base64Data)
+      if (!cleanBase64) {
+        console.warn('图片 base64 数据为空')
+        return `<img${before}src=${quote}data:image/png;base64,${emptyImagePlaceholder}${quote} data-image-invalid="true"${after}>`
+      }
+      if (cleanBase64.length < 10) {
+        console.warn('base64 图片数据过短，可能已损坏，但仍保留')
+      }
+      if (cleanBase64.length > 2000000) {
+        console.warn('图片数据过大（超过 1.5MB），可能导致显示问题')
+      }
+      return `<img${before}src=${quote}data:image/${type};base64,${cleanBase64}${quote}${after}>`
+    }
+  )
+}

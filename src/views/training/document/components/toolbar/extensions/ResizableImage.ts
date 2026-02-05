@@ -58,7 +58,7 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
         parseHTML: (element) => {
           const width = element.getAttribute('width') || element.style.width
           if (!width || width === 'auto') return null
-          if (typeof width === 'string' && width.endsWith('%')) return null // 忽略百分比宽度
+          if (typeof width === 'string' && width.endsWith('%')) return null
           return width.replace('px', '')
         },
         renderHTML: (attributes) => {
@@ -73,9 +73,11 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
       height: {
         default: null,
         parseHTML: (element) => {
+          // 导入的图片忽略高度，让图片按自然比例显示
+          if (element.getAttribute('data-imported') === 'true') return null
           const height = element.getAttribute('height') || element.style.height
           if (!height || height === 'auto') return null
-          if (typeof height === 'string' && height.endsWith('%')) return null // 忽略百分比高度
+          if (typeof height === 'string' && height.endsWith('%')) return null
           return height.replace('px', '')
         },
         renderHTML: (attributes) => {
