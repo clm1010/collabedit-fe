@@ -1,4 +1,5 @@
 import type { WordFileFormat } from './wordParser/types'
+import { logger } from '@/views/utils/logger'
 
 /**
  * 中文字体回退映射表
@@ -300,6 +301,8 @@ export const escapeHtml = (text: string): string => {
 export const normalizeBase64 = (rawBase64: string): string => {
   if (!rawBase64) return ''
   let cleanBase64 = rawBase64
+
+  // URL 编码处理
   if (cleanBase64.includes('%')) {
     try {
       cleanBase64 = decodeURIComponent(cleanBase64)
@@ -307,24 +310,32 @@ export const normalizeBase64 = (rawBase64: string): string => {
       // ignore decode errors and continue with raw input
     }
   }
+  // 空格可能是 + 号
   if (cleanBase64.includes(' ') && !cleanBase64.includes('+')) {
     cleanBase64 = cleanBase64.replace(/ /g, '+')
   }
+  // 清理控制字符和零宽字符
   cleanBase64 = cleanBase64.replace(/[\r\n\t\u200B\uFEFF]/g, '')
+  // URL-safe base64 转标准 base64
   cleanBase64 = cleanBase64.replace(/-/g, '+').replace(/_/g, '/')
+  // 仅移除非 base64 字符（保留 =）
   cleanBase64 = cleanBase64.replace(/[^A-Za-z0-9+/=]/g, '')
-  // padding must be at the end; drop all '=' and re-pad later
-  cleanBase64 = cleanBase64.replace(/=+/g, '')
+
   if (!cleanBase64) return ''
-  while (cleanBase64.length % 4 === 1 && cleanBase64.length > 1) {
-    cleanBase64 = cleanBase64.slice(0, -1)
+
+  // 移除末尾的 = 号，然后重新计算正确的 padding
+  const withoutPad = cleanBase64.replace(/=+$/, '')
+  if (!withoutPad) return ''
+
+  // 补齐 padding
+  const remainder = withoutPad.length % 4
+  if (remainder === 0) return withoutPad
+  if (remainder === 1) {
+    // length % 4 === 1 在标准 base64 中不合法，但 DOCX 提取的图片数据常出现此情况
+    // 补齐 '===' 使其为4的倍数，浏览器 fetch data URL 解码器能正确处理
+    return withoutPad + '==='
   }
-  if (!cleanBase64) return ''
-  const pad = cleanBase64.length % 4
-  if (pad) {
-    cleanBase64 += '='.repeat(4 - pad)
-  }
-  return cleanBase64
+  return withoutPad + '='.repeat(4 - remainder)
 }
 
 export const normalizeDataImageUrl = (
@@ -510,37 +521,59 @@ export const validateAndFixImages = (html: string): string => {
     return undefined
   }
 
+  // 匹配 octet-stream MIME 的图片，仅修正 MIME 类型，不修改 base64 数据
   html = html.replace(
     /<img([^>]*)src=(["'])data:application\/octet-stream;base64,([^"']*)\2([^>]*)>/gi,
     (_match, before, quote, base64Data, after) => {
-      const cleanBase64 = normalizeBase64(base64Data)
-      if (!cleanBase64) {
-        console.warn('图片 base64 数据为空')
+      if (!base64Data) {
+        logger.warn('[validateAndFixImages] 图片 base64 数据为空')
         return `<img${before}src=${quote}data:image/png;base64,${emptyImagePlaceholder}${quote} data-image-invalid="true"${after}>`
       }
-      const detected = detectImageType(cleanBase64)
-      const type = detected || 'octet-stream'
-      const mime = detected ? `image/${type}` : 'application/octet-stream'
-      return `<img${before}src=${quote}data:${mime};base64,${cleanBase64}${quote}${after}>`
+      // 仅从头部检测图片类型，不修改 base64 数据本身
+      const detected = detectImageType(base64Data)
+      const mime = detected ? `image/${detected}` : 'application/octet-stream'
+      logger.info(`[validateAndFixImages] octet-stream -> ${mime}, base64 长度: ${base64Data.length}`)
+      return `<img${before}src=${quote}data:${mime};base64,${base64Data}${quote}${after}>`
     }
   )
 
-  // 匹配 data:image 格式的图片（支持双引号和单引号）
+  // 匹配 data:image 格式的图片，保留原始 base64 不做修改
   return html.replace(
     /<img([^>]*)src=(["'])data:image\/([^;]+);base64,([^"']*)\2([^>]*)>/gi,
     (_match, before, quote, type, base64Data, after) => {
-      const cleanBase64 = normalizeBase64(base64Data)
-      if (!cleanBase64) {
-        console.warn('图片 base64 数据为空')
+      if (!base64Data) {
+        logger.warn('[validateAndFixImages] 图片 base64 数据为空')
         return `<img${before}src=${quote}data:image/png;base64,${emptyImagePlaceholder}${quote} data-image-invalid="true"${after}>`
       }
-      if (cleanBase64.length < 10) {
-        console.warn('base64 图片数据过短，可能已损坏，但仍保留')
+      if (base64Data.length < 10) {
+        logger.warn('[validateAndFixImages] base64 图片数据过短，可能已损坏，但仍保留')
       }
-      if (cleanBase64.length > 2000000) {
-        console.warn('图片数据过大（超过 1.5MB），可能导致显示问题')
+      // 超大图片（>2MB base64 ≈ >1.5MB 原图）替换为占位符，防止性能问题
+      if (base64Data.length > 2_000_000) {
+        logger.warn(`[validateAndFixImages] 图片过大 (${(base64Data.length / 1_000_000).toFixed(1)}MB base64)，已替换为占位符`)
+        return `<img${before}src=${quote}data:image/png;base64,${emptyImagePlaceholder}${quote} data-image-invalid="oversized" data-original-size="${base64Data.length}"${after}>`
       }
-      return `<img${before}src=${quote}data:image/${type};base64,${cleanBase64}${quote}${after}>`
+      return `<img${before}src=${quote}data:image/${type};base64,${base64Data}${quote}${after}>`
     }
   )
+}
+
+/**
+ * 统一的图片清理函数
+ * 检测 HTML 中是否包含图片/data:image，如有则调用 validateAndFixImages 修复
+ * @param html HTML 字符串
+ * @param source 来源标识（用于日志）
+ * @returns 修复后的 HTML
+ */
+export const sanitizeImagesIfNeeded = (html: string, source: string): string => {
+  if (!html) return html
+  if (!/<img\b/i.test(html) && !/data:image\//i.test(html)) return html
+  const sanitized = validateAndFixImages(html)
+  if (sanitized !== html) {
+    const count = (html.match(/data:image\//gi) || []).length
+    logger.info(
+      `[sanitizeImages] 修复 data:image: source=${source}, count=${count}, before=${html.length}, after=${sanitized.length}`
+    )
+  }
+  return sanitized
 }

@@ -28,6 +28,7 @@
       <div v-if="imageError" class="image-error">
         <span class="error-icon">🖼️</span>
         <span class="error-text">图片加载失败</span>
+        <button class="retry-btn" @click.stop="retryLoadImage">重新加载</button>
       </div>
 
       <!-- 调整大小的控制点 -->
@@ -188,6 +189,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
+import { logger } from '@/views/utils/logger'
 
 const props = defineProps(nodeViewProps)
 
@@ -297,7 +299,7 @@ const handleImageLoad = () => {
         const expectedRatio = naturalHeight.value / naturalWidth.value
         const actualRatio = parsedHeight / parsedWidth
         if (expectedRatio && Math.abs(actualRatio - expectedRatio) > 0.02) {
-          console.warn('[image] height mismatch, drop height', {
+          logger.warn('[image] height mismatch, drop height', {
             src: String(props.node.attrs.src || '').slice(0, 80),
             parsedWidth,
             parsedHeight,
@@ -327,7 +329,42 @@ const handleImageLoad = () => {
 }
 
 const handleImageError = () => {
+  const src = props.node.attrs.src || ''
+  const originSrc = props.node.attrs['data-origin-src'] || ''
+
+  // 如果当前是 blob URL 且保留了原始 data URL，自动回退到原始 URL 恢复显示
+  if (src.startsWith('blob:') && originSrc.startsWith('data:')) {
+    logger.warn('[image] blob URL 失效，回退到 data-origin-src')
+    props.updateAttributes({ src: originSrc })
+    return // 不标记错误，等待 data URL 加载
+  }
+
   imageError.value = true
+}
+
+// 重新加载图片（失败后重试）
+const retryLoadImage = () => {
+  imageError.value = false
+
+  const src = props.node.attrs.src || ''
+  const originSrc = props.node.attrs['data-origin-src'] || ''
+
+  // 如果当前是 blob URL 且保留了原始 data URL，切换到原始 URL
+  if (src.startsWith('blob:') && originSrc.startsWith('data:')) {
+    logger.warn('[image] 重试：blob URL 可能已失效，回退到 data-origin-src')
+    props.updateAttributes({ src: originSrc })
+    return
+  }
+
+  // 通过清空再赋值触发重新加载
+  if (imageRef.value) {
+    imageRef.value.src = ''
+    requestAnimationFrame(() => {
+      if (imageRef.value) {
+        imageRef.value.src = src
+      }
+    })
+  }
 }
 
 const handleClick = () => {
@@ -487,7 +524,7 @@ const downloadImage = async () => {
       }
     }
   } catch (error) {
-    console.error('下载图片失败:', error)
+    logger.error('下载图片失败:', error)
     // 失败时在新窗口打开图片
     window.open(src, '_blank')
   }
@@ -782,6 +819,23 @@ onBeforeUnmount(() => {
 
   .error-text {
     font-size: 12px;
+  }
+
+  .retry-btn {
+    margin-top: 8px;
+    padding: 4px 16px;
+    border: 1px solid #409eff;
+    border-radius: 4px;
+    background: #fff;
+    color: #409eff;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      background: #409eff;
+      color: #fff;
+    }
   }
 }
 

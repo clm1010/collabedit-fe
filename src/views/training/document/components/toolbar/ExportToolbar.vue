@@ -149,7 +149,8 @@ import { Icon } from '@/components/Icon'
 import { ElMessage } from 'element-plus'
 import { useEditor } from './useEditor'
 import { docModelToDocx, normalizeHtmlThroughDocModel, parseHtmlToDocModel } from '../../utils/wordParser'
-import { downloadBlob } from '@/views/utils/documentExport'
+import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
+import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 
 // 获取编辑器实例
 const editor = useEditor()
@@ -170,62 +171,28 @@ const formattedHtml = computed(() => {
     .join('\n')
 })
 
-// 生成完整 HTML
-const generateFullHtml = () => {
+// 生成完整 HTML（异步：还原 blob 图片 + DocModel 归一化）
+const generateFullHtml = async (): Promise<string> => {
   if (!editor.value) return ''
 
   const raw = editor.value.getHTML()
-  const content = normalizeHtmlThroughDocModel(raw, {
+  const restored = await restoreBlobImagesFromOriginAsync(raw)
+  const content = normalizeHtmlThroughDocModel(restored, {
     source: 'html',
     method: 'tiptap-html'
   })
-  const title = '文档'
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px 20px;
-      line-height: 1.8;
-      color: #333;
-      background: #fff;
-    }
-    h1 { font-size: 2em; margin: 0.67em 0; font-weight: 700; }
-    h2 { font-size: 1.5em; margin-top: 1.5em; font-weight: 600; }
-    h3 { font-size: 1.25em; margin-top: 1.2em; font-weight: 600; }
-    p { margin: 1em 0; }
-    ul, ol { padding-left: 2em; margin: 1em 0; }
-    blockquote { border-left: 4px solid #2563eb; padding-left: 1em; margin: 1em 0; color: #666; }
-    code { background: #f3f4f6; padding: 0.2em 0.4em; border-radius: 4px; }
-    pre { background: #1f2937; color: #f9fafb; padding: 1em; border-radius: 8px; overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-    th, td { border: 1px solid #e5e7eb; padding: 8px 12px; }
-    th { background: #f9fafb; font-weight: 600; }
-    a { color: #2563eb; text-decoration: underline; }
-    img { max-width: 100%; height: auto; }
-    mark { background: #fef08a; }
-  </style>
-</head>
-<body>${content}</body>
-</html>`
+  return wrapInExportHtml(content, '文档')
 }
 
 // HTML 预览
-const previewHtml = () => {
+const previewHtml = async () => {
   if (!editor.value) {
     ElMessage.warning('编辑器未就绪')
     return
   }
   const content = editor.value.getHTML()
-  previewContent.value = normalizeHtmlThroughDocModel(content, {
+  const restored = await restoreBlobImagesFromOriginAsync(content)
+  previewContent.value = normalizeHtmlThroughDocModel(restored, {
     source: 'html',
     method: 'tiptap-html'
   })
@@ -234,8 +201,8 @@ const previewHtml = () => {
 }
 
 // 导出 HTML
-const exportHtml = () => {
-  const html = generateFullHtml()
+const exportHtml = async () => {
+  const html = await generateFullHtml()
   downloadFile(html, '文档.html', 'text/html')
   ElMessage.success('HTML 已导出')
 }
@@ -246,7 +213,8 @@ const exportWord = async () => {
 
   try {
     const content = editor.value.getHTML()
-    const normalizedHtml = normalizeHtmlThroughDocModel(content, {
+    const restored = await restoreBlobImagesFromOriginAsync(content)
+    const normalizedHtml = normalizeHtmlThroughDocModel(restored, {
       source: 'html',
       method: 'tiptap-html'
     })
@@ -264,10 +232,10 @@ const exportWord = async () => {
 }
 
 // 导出 PDF
-const exportPdf = () => {
+const exportPdf = async () => {
   if (!editor.value) return
 
-  const html = generateFullHtml()
+  const html = await generateFullHtml()
   const printWindow = window.open('', '_blank')
 
   if (!printWindow) {
@@ -300,7 +268,7 @@ const exportText = () => {
 // 复制 HTML
 const copyHtml = async () => {
   try {
-    const html = generateFullHtml()
+    const html = await generateFullHtml()
     await navigator.clipboard.writeText(html)
     ElMessage.success('HTML 已复制到剪贴板')
   } catch (error) {
@@ -309,17 +277,17 @@ const copyHtml = async () => {
 }
 
 // 下载 HTML
-const downloadHtml = () => {
-  const html = generateFullHtml()
+const downloadHtml = async () => {
+  const html = await generateFullHtml()
   downloadFile(html, '文档.html', 'text/html')
   ElMessage.success('HTML 已下载')
 }
 
 // 打印文档
-const printDocument = () => {
+const printDocument = async () => {
   if (!editor.value) return
 
-  const html = generateFullHtml()
+  const html = await generateFullHtml()
   const printWindow = window.open('', '_blank')
 
   if (!printWindow) {
@@ -336,10 +304,10 @@ const printDocument = () => {
 }
 
 // 打印预览
-const printPreview = () => {
+const printPreview = async () => {
   if (!editor.value) return
 
-  const html = generateFullHtml()
+  const html = await generateFullHtml()
   const previewWindow = window.open('', '_blank')
 
   if (!previewWindow) {

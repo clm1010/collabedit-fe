@@ -163,10 +163,13 @@ import {
   normalizeHtmlThroughDocModel,
   parseFileContent,
   parseHtmlToDocModel,
-  validateAndFixImages,
   ImageStore
 } from './utils/wordParser'
-import { getDocContent, removeDocContent } from '@/views/utils/docStorage'
+import { useDocBufferStore } from '@/store/modules/docBuffer'
+import { getFileStream as getFileStreamApi } from '@/api/training'
+import { restoreBlobImagesFromOrigin } from '@/views/utils/fileUtils'
+import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
+import { logger } from '@/views/utils/logger'
 
 // Props
 interface Props {
@@ -218,7 +221,6 @@ const {
   collaborators,
   isReady: isCollaborationReady,
   initCollaboration,
-  connectProvider,
   reinitialize: reinitializeCollaboration
 } = useCollaboration({
   documentId: documentId.value,
@@ -245,9 +247,6 @@ const preloadedApplied = ref(false)
 const preloadedCacheCleared = ref(false)
 // 标记是否为首次加载（有预加载内容的情况）
 const isFirstLoadWithContent = ref(false)
-// 是否需要延迟协同连接（优先应用预加载内容）
-const shouldDelayCollaborationConnect = ref(false)
-const pendingConnectTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 // 编辑器和协同同步状态
 const isEditorReady = ref(false)
 const isCollaborationSynced = ref(false)
@@ -359,9 +358,9 @@ const handleSubmitAudit = () => {
 const handleAuditSubmit = async (data: SubmitAuditReqVO) => {
   auditLoading.value = true
   try {
-    console.log('提交审核参数:', data)
+    logger.debug('提交审核参数:', data)
     const result = await submitAudit(data)
-    console.log('提交审核结果:', result)
+    logger.debug('提交审核结果:', result)
 
     // 处理响应
     if (result && (result.code === 200 || result.code === 0)) {
@@ -473,17 +472,17 @@ const performAutoSave = async () => {
 
   // 检查内容是否有变化
   if (currentHash === lastSavedContentHash.value) {
-    console.log('[自动保存] 内容无变化，跳过保存')
+    logger.debug('[自动保存] 内容无变化，跳过保存')
     return
   }
 
   isAutoSaving.value = true
-  console.log('[自动保存] 开始保存...')
+  logger.debug('[自动保存] 开始保存...')
 
   try {
     await handleSave()
     lastSavedContentHash.value = currentHash
-    console.log('[自动保存] 保存成功')
+    logger.debug('[自动保存] 保存成功')
   } catch (error) {
     console.error('[自动保存] 保存失败:', error)
   } finally {
@@ -520,14 +519,11 @@ const handleContentUpdate = (_content: string) => {
   }, 3000)
 }
 
-const clearPreloadedCache = async () => {
+const clearPreloadedCache = () => {
   if (preloadedCacheCleared.value) return
   preloadedCacheCleared.value = true
-  try {
-    await removeDocContent(documentId.value)
-  } catch (error) {
-    console.warn('清理预加载缓存失败:', error)
-  }
+  const docBufferStore = useDocBufferStore()
+  docBufferStore.clearBuffer()
 }
 
 const escapeHtml = (text: string) => {
@@ -575,50 +571,6 @@ const normalizePreloadedHtml = (html: string) => {
   return result
 }
 
-const sanitizePreloadedImages = (html: string) => {
-  if (!html || !/data:image\//i.test(html)) return html
-  return html.replace(/<img\b[^>]*>/gi, (tag) => {
-    if (!/src=(["'])data:image\//i.test(tag)) return tag
-    let next = tag
-    if (!/data-imported=/i.test(next)) {
-      next = next.replace(/<img\b/i, '<img data-imported="true"')
-    }
-    // 移除高度属性，避免重新进入后按错误高度裁剪
-    next = next.replace(/\sheight=(["']).*?\1/gi, '')
-    next = next.replace(/\sstyle=(["'])([^"']*)\1/gi, (_m, quote, style) => {
-      const cleaned = String(style)
-        .replace(/height\s*:\s*[^;]+;?/gi, '')
-        .replace(/;\s*;/g, ';')
-        .replace(/^\s*;\s*/, '')
-        .replace(/\s*;\s*$/, '')
-        .trim()
-      return cleaned ? ` style=${quote}${cleaned}${quote}` : ''
-    })
-    return next
-  })
-}
-
-const sanitizeImagesIfNeeded = (html: string, source: string) => {
-  if (!html) return html
-  if (!/<img\b/i.test(html) && !/data:image\//i.test(html)) return html
-  const normalized = source === 'preload' ? sanitizePreloadedImages(html) : html
-  const sanitized = validateAndFixImages(normalized)
-  if (sanitized !== html) {
-    const count = (html.match(/data:image\//gi) || []).length
-    console.info(
-      `[tiptap] 修复 data:image: source=${source}, count=${count}, before=${html.length}, after=${sanitized.length}`
-    )
-  }
-  return sanitized
-}
-
-const hasStyleHints = (html: string) => {
-  if (!html) return false
-  return /font-family:|font-size:|color:|background-color:|text-align:|data-text-align|<h[1-6]\b|<mark\b/i.test(
-    html
-  )
-}
-
 const imageStore = new ImageStore()
 
 const replaceDataImagesWithBlobUrls = async (html: string) => {
@@ -627,409 +579,218 @@ const replaceDataImagesWithBlobUrls = async (html: string) => {
   return imageStore.replaceDataImagesWithBlobUrls(html)
 }
 
-const downloadTextFile = (content: string, filename: string, mimeType: string) => {
-  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-type DebugLogEntry = {
-  ts: string
-  level: 'error' | 'warn' | 'info'
-  message: string
-  stack?: string
-  args?: string[]
-}
-
-const debugLogLimit = 300
-const debugLogs: DebugLogEntry[] = []
-let detachErrorHandlers: (() => void) | null = null
-
-const safeStringify = (value: unknown): string => {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-const formatArgs = (args: unknown[]): { message: string; stack?: string; args?: string[] } => {
-  const normalized = args.map((arg) => {
-    if (arg instanceof Error) {
-      return `${arg.name}: ${arg.message}`
-    }
-    if (typeof arg === 'string') return arg
-    return safeStringify(arg)
-  })
-  const firstError = args.find((arg) => arg instanceof Error) as Error | undefined
-  return {
-    message: normalized.join(' '),
-    stack: firstError?.stack,
-    args: normalized
-  }
-}
-
-const pushDebugLog = (level: DebugLogEntry['level'], args: unknown[]) => {
-  const entry = formatArgs(args)
-  debugLogs.push({
-    ts: new Date().toISOString(),
-    level,
-    message: entry.message,
-    stack: entry.stack,
-    args: entry.args
-  })
-  if (debugLogs.length > debugLogLimit) {
-    debugLogs.splice(0, debugLogs.length - debugLogLimit)
-  }
-}
-
-const installDebugCollectors = () => {
-  const globalAny = globalThis as any
-  if (!globalAny.__docDebugConsolePatched) {
-    globalAny.__docDebugConsolePatched = true
-    globalAny.__docDebugConsoleOriginal = {
-      error: console.error,
-      warn: console.warn,
-      info: console.info
-    }
-    console.error = (...args: unknown[]) => {
-      pushDebugLog('error', args)
-      globalAny.__docDebugConsoleOriginal.error(...args)
-    }
-    console.warn = (...args: unknown[]) => {
-      pushDebugLog('warn', args)
-      globalAny.__docDebugConsoleOriginal.warn(...args)
-    }
-    console.info = (...args: unknown[]) => {
-      pushDebugLog('info', args)
-      globalAny.__docDebugConsoleOriginal.info(...args)
-    }
-  }
-
-  const handleError = (event: ErrorEvent) => {
-    const err = event.error instanceof Error ? event.error : undefined
-    pushDebugLog('error', [event.message, err || event.filename])
-  }
-  const handleRejection = (event: PromiseRejectionEvent) => {
-    pushDebugLog('error', [event.reason || 'Unhandled rejection'])
-  }
-
-  window.addEventListener('error', handleError)
-  window.addEventListener('unhandledrejection', handleRejection)
-  detachErrorHandlers = () => {
-    window.removeEventListener('error', handleError)
-    window.removeEventListener('unhandledrejection', handleRejection)
-  }
-}
-
-const exportDebugArtifacts = () => {
-  const title = documentTitle.value || 'document'
-  const stamp = dayjs().format('YYYYMMDD-HHmmss')
-  const safeTitle = title.replace(/[\\/:*?"<>|]+/g, '_')
-
-  const summarizeHtml = (html: string) => {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
-    const root = doc.getElementById('root')
-    if (!root) return { error: 'parse_failed' }
-
-    const count = (selector: string) => root.querySelectorAll(selector).length
-    const textOf = (selector: string, limit = 5) =>
-      Array.from(root.querySelectorAll(selector))
-        .slice(0, limit)
-        .map((el) => (el.textContent || '').trim())
-        .filter(Boolean)
-
-    return {
-      length: html.length,
-      paragraphs: count('p'),
-      headings: count('h1,h2,h3,h4,h5,h6'),
-      images: count('img'),
-      tables: count('table'),
-      lists: count('ul,ol'),
-      listItems: count('li'),
-      lineBreaks: count('br'),
-      dataImages: (html.match(/data:image\//gi) || []).length,
-      blobImages: (html.match(/blob:/gi) || []).length,
-      headingSamples: textOf('h1,h2,h3,h4,h5,h6'),
-      listItemSamples: textOf('li')
-    }
-  }
-
-  const rawHtml = editorInstance.value?.getHTML?.() || ''
-  const normalizedHtml = normalizeHtmlThroughDocModel(rawHtml, {
-    source: 'html',
-    method: 'debug-export'
-  })
-  const docModel = parseHtmlToDocModel(normalizedHtml, {
-    source: 'html',
-    method: 'debug-export'
+// 可清理的异步延迟（组件卸载时自动取消）
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    const id = setTimeout(() => {
+      pendingTimers.value.delete(id)
+      resolve()
+    }, ms)
+    pendingTimers.value.add(id)
   })
 
-  const preloadHtml = preloadedContent.value || ''
-  const summary = {
-    editor: summarizeHtml(rawHtml),
-    normalized: summarizeHtml(normalizedHtml),
-    preload: preloadHtml ? summarizeHtml(preloadHtml) : { length: 0 }
-  }
-
-  downloadTextFile(rawHtml, `${safeTitle}-editor-${stamp}.html`, 'text/html')
-  downloadTextFile(normalizedHtml, `${safeTitle}-normalized-${stamp}.html`, 'text/html')
-  downloadTextFile(
-    JSON.stringify(docModel, null, 2),
-    `${safeTitle}-docmodel-${stamp}.json`,
-    'application/json'
-  )
-
-  if (preloadHtml) {
-    downloadTextFile(preloadHtml, `${safeTitle}-preload-${stamp}.html`, 'text/html')
-  }
-
-  downloadTextFile(
-    JSON.stringify(summary, null, 2),
-    `${safeTitle}-summary-${stamp}.json`,
-    'application/json'
-  )
-
-  downloadTextFile(
-    JSON.stringify(
-      {
-        collectedAt: new Date().toISOString(),
-        userAgent: navigator.userAgent,
-        documentId: documentId.value,
-        logs: debugLogs
-      },
-      null,
-      2
-    ),
-    `${safeTitle}-errors-${stamp}.json`,
-    'application/json'
-  )
-
-  ElMessage.success('诊断文件已导出')
+// 检测编辑器是否为空（只有空段落或纯空白）
+// 注意：含图片/表格等非文本元素的文档不算空
+const isEditorContentEmpty = (html: string): boolean => {
+  if (!html) return true
+  if (html === '<p></p>' || html === '<p><br></p>') return true
+  if (html === '<p><br class="ProseMirror-trailingBreak"></p>') return true
+  // 包含有意义的非文本元素时，不算空
+  if (/<(img|table|hr|video|audio|iframe|canvas)\b/i.test(html)) return false
+  const stripped = html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[\u200B\uFEFF]/g, '')
+    .trim()
+  return stripped === ''
 }
 
-const setContentSafely = (content: string, emitUpdate = true) => {
+// 安全地将内容设置到编辑器（返回是否成功）
+const trySetContent = (html: string, emitUpdate = true): boolean => {
   const editor = editorInstance.value
-  if (!editor) return
-
-  const { state, view, schema } = editor
-  const tr = state.tr
-  const newContent = createNodeFromContent(content, schema, {
-    parseOptions: { preserveWhitespace: 'full' },
-    errorOnInvalidContent: false
-  })
-
-  tr.replaceWith(0, tr.doc.content.size, newContent as any)
-
-  if (tr.doc.content.size === 0 && schema.nodes.paragraph) {
-    tr.insert(0, schema.nodes.paragraph.create())
-  }
+  if (!editor || isUnmounted.value) return false
 
   try {
-    tr.setSelection(Selection.atStart(tr.doc))
-  } catch (selectionError) {
-    console.warn('设置初始选区失败，跳过:', selectionError)
-  }
+    const { state, view, schema } = editor
+    const tr = state.tr
+    const newContent = createNodeFromContent(html, schema, {
+      parseOptions: { preserveWhitespace: 'full' },
+      errorOnInvalidContent: false
+    })
 
-  tr.setMeta('preventUpdate', !emitUpdate)
-  view.dispatch(tr)
+    tr.replaceWith(0, tr.doc.content.size, newContent as any)
+
+    if (tr.doc.content.size === 0 && schema.nodes.paragraph) {
+      tr.insert(0, schema.nodes.paragraph.create())
+    }
+
+    try {
+      tr.setSelection(Selection.atStart(tr.doc))
+    } catch {
+      // 选区设置失败可忽略
+    }
+
+    tr.setMeta('preventUpdate', !emitUpdate)
+    view.dispatch(tr)
+    return true
+  } catch (e) {
+    logger.warn('setContent 失败，尝试不触发同步:', e)
+    try {
+      const { state, view, schema } = editor
+      const tr = state.tr
+      const newContent = createNodeFromContent(html, schema, {
+        parseOptions: { preserveWhitespace: 'full' },
+        errorOnInvalidContent: false
+      })
+      tr.replaceWith(0, tr.doc.content.size, newContent as any)
+      tr.setMeta('preventUpdate', true)
+      view.dispatch(tr)
+      return true
+    } catch (e2) {
+      console.error('setContent 彻底失败:', e2)
+      return false
+    }
+  }
 }
+
+// 防重入锁：防止多个触发源（handleEditorReady / onSynced / watch）同时调用 applyPreloadedContent
+const isApplyingContent = ref(false)
 
 const tryApplyPreloadedContent = () => {
-  if (preloadedApplied.value || !preloadedContent.value) return
+  if (preloadedApplied.value || isApplyingContent.value || !preloadedContent.value) return
   if (!isEditorReady.value) return
-  if (!isCollaborationSynced.value && !shouldDelayCollaborationConnect.value) return
+  // 严格要求：必须等待协作同步完成后再决定是否应用预加载内容
+  if (!isCollaborationSynced.value) return
   void applyPreloadedContent()
 }
 
+/**
+ * 应用预加载内容到编辑器
+ * 重构后：for + await sleep 替代嵌套 setTimeout，3 次重试
+ * 保留的边界处理：编辑器 DOM 就绪检测、样式恢复 fallback、协同连接防护
+ */
 const applyPreloadedContent = async () => {
-  if (!editorInstance.value || !preloadedContent.value || preloadedApplied.value) {
-    console.log('applyPreloadedContent 跳过:', {
-      hasEditor: !!editorInstance.value,
-      hasPreloadedContent: !!preloadedContent.value,
-      preloadedApplied: preloadedApplied.value
-    })
+  if (!editorInstance.value || !preloadedContent.value || preloadedApplied.value) return
+  if (isUnmounted.value || isApplyingContent.value) return
+
+  // 协同同步后检查：如果编辑器已有内容（来自其他用户的协作同步），跳过预加载，防止内容重复
+  const syncedHtml = editorInstance.value?.getHTML() || ''
+  if (!isEditorContentEmpty(syncedHtml)) {
+    logger.debug('协同同步已有内容，跳过预加载（防止内容重复）')
+    preloadedApplied.value = true
+    isFirstLoadWithContent.value = false
+    void clearPreloadedCache()
     return
   }
+
+  isApplyingContent.value = true
+
   try {
-    console.log('设置预加载内容到编辑器')
     const content = preloadedContent.value.trim()
-    const normalizedContent = normalizePreloadedHtml(content)
-    const safeContent = sanitizeImagesIfNeeded(normalizedContent, 'preload')
-    const strippedContent = content
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .trim()
-    if (content && strippedContent.length > 0) {
-      // 在协同编辑模式下，需要使用 emitUpdate: true 来触发 Yjs 同步
-      // 使用多次重试机制，确保在协同同步后正确应用预加载内容
-      const tryApplyContent = async (retryCount = 0, maxRetries = 5, delay = 300) => {
-        // 检查组件是否已卸载，避免内存泄漏
-        if (isUnmounted.value) return
-        if (!editorInstance.value || preloadedApplied.value) return
 
-        // 检查当前编辑器是否为空（只有一个空段落或仅包含空白字符）
-        const currentContent = editorInstance.value.getHTML()
-        const currentStripped =
-          currentContent
-            ?.replace(/<[^>]*>/g, '')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/\u200B/g, '') // 零宽空格
-            .replace(/\uFEFF/g, '') // BOM
-            .trim() || ''
+    // 1. 规范化 + 图片清理
+    const normalizedHtml = normalizePreloadedHtml(content)
+    const safeHtml = sanitizeImagesIfNeeded(normalizedHtml, 'preload')
 
-        const currentHasStyle = hasStyleHints(currentContent || '')
-        const preloadedHasStyle = hasStyleHints(safeContent || '')
-        const shouldForceApply = preloadedHasStyle && !currentHasStyle
+    // 2. 检查内容是否有实质（纯文本或图片）
+    const strippedText = content.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+    const hasImages = /<img\b[^>]*src=/i.test(content)
+    if (!strippedText && !hasImages) {
+      logger.debug('预加载内容为空，跳过')
+      return
+    }
 
-        const isEditorEmpty =
-          !currentContent ||
-          currentContent === '<p></p>' ||
-          currentContent === '<p><br></p>' ||
-          currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
-          currentStripped === ''
+    // 3. 将 data:image 转为 blob URL（源头已清洗 base64 空白，atob 可正确解码）
+    // 必须转换：浏览器对超长 data URL 的 <img src> 有长度限制（ERR_INVALID_URL）
+    const contentToApply = /data:image\//i.test(safeHtml)
+      ? await replaceDataImagesWithBlobUrls(safeHtml)
+      : safeHtml
 
-        console.log(`applyPreloadedContent 尝试 ${retryCount + 1}/${maxRetries}:`, {
-          currentContent: currentContent?.substring(0, 100),
-          currentStripped: currentStripped?.substring(0, 50),
-          isEditorEmpty,
-          currentHasStyle,
-          preloadedHasStyle,
-          shouldForceApply,
-          isFirstLoadWithContent: isFirstLoadWithContent.value
-        })
+    // 4. 等待编辑器 DOM 稳定后再尝试
+    await sleep(300)
 
-        // 首次加载且有预加载内容时，强制应用（即使协同同步了空内容）
-        // 或者编辑器为空时应用
-        if (
-          isEditorEmpty ||
-          shouldForceApply ||
-          (isFirstLoadWithContent.value && currentStripped.length < 10)
-        ) {
-          console.log('应用预加载内容到编辑器')
-          const contentWithBlobs = /data:image\//i.test(safeContent)
-            ? await replaceDataImagesWithBlobUrls(safeContent)
-            : safeContent
-          // 使用 emitUpdate: true 确保触发协同同步
-          try {
-            setContentSafely(contentWithBlobs, true)
-          } catch (setContentError) {
-            // 如果 chain 命令失败，尝试分步执行
-            console.warn('chain 命令失败，尝试分步设置内容:', setContentError)
-            try {
-              setContentSafely(contentWithBlobs, false)
-            } catch (fallbackError) {
-              console.error('设置内容失败:', fallbackError)
-            }
-          }
+    // 5. 重试循环（最多 3 次）
+    let applied = false
+    const maxRetries = 3
 
-          const verifyTimerId = setTimeout(() => {
-            pendingTimers.value.delete(verifyTimerId)
-            if (isUnmounted.value || !editorInstance.value) return
+    for (let i = 0; i < maxRetries && !applied; i++) {
+      if (isUnmounted.value || preloadedApplied.value) return
+      if (i > 0) await sleep(300 * i)
 
-            const appliedContent = editorInstance.value.getHTML()
-            const appliedStripped =
-              appliedContent
-                ?.replace(/<[^>]*>/g, '')
-                .replace(/&nbsp;/g, ' ')
-                .replace(/\u200B/g, '')
-                .replace(/\uFEFF/g, '')
-                .trim() || ''
+      const currentHtml = editorInstance.value?.getHTML() || ''
+      const preloadedHasStyle = hasStyleHintsInHtml(safeHtml)
 
-            const appliedHasStyle = hasStyleHints(appliedContent || '')
-            const preloadedHasStyle = hasStyleHints(contentWithBlobs || '')
+      // 判断是否需要应用：编辑器空、首次加载、或预加载有样式但编辑器没有
+      const needsApply =
+        isEditorContentEmpty(currentHtml) ||
+        (isFirstLoadWithContent.value && isEditorContentEmpty(currentHtml)) ||
+        (preloadedHasStyle && !hasStyleHintsInHtml(currentHtml))
 
-            if (appliedStripped && !(preloadedHasStyle && !appliedHasStyle)) {
-              preloadedApplied.value = true
-              isFirstLoadWithContent.value = false
-              void clearPreloadedCache()
-              ElMessage.success('文档内容已加载')
-              if (shouldDelayCollaborationConnect.value) {
-                shouldDelayCollaborationConnect.value = false
-                connectProvider()
-              }
-            } else if (appliedStripped && preloadedHasStyle && !appliedHasStyle) {
-              console.warn('预加载内容样式被覆盖，强制恢复样式...')
-              try {
-                setContentSafely(normalizedContent, true)
-              } catch (styleRestoreError) {
-                console.warn('强制恢复样式失败:', styleRestoreError)
-              }
-              preloadedApplied.value = true
-              isFirstLoadWithContent.value = false
-              void clearPreloadedCache()
-              if (shouldDelayCollaborationConnect.value) {
-                shouldDelayCollaborationConnect.value = false
-                connectProvider()
-              }
-            } else if (retryCount < maxRetries - 1) {
-              console.info('预加载内容未生效，准备重试...')
-              if (strippedContent) {
-                const fallbackHtml = strippedContent
-                  .split(/\n+/)
-                  .filter((line) => line.trim())
-                  .map((line) => `<p>${escapeHtml(line.trim())}</p>`)
-                  .join('')
-                if (fallbackHtml) {
-                  try {
-                    setContentSafely(fallbackHtml, true)
-                  } catch (fallbackSetError) {
-                    console.warn('fallback 内容设置失败:', fallbackSetError)
-                  }
-                }
-              }
-              tryApplyContent(retryCount + 1, maxRetries, delay)
-            } else {
-              console.warn('预加载内容应用失败，已达到最大重试次数')
-            }
-          }, 200)
-          pendingTimers.value.add(verifyTimerId)
-        } else if (retryCount < maxRetries - 1) {
-          // 如果编辑器有内容但可能是协同同步的旧内容，再等待一会儿重试
-          console.log(`编辑器有内容，${delay}ms 后重试...`)
-          const timerId = setTimeout(() => {
-            pendingTimers.value.delete(timerId)
-            tryApplyContent(retryCount + 1, maxRetries, delay)
-          }, delay)
-          pendingTimers.value.add(timerId)
-        } else {
-          console.log('编辑器已有实质内容，跳过预加载')
-          preloadedApplied.value = true
-          isFirstLoadWithContent.value = false
-          void clearPreloadedCache()
-          if (shouldDelayCollaborationConnect.value) {
-            shouldDelayCollaborationConnect.value = false
-            connectProvider()
-          }
-        }
+      if (!needsApply && !isEditorContentEmpty(currentHtml)) {
+        // 编辑器已有实质内容（可能来自协同同步），跳过预加载
+        logger.debug('编辑器已有实质内容，跳过预加载')
+        applied = true
+        break
       }
 
-      // 初始延迟后开始尝试
-      const initialTimerId = setTimeout(() => {
-        pendingTimers.value.delete(initialTimerId)
-        tryApplyContent()
-      }, 500)
-      pendingTimers.value.add(initialTimerId)
-    } else {
-      console.log('预加载内容为空，跳过设置')
+      // 尝试设置内容
+      const setOk = trySetContent(contentToApply)
+      if (!setOk) continue
+
+      // 等待渲染后验证
+      await sleep(200)
+      if (isUnmounted.value || !editorInstance.value) return
+
+      const appliedHtml = editorInstance.value.getHTML()
+
+      if (isEditorContentEmpty(appliedHtml)) {
+        // 内容没有生效，重试
+        logger.info(`第 ${i + 1} 次应用未生效，重试...`)
+        continue
+      }
+
+      // 检查样式保真度：如果预加载有样式但应用后丢失，尝试恢复
+      if (preloadedHasStyle && !hasStyleHintsInHtml(appliedHtml)) {
+        logger.warn('样式丢失，尝试恢复...')
+        trySetContent(normalizedHtml, true)
+      }
+
+      applied = true
+    }
+
+    // 6. 如果所有重试失败，尝试纯文本 fallback
+    if (!applied && strippedText) {
+      logger.warn('富文本应用失败，降级为纯文本')
+      const fallbackHtml = strippedText
+        .split(/\n+/)
+        .filter((line) => line.trim())
+        .map((line) => `<p>${escapeHtml(line.trim())}</p>`)
+        .join('')
+      if (fallbackHtml) {
+        trySetContent(fallbackHtml, true)
+      }
+    }
+
+    // 7. 标记完成，清理缓存
+    preloadedApplied.value = true
+    isFirstLoadWithContent.value = false
+    void clearPreloadedCache()
+
+    if (applied) {
+      ElMessage.success('文档内容已加载')
     }
   } catch (error) {
     console.error('设置预加载内容失败:', error)
     ElMessage.warning('文档内容加载失败，请手动输入')
+  } finally {
+    isApplyingContent.value = false
   }
 }
 
 // 编辑器就绪回调
 const handleEditorReady = async (editor: any) => {
   editorInstance.value = editor
-  console.log('Tiptap 编辑器已就绪')
+  logger.debug('Tiptap 编辑器已就绪')
   isEditorReady.value = true
   tryApplyPreloadedContent()
 }
@@ -1045,7 +806,8 @@ const handleSave = async () => {
   try {
     // 获取编辑器的 HTML 内容
     const content = editorInstance.value.getHTML()
-    const normalizedHtml = normalizeHtmlThroughDocModel(content, {
+    const restored = restoreBlobImagesFromOrigin(content)
+    const normalizedHtml = normalizeHtmlThroughDocModel(restored, {
       source: 'html',
       method: 'tiptap-html'
     })
@@ -1057,7 +819,7 @@ const handleSave = async () => {
     // 使用 DocModel 生成真实的 DOCX 文件
     const blob = await docModelToDocx(docModel, documentTitle.value)
     const filename = `${documentTitle.value}.docx`
-    console.log(
+    logger.debug(
       '保存文件，文档ID:',
       documentId.value,
       '文件名:',
@@ -1100,7 +862,7 @@ const loadDocument = async () => {
 
     if (cachedDocInfo) {
       documentInfo.value = JSON.parse(cachedDocInfo) as DocumentInfo
-      console.log('从缓存加载文档信息:', documentInfo.value)
+      logger.debug('从缓存加载文档信息:', documentInfo.value)
     } else {
       // 如果没有缓存的文档信息，使用默认值
       const now = new Date().toISOString()
@@ -1115,7 +877,7 @@ const loadDocument = async () => {
         creatorId: 0,
         creatorName: '未知'
       }
-      console.log('使用默认文档信息:', documentInfo.value)
+      logger.debug('使用默认文档信息:', documentInfo.value)
     }
 
     // 加载参考素材
@@ -1189,41 +951,37 @@ watch(
 
 // 组件挂载
 onMounted(async () => {
-  ;(globalThis as any).__exportDocDebug = exportDebugArtifacts
-  ;(globalThis as any).__replaceDataImages = replaceDataImagesWithBlobUrls
-  installDebugCollectors()
-  // 检查是否有预加载的文件内容（从 IndexedDB 中获取，避免 sessionStorage 配额限制）
-  const cachedContentKey = `doc_content_${documentId.value}`
-  const cachedContent = await getDocContent(documentId.value)
+  // 从 Pinia 内存 Store 获取文件 ArrayBuffer，如果为空（页面刷新）则从后端重新获取
+  const docBufferStore = useDocBufferStore()
+  let arrayBuffer: ArrayBuffer | null = docBufferStore.getBuffer(documentId.value)
   preloadedCacheCleared.value = false
-  console.log(
-    '文档ID:',
-    documentId.value,
-    '缓存键:',
-    cachedContentKey,
-    '是否有缓存:',
-    !!cachedContent
-  )
 
-  // 只要有缓存内容就尝试解析，不再依赖 hasContent 参数
-  if (cachedContent) {
+  if (!arrayBuffer) {
+    logger.debug('内存中无缓存，从后端获取文件流, id:', documentId.value)
     try {
-      console.log('发现预加载的文件内容，正在解析...', '内容长度:', cachedContent.length)
+      const blob = await getFileStreamApi(documentId.value)
+      if (blob && blob.size > 0) {
+        arrayBuffer = await blob.arrayBuffer()
+        logger.debug('从后端获取文件流成功, size:', arrayBuffer.byteLength)
+      }
+    } catch (error) {
+      logger.warn('从后端获取文件流失败，将依赖协同同步:', error)
+    }
+  } else {
+    logger.debug('从内存 Store 获取文件流成功, size:', arrayBuffer.byteLength)
+  }
 
-      // 解析 base64 文件流为文档内容
-      const parsedContent = await parseFileContent(cachedContent, undefined, {
-        // 重新进入编辑器时避免 docx-preview 裁剪图片
-        useDocxPreview: false
-      })
-
+  // 解析文件内容（仅解析暂存，不立即应用到编辑器，等协同同步完成后再决策）
+  if (arrayBuffer) {
+    try {
+      logger.debug('开始解析文件内容, 大小:', arrayBuffer.byteLength)
+      const parsedContent = await parseFileContent(arrayBuffer)
       if (parsedContent) {
         preloadedContent.value = parsedContent
-        isFirstLoadWithContent.value = true // 标记为首次加载有内容
-        shouldDelayCollaborationConnect.value = true
-        console.log('预加载内容解析成功，HTML 长度:', parsedContent.length)
-        tryApplyPreloadedContent()
+        isFirstLoadWithContent.value = true
+        logger.debug('预加载内容解析成功，HTML 长度:', parsedContent.length)
       } else {
-        console.warn('解析结果为空')
+        logger.warn('解析结果为空')
       }
     } catch (error) {
       console.error('解析预加载内容失败:', error)
@@ -1231,35 +989,26 @@ onMounted(async () => {
   }
 
   loadDocument()
-  initCollaboration({ autoConnect: !shouldDelayCollaborationConnect.value })
-  if (shouldDelayCollaborationConnect.value) {
-    if (pendingConnectTimer.value) {
-      clearTimeout(pendingConnectTimer.value)
+  // 始终立即连接协作（不再延迟），由 onSynced 回调触发 tryApplyPreloadedContent
+  initCollaboration({ autoConnect: true })
+
+  // 第二级安全超时（8s）：覆盖 WebSocket 彻底连不上的场景
+  // 确保用户至少能看到预加载的文档内容，不会面对空白编辑器
+  const safetyTimeoutId = setTimeout(() => {
+    pendingTimers.value.delete(safetyTimeoutId)
+    if (isUnmounted.value) return
+    if (!isCollaborationSynced.value) {
+      logger.warn('协作连接超时(8s)，强制应用预加载内容')
+      isCollaborationSynced.value = true
+      tryApplyPreloadedContent()
     }
-    pendingConnectTimer.value = setTimeout(() => {
-      pendingConnectTimer.value = null
-      if (preloadedApplied.value) return
-      console.warn('预加载内容未及时应用，强制建立协同连接')
-      shouldDelayCollaborationConnect.value = false
-      connectProvider()
-    }, 4000)
-  }
+  }, 8000)
+  pendingTimers.value.add(safetyTimeoutId)
 })
 
 // 组件卸载 - 清理非协同相关的资源
 // 注意: useCollaboration hook 会自动清理协同编辑相关的资源（ydoc, provider, 事件监听器等）
 onBeforeUnmount(() => {
-  const globalAny = globalThis as any
-  if (globalAny.__exportDocDebug === exportDebugArtifacts) {
-    delete globalAny.__exportDocDebug
-  }
-  if (globalAny.__replaceDataImages === replaceDataImagesWithBlobUrls) {
-    delete globalAny.__replaceDataImages
-  }
-  if (detachErrorHandlers) {
-    detachErrorHandlers()
-    detachErrorHandlers = null
-  }
   // 标记组件已卸载，防止异步回调继续执行
   isUnmounted.value = true
 
@@ -1274,10 +1023,6 @@ onBeforeUnmount(() => {
     clearTimeout(timerId)
   })
   pendingTimers.value.clear()
-  if (pendingConnectTimer.value) {
-    clearTimeout(pendingConnectTimer.value)
-    pendingConnectTimer.value = null
-  }
 
   // 清理编辑器实例引用
   editorInstance.value = null
@@ -1292,7 +1037,7 @@ onBeforeUnmount(() => {
   preloadedContent.value = ''
   isFirstLoadWithContent.value = false
 
-  console.log('协同编辑组件已清理')
+  logger.debug('协同编辑组件已清理')
 })
 </script>
 

@@ -49,6 +49,7 @@ const registerYjsErrorHandler = () => {
  * 注销全局错误处理器
  */
 const unregisterYjsErrorHandler = () => {
+  if (globalErrorHandlerRefCount <= 0) return // 防止多次注销导致计数变为负数
   globalErrorHandlerRefCount--
   if (globalErrorHandlerRefCount === 0 && originalOnError !== null) {
     window.onerror = originalOnError
@@ -449,15 +450,21 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         }, 50)
       }
 
-      // 如果连接已建立但还没有收到 sync 事件，设置超时
+      // 第一级超时（3s）：如果连接已建立但还没有收到 sync 事件，强制标记就绪并触发 onSynced
       syncTimeoutId = setTimeout(() => {
         if (isComponentDestroyed) return
 
         if (!isReady.value && provider.value?.wsconnected) {
+          logConnectionEvent('同步超时(3s)', '连接已建立但未收到sync事件，强制标记就绪')
+          hasShownSyncedMessage = true
           isReady.value = true
+          updateCollaborators()
+          onSynced?.()
         }
-      }, 2000)
+      }, 3000)
     } catch (error) {
+      // 初始化失败时注销已注册的全局错误处理器，防止引用计数泄漏
+      unregisterYjsErrorHandler()
       logConnectionEvent('初始化失败', (error as Error).message)
       console.error('协同编辑初始化失败:', error)
       ElMessage.error('协同编辑初始化失败: ' + (error as Error).message)

@@ -18,11 +18,14 @@ import type {
 } from './types'
 import { normalizeDocMetadata } from './model'
 import type { DocMetadata } from './types'
+import { normalizeColor } from '../wordParser.shared'
+import { logger } from '@/views/utils/logger'
 
 const parsePxValue = (value?: string): number | undefined => {
   if (!value) return undefined
   const raw = value.trim()
   if (!raw) return undefined
+  // pt → px（1pt ≈ 1.33px）— DOCX 最常用单位
   if (raw.endsWith('pt')) {
     const pt = parseFloat(raw)
     if (Number.isNaN(pt)) return undefined
@@ -32,6 +35,12 @@ const parsePxValue = (value?: string): number | undefined => {
     const px = parseFloat(raw)
     return Number.isNaN(px) ? undefined : px
   }
+  // em/rem/% 在 DOCX 中极少出现，仅记录不处理
+  if (raw.endsWith('em') || raw.endsWith('rem') || raw.endsWith('%')) {
+    logger.debug(`[parsePxValue] 跳过不支持的单位: ${raw}`)
+    return undefined
+  }
+  // 无单位数值视为 px
   const num = parseFloat(raw)
   return Number.isNaN(num) ? undefined : num
 }
@@ -86,10 +95,24 @@ const parseRunStyle = (element: Element): RunStyle | undefined => {
   const color = map['color']
   const backgroundColor = map['background-color']
 
-  if (fontFamily) style.fontFamily = fontFamily.replace(/"/g, "'")
+  // 清理 font-family 中所有引号，存储纯字体名（输出时由 serializer 添加 fallback）
+  if (fontFamily) {
+    const cleaned = fontFamily
+      .split(',')[0] // 取第一个字体名（忽略 CSS fallback 链）
+      .replace(/['"]/g, '')
+      .trim()
+    if (cleaned) style.fontFamily = cleaned
+  }
   if (fontSize) style.fontSize = fontSize
-  if (color) style.color = color
-  if (backgroundColor) style.backgroundColor = backgroundColor
+  // 颜色归一化为 #RRGGBB 格式
+  if (color) {
+    const normalized = normalizeColor(color)
+    if (normalized) style.color = normalized
+  }
+  if (backgroundColor) {
+    const normalized = normalizeColor(backgroundColor)
+    if (normalized) style.backgroundColor = normalized
+  }
 
   const fontWeight = map['font-weight']
   if (fontWeight && (fontWeight === 'bold' || parseInt(fontWeight, 10) >= 600)) {
@@ -272,9 +295,22 @@ const parseCodeBlock = (element: Element): DocCodeBlock => {
   return { type: 'code', text, language }
 }
 
+/** 清洗 data URL 中 base64 部分的空白字符（第三方库生成的 base64 可能含换行） */
+const cleanDataUrlWhitespace = (url: string): string => {
+  if (!url || !url.startsWith('data:')) return url
+  const commaIdx = url.indexOf(',')
+  if (commaIdx === -1) return url
+  const prefix = url.substring(0, commaIdx + 1) // "data:image/png;base64,"
+  const base64 = url.substring(commaIdx + 1)
+  return prefix + base64.replace(/[\s\r\n\t]+/g, '')
+}
+
 const parseImage = (element: Element): DocImageBlock => {
-  const originSrc = element.getAttribute('data-origin-src') || undefined
-  const src = originSrc || element.getAttribute('src') || ''
+  const rawOriginSrc = element.getAttribute('data-origin-src') || undefined
+  const rawSrc = rawOriginSrc || element.getAttribute('src') || ''
+  // 清洗 base64 空白 — 覆盖所有图片来源（docx-preview / docx4js / mammoth / ooxml）
+  const src = cleanDataUrlWhitespace(rawSrc)
+  const originSrc = rawOriginSrc ? cleanDataUrlWhitespace(rawOriginSrc) : undefined
   const alt = element.getAttribute('alt') || undefined
   const styleText = element.getAttribute('style') || ''
   const styleMap = styleText ? extractStyleMap(styleText) : {}

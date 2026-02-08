@@ -8,6 +8,7 @@ const include = [
   'pinia',
   'dayjs',
   'qrcode',
+  'events',
   'unocss',
   'vue-router',
   'vue-types',

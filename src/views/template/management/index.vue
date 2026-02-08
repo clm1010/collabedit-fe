@@ -486,7 +486,13 @@ import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { isEmpty, isNil, isString, isObject, pickBy, filter, map, every } from 'lodash-es'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
-import { blobToBase64, blobToText } from '@/views/utils/fileUtils'
+import {
+  blobToBase64,
+  blobToText,
+  addDocStreamSnapshot,
+  computeSha256HexFromBlob,
+  logDocStreamDebug
+} from '@/views/utils/fileUtils'
 import ElementsEditor from './components/ElementsEditor.vue'
 import { markdownToHtml } from '@/views/template/editor/utils'
 import type { ElementItem } from '@/types/management'
@@ -748,6 +754,11 @@ const handleSelectionChange = (rows: TemplateApi.TemplateVO[]) => {
   ) as (string | undefined)[]
 }
 
+const getBase64BodyLength = (dataUrl: string) => {
+  const index = dataUrl.indexOf(',')
+  return index === -1 ? dataUrl.length : dataUrl.length - index - 1
+}
+
 // 新建
 const handleAdd = () => {
   dialogTitle.value = '新建模板'
@@ -808,9 +819,38 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
     // 5. 处理文件流数据
     let hasContent = false
     if (streamResult && streamResult.size > 0) {
+      logDocStreamDebug('template blob received', {
+        id: row.id,
+        size: streamResult.size,
+        type: streamResult.type
+      })
+      addDocStreamSnapshot(
+        'template_blob_received',
+        { size: streamResult.size, type: streamResult.type },
+        row.id
+      )
+      const blobSha256 = await computeSha256HexFromBlob(streamResult)
+      logDocStreamDebug('template blob sha256', {
+        id: row.id,
+        sha256: blobSha256 || 'unavailable'
+      })
+      addDocStreamSnapshot('template_blob_sha256', { sha256: blobSha256 || 'unavailable' }, row.id)
       console.log('文件流有效, size:', streamResult.size, 'type:', streamResult.type)
       // 将 blob 转为 base64 存储到 sessionStorage
       const base64Content = await blobToBase64(streamResult)
+      logDocStreamDebug('template base64 converted', {
+        id: row.id,
+        dataUrlLength: base64Content.length,
+        base64BodyLength: getBase64BodyLength(base64Content)
+      })
+      addDocStreamSnapshot(
+        'template_base64_converted',
+        {
+          dataUrlLength: base64Content.length,
+          base64BodyLength: getBase64BodyLength(base64Content)
+        },
+        row.id
+      )
       console.log(
         'base64 转换完成, 长度:',
         base64Content.length,
@@ -818,9 +858,15 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
         base64Content.substring(0, 100)
       )
       sessionStorage.setItem(`markdown_content_${row.id}`, base64Content)
+      logDocStreamDebug('template base64 stored', {
+        id: row.id,
+        key: `markdown_content_${row.id}`
+      })
+      addDocStreamSnapshot('template_base64_stored', { key: `markdown_content_${row.id}` }, row.id)
       hasContent = true
       console.log('文件流已存储到 sessionStorage, key:', `markdown_content_${row.id}`)
     } else {
+      logDocStreamDebug('template blob empty', { id: row.id })
       console.warn('文件流为空或无效:', streamResult)
     }
 

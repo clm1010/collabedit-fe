@@ -1,10 +1,9 @@
 import type { ParseProgressCallback, WordFileType } from './wordParser/types'
 import {
-  base64ToUint8Array,
   detectWordFormat,
   isDocFormat,
   isZipFormat,
-  validateAndFixImages
+  sanitizeImagesIfNeeded
 } from './wordParser.shared'
 import { convertInlineStylesToTiptap } from './wordParser.postprocess'
 import { parseWordDocument } from './wordParser.mammoth'
@@ -18,191 +17,171 @@ import { isRedHeadDocument, parseRedHeadDocument } from './wordParser.redhead'
 import { parseDocxToDocModel } from './docModel/parser'
 import { serializeDocModelToHtml } from './docModel/serializer'
 import { parseWithWorker } from './wordParser.worker'
+import { logger } from '@/views/utils/logger'
+
+/**
+ * 验证解析结果是否有效（非空、包含有效 HTML 内容）
+ */
+const isValidParseResult = (html: string): boolean => {
+  if (!html || !html.trim()) return false
+  // 至少包含一个有效 HTML 标签或有实质文本内容
+  const stripped = html.replace(/<[^>]*>/g, '').trim()
+  if (stripped.length > 0) return true
+  // 纯标签但包含有效元素（如 <img>、<table>）
+  return /<(p|h[1-6]|div|span|table|img|ul|ol|li|blockquote)\b/i.test(html)
+}
+
+/**
+ * 格式化错误信息，用于链式错误上下文
+ */
+const formatParseError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`
+  }
+  return String(error)
+}
 
 /**
  * 解析文件内容
- * 将 base64 编码的文件流解析为可在编辑器中显示的内容
+ * 将 ArrayBuffer 文件流解析为可在编辑器中显示的 HTML 内容
+ *
+ * 解析策略（三级 fallback）：红头文件 → DocModel → Mammoth
+ * 最终失败时返回空字符串（不抛出异常），让 UI 层展示友好提示
  */
 export const parseFileContent = async (
-  base64Data: string,
-  onProgress?: ParseProgressCallback,
-  options: { useDocxPreview?: boolean } = {}
+  data: ArrayBuffer,
+  onProgress?: ParseProgressCallback
 ): Promise<string> => {
   try {
-    console.log('开始解析文件内容, 数据长度:', base64Data.length)
-    const allowDocxPreview = options.useDocxPreview !== false
+    logger.debug('[parseFileContent] 开始, 数据大小:', data.byteLength)
 
     onProgress?.(15, '正在分析文件格式...')
 
-    const base64Index = base64Data.indexOf(',')
-    const sanitizeImagesIfNeeded = (html: string, source: string): string => {
-      if (!html) return html
-      if (!/<img\b/i.test(html) && !/data:image\//i.test(html)) return html
-      const sanitized = validateAndFixImages(html)
-      if (sanitized !== html) {
-        const count = (html.match(/data:image\//gi) || []).length
-        console.info(
-          `[wordParser] 修复 data:image: source=${source}, count=${count}, before=${html.length}, after=${sanitized.length}`
-        )
-      }
-      return sanitized
-    }
-
-    if (base64Index === -1) {
-      console.warn('无效的 base64 数据格式，尝试直接作为 base64 解码')
-      try {
-        const bytes = base64ToUint8Array(base64Data)
-        if (isZipFormat(bytes)) {
-          console.log('检测到 ZIP 格式（.docx），准备解析...')
-          onProgress?.(20, '检测到 Word 文档...')
-          const arrayBuffer = bytes.buffer.slice(
-            bytes.byteOffset,
-            bytes.byteOffset + bytes.byteLength
-          ) as ArrayBuffer
-
-          try {
-            const isRedHead = await isRedHeadDocument(arrayBuffer)
-            if (isRedHead) {
-              console.log('检测到红头文件格式，使用红头文件解析器...')
-              onProgress?.(25, '检测到红头文件，使用专用解析器...')
-              console.info('[wordParser] parseFileContent: parser=redhead')
-              return sanitizeImagesIfNeeded(
-                await parseRedHeadDocument(arrayBuffer, onProgress),
-                'redhead'
-              )
-            }
-          } catch (e) {
-            console.warn('红头文件检测失败，继续使用标准解析器:', e)
-          }
-
-          try {
-            const model = await parseDocxToDocModel(arrayBuffer, {
-              onProgress,
-              useDocxPreview: allowDocxPreview,
-              useMammothFallback: true,
-              useZipJs: true
-            })
-            const html = serializeDocModelToHtml(model)
-            console.info('[wordParser] parseFileContent: parser=docmodel')
-            return sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
-          } catch (e) {
-            console.warn('DocModel 解析失败，回退到 mammoth:', e)
-            console.info('[wordParser] parseFileContent: parser=mammoth')
-            return sanitizeImagesIfNeeded(
-              await parseWordDocument(arrayBuffer, onProgress),
-              'mammoth'
-            )
-          }
-        }
-      } catch (e) {
-        console.error('直接 base64 解码失败:', e)
-      }
-      return ''
-    }
-
-    const mimeType = base64Data.substring(0, base64Index)
-    const base64Content = base64Data.substring(base64Index + 1)
-    console.log('MIME 类型:', mimeType, 'base64 内容长度:', base64Content.length)
-
-    onProgress?.(20, '正在解码文件内容...')
-
-    const bytes = base64ToUint8Array(base64Content)
-    console.log('解码后字节数:', bytes.length, '文件头:', bytes[0], bytes[1], bytes[2], bytes[3])
-
+    const bytes = new Uint8Array(data)
     const isZip = isZipFormat(bytes)
-    console.log('是否为 ZIP 格式:', isZip)
 
-    if (mimeType.includes('text/html') || mimeType.includes('text/plain')) {
-      console.log('处理为文本类型')
-      onProgress?.(80, '正在处理文本内容...')
+    // ── 非 ZIP 且非 DOC：尝试作为文本/HTML 处理 ──
+    if (!isZip && !isDocFormat(bytes)) {
       const decoder = new TextDecoder('utf-8')
-      return sanitizeImagesIfNeeded(decoder.decode(bytes), 'text')
-    } else if (
-      mimeType.includes('application/vnd.openxmlformats') ||
-      mimeType.includes('application/msword') ||
-      mimeType.includes('application/octet-stream') ||
-      isZip ||
-      isDocFormat(bytes)
-    ) {
-      const format = detectWordFormat(bytes)
-      console.log('检测到文件格式:', format)
+      const text = decoder.decode(bytes)
+      const trimmedText = text.trim()
 
-      if (format === 'doc') {
-        console.log('检测到旧版 .doc 格式，不支持')
-        onProgress?.(25, '检测到旧版 .doc 格式...')
-        const error = new Error('DOC_FORMAT_NOT_SUPPORTED')
-        ;(error as any).isDocFormat = true
-        throw error
+      if (
+        trimmedText.startsWith('<!DOCTYPE') ||
+        trimmedText.startsWith('<html') ||
+        trimmedText.startsWith('<HTML') ||
+        (trimmedText.startsWith('\ufeff') && trimmedText.includes('<html'))
+      ) {
+        onProgress?.(80, '正在处理 HTML 内容...')
+        const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+        const result = bodyMatch
+          ? sanitizeImagesIfNeeded(bodyMatch[1].trim(), 'html-body')
+          : sanitizeImagesIfNeeded(text, 'html-full')
+        if (isValidParseResult(result)) return result
       }
 
-      if (format === 'unknown') {
-        console.log('格式未知，尝试作为 HTML 解析...')
-        onProgress?.(30, '正在识别文件内容...')
-        const decoder = new TextDecoder('utf-8')
-        const text = decoder.decode(bytes)
-
-        const trimmedText = text.trim()
-        if (
-          trimmedText.startsWith('<!DOCTYPE') ||
-          trimmedText.startsWith('<html') ||
-          trimmedText.startsWith('<HTML') ||
-          (trimmedText.startsWith('\ufeff') && trimmedText.includes('<html'))
-        ) {
-          console.log('检测到 HTML 格式的 Word 兼容文件')
-          onProgress?.(80, '正在处理 HTML 内容...')
-          const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-          if (bodyMatch) {
-            return sanitizeImagesIfNeeded(bodyMatch[1].trim(), 'html-body')
-          }
-          return sanitizeImagesIfNeeded(text, 'html-full')
-        }
-
-        throw new Error('不支持的文件格式，请上传 .docx 文件')
-      }
-
-      console.log('检测到 Word 文档/二进制流，准备解析...')
-      onProgress?.(25, '检测到 Word 文档，准备解析...')
-      const arrayBuffer = bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength
-      ) as ArrayBuffer
-
-      try {
-        const isRedHead = await isRedHeadDocument(arrayBuffer)
-        if (isRedHead) {
-          console.log('检测到红头文件格式，使用红头文件解析器...')
-          onProgress?.(30, '检测到红头文件，正在解析...')
-          console.info('[wordParser] parseFileContent: parser=redhead')
-          return sanitizeImagesIfNeeded(
-            await parseRedHeadDocument(arrayBuffer, onProgress),
-            'redhead'
-          )
-        }
-      } catch (e) {
-        console.warn('红头文件检测失败，继续使用标准解析器:', e)
-      }
-
-      try {
-        const model = await parseDocxToDocModel(arrayBuffer, {
-          onProgress,
-          useDocxPreview: allowDocxPreview,
-          useMammothFallback: true,
-          useZipJs: true
-        })
-        const html = serializeDocModelToHtml(model)
-        console.info('[wordParser] parseFileContent: parser=docmodel')
-        return sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
-      } catch (e) {
-        console.warn('DocModel 解析失败，回退到 mammoth:', e)
-        console.info('[wordParser] parseFileContent: parser=mammoth')
-        return sanitizeImagesIfNeeded(await parseWordDocument(arrayBuffer, onProgress), 'mammoth')
+      if (trimmedText.length > 0) {
+        onProgress?.(80, '正在处理文本内容...')
+        return sanitizeImagesIfNeeded(text, 'text')
       }
     }
 
-    throw new Error('不支持的文件格式')
+    // ── Word 文档格式检测 ──
+    const format = detectWordFormat(bytes)
+    logger.debug('[parseFileContent] 文件格式:', format)
+
+    if (format === 'doc') {
+      onProgress?.(25, '检测到旧版 .doc 格式...')
+      const error = new Error('DOC_FORMAT_NOT_SUPPORTED')
+      ;(error as any).isDocFormat = true
+      throw error
+    }
+
+    if (format === 'unknown' && !isZip) {
+      throw new Error('不支持的文件格式，请上传 .docx 文件')
+    }
+
+    onProgress?.(25, '检测到 Word 文档，准备解析...')
+
+    // ── 策略 1：红头文件检测 ──
+    let redHeadError: string | null = null
+    try {
+      const isRedHead = await isRedHeadDocument(data)
+      if (isRedHead) {
+        onProgress?.(30, '检测到红头文件，正在解析...')
+        const result = sanitizeImagesIfNeeded(
+          await parseRedHeadDocument(data, onProgress),
+          'redhead'
+        )
+        if (isValidParseResult(result)) {
+          logger.info('[parseFileContent] parser=redhead, 成功')
+          return result
+        }
+        redHeadError = '红头文件解析结果为空'
+      }
+    } catch (e) {
+      redHeadError = formatParseError(e)
+      logger.warn('[parseFileContent] 红头文件检测/解析失败:', redHeadError)
+    }
+
+    // ── 策略 2：DocModel 解析 ──
+    let docModelError: string | null = null
+    try {
+      const model = await parseDocxToDocModel(data, {
+        onProgress,
+        useDocxPreview: true,
+        useMammothFallback: true,
+        useZipJs: true
+      })
+      const html = serializeDocModelToHtml(model)
+      const result = sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
+      if (isValidParseResult(result)) {
+        logger.info('[parseFileContent] parser=docmodel, 成功')
+        return result
+      }
+      docModelError = '解析结果为空或无效'
+      logger.warn('[parseFileContent] DocModel 结果无效，尝试 mammoth')
+    } catch (e) {
+      docModelError = formatParseError(e)
+      logger.warn(
+        '[parseFileContent] DocModel 解析失败:',
+        docModelError,
+        redHeadError ? `(前置: 红头=${redHeadError})` : ''
+      )
+    }
+
+    // ── 策略 3：Mammoth fallback ──
+    try {
+      const result = sanitizeImagesIfNeeded(
+        await parseWordDocument(data, onProgress),
+        'mammoth'
+      )
+      if (isValidParseResult(result)) {
+        logger.info(
+          '[parseFileContent] parser=mammoth (fallback), 成功',
+          docModelError ? `(DocModel失败: ${docModelError})` : ''
+        )
+        return result
+      }
+      logger.warn('[parseFileContent] mammoth 结果也为空')
+    } catch (e) {
+      logger.error(
+        '[parseFileContent] 全部解析策略失败:',
+        `mammoth=${formatParseError(e)}`,
+        docModelError ? `docmodel=${docModelError}` : '',
+        redHeadError ? `redhead=${redHeadError}` : ''
+      )
+    }
+
+    // 所有策略失败，返回空字符串
+    return ''
   } catch (error) {
-    console.error('文件解析失败:', error)
-    throw error
+    // DOC_FORMAT_NOT_SUPPORTED 等已知错误仍然抛出，让 UI 层特殊处理
+    if (error instanceof Error && (error as any).isDocFormat) {
+      throw error
+    }
+    logger.error('[parseFileContent] 解析异常:', error)
+    return ''
   }
 }
 
@@ -242,63 +221,63 @@ export async function smartParseDocument(
   const fileSize = file.size
   const validation = await validateDocxFile(arrayBuffer)
 
-  console.log(`文件大小: ${(fileSize / 1024 / 1024).toFixed(2)}MB`)
+  logger.debug(`文件大小: ${(fileSize / 1024 / 1024).toFixed(2)}MB`)
 
   if (validation.hasAltChunk) {
-    console.log('检测到红头文件，使用红头文件方案解析')
+    logger.debug('检测到红头文件，使用红头文件方案解析')
     return await parseRedHeadDocument(arrayBuffer, onProgress)
   }
 
-  console.log('优先使用 mammoth 解析文档（能正确识别标题）')
+  logger.debug('优先使用 mammoth 解析文档（能正确识别标题）')
   try {
     onProgress?.(20, '正在使用 mammoth 解析...')
     const mammothResult = await parseWordDocument(arrayBuffer, onProgress)
 
     if (mammothResult && mammothResult.trim().length > 50) {
       if (hasHeadingElements(mammothResult)) {
-        console.log('mammoth 解析成功，检测到标题元素')
+        logger.debug('mammoth 解析成功，检测到标题元素')
         return mammothResult
       } else {
-        console.log('mammoth 解析成功但未检测到标题，尝试大字体段落转换')
+        logger.debug('mammoth 解析成功但未检测到标题，尝试大字体段落转换')
         const processedHtml = postProcessDocxPreviewHtml(mammothResult)
         if (hasHeadingElements(processedHtml)) {
-          console.log('大字体段落转换成功，检测到标题元素')
+          logger.debug('大字体段落转换成功，检测到标题元素')
           return processedHtml
         }
-        console.log('使用 mammoth 结果（无标题）')
+        logger.debug('使用 mammoth 结果（无标题）')
         return processedHtml
       }
     }
   } catch (e) {
-    console.warn('mammoth 解析失败:', e)
+    logger.warn('mammoth 解析失败:', e)
   }
 
-  console.log('回退到 docx-preview 解析')
+  logger.debug('回退到 docx-preview 解析')
 
   if (fileSize < 5 * 1024 * 1024) {
-    console.log('使用 docx-preview 高保真解析')
+    logger.debug('使用 docx-preview 高保真解析')
     try {
       const result = await parseWithDocxPreview(arrayBuffer, onProgress)
       if (result && result.trim().length > 50) {
         return result
       }
-      console.warn('docx-preview 解析结果过短，回退到增强 OOXML 解析')
+      logger.warn('docx-preview 解析结果过短，回退到增强 OOXML 解析')
       return await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
     } catch (e) {
-      console.warn('docx-preview 解析失败，回退到增强 OOXML 解析:', e)
+      logger.warn('docx-preview 解析失败，回退到增强 OOXML 解析:', e)
       return await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
     }
   }
 
-  console.log('使用 Web Worker 非阻塞解析（大文件）')
+  logger.debug('使用 Web Worker 非阻塞解析（大文件）')
   try {
     return await parseWithWorker(arrayBuffer, onProgress)
   } catch (e) {
-    console.warn('Web Worker 解析失败，回退到 docx-preview:', e)
+    logger.warn('Web Worker 解析失败，回退到 docx-preview:', e)
     try {
       return await parseWithDocxPreview(arrayBuffer, onProgress)
     } catch (e2) {
-      console.warn('docx-preview 也失败，使用增强 OOXML 解析:', e2)
+      logger.warn('docx-preview 也失败，使用增强 OOXML 解析:', e2)
       return await parseOoxmlDocumentEnhanced(arrayBuffer, onProgress)
     }
   }

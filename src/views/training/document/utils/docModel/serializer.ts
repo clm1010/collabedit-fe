@@ -11,6 +11,7 @@ import type {
   ParagraphStyle,
   RunStyle
 } from './types'
+import { getFontWithFallback, normalizeColor } from '../wordParser.shared'
 
 const escapeHtml = (value: string): string => {
   return value
@@ -28,10 +29,20 @@ const escapeAttr = (value: string): string => {
 const styleToCssText = (style: RunStyle | undefined): string => {
   if (!style) return ''
   const css: string[] = []
-  if (style.fontFamily) css.push(`font-family: ${style.fontFamily}`)
+  if (style.fontFamily) {
+    // 输出时自动补全字体 fallback 链，确保跨平台显示一致
+    const fontWithFallback = getFontWithFallback(style.fontFamily.replace(/['"]/g, ''))
+    css.push(`font-family: ${fontWithFallback}`)
+  }
   if (style.fontSize) css.push(`font-size: ${style.fontSize}px`)
-  if (style.color) css.push(`color: ${style.color}`)
-  if (style.backgroundColor) css.push(`background-color: ${style.backgroundColor}`)
+  if (style.color) {
+    const normalized = normalizeColor(style.color)
+    if (normalized) css.push(`color: ${normalized}`)
+  }
+  if (style.backgroundColor) {
+    const normalized = normalizeColor(style.backgroundColor)
+    if (normalized) css.push(`background-color: ${normalized}`)
+  }
   if (style.bold) css.push('font-weight: bold')
   if (style.italic) css.push('font-style: italic')
   if (style.underline) css.push('text-decoration: underline')

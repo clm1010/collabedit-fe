@@ -37,6 +37,23 @@
         ></span>
         {{ connectionStatus }}
       </div>
+      <!-- 诊断工具 -->
+      <template v-if="showDiagnostics">
+        <el-button size="default" @click="$emit('diagnostics-compare')">诊断对比</el-button>
+        <el-button size="default" @click="$emit('diagnostics-export')">诊断导出</el-button>
+        <el-button size="default" @click="$emit('diagnostics-export-images')"
+          >异常图片导出</el-button
+        >
+        <el-button size="default" @click="$emit('diagnostics-export-rendered')"
+          >渲染图片导出</el-button
+        >
+        <el-button size="default" @click="$emit('diagnostics-locate-images')"
+          >定位异常图片</el-button
+        >
+        <el-button size="default" @click="$emit('diagnostics-export-anomaly-images')"
+          >异常图片文件导出</el-button
+        >
+      </template>
       <!-- 审核模式：显示审核和驳回按钮 -->
       <template v-if="isReviewMode">
         <el-button type="success" size="default" @click="$emit('review-approve')">
@@ -83,13 +100,16 @@ interface Props {
   isSaving?: boolean
   /** 是否有未保存的更改 */
   hasUnsavedChanges?: boolean
+  /** 是否显示诊断工具 */
+  showDiagnostics?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isReviewMode: false,
   isReadonly: false,
   isSaving: false,
-  hasUnsavedChanges: false
+  hasUnsavedChanges: false,
+  showDiagnostics: false
 })
 
 // Emits 定义
@@ -99,6 +119,12 @@ defineEmits<{
   (e: 'submit-audit'): void
   (e: 'review-approve'): void
   (e: 'review-reject'): void
+  (e: 'diagnostics-compare'): void
+  (e: 'diagnostics-export'): void
+  (e: 'diagnostics-export-images'): void
+  (e: 'diagnostics-export-rendered'): void
+  (e: 'diagnostics-locate-images'): void
+  (e: 'diagnostics-export-anomaly-images'): void
 }>()
 
 // 连接状态样式

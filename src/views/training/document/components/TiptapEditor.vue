@@ -249,6 +249,8 @@ import { EditorToolbar } from './toolbar'
 import { EditorKey } from './toolbar/types'
 import ColorPicker from './toolbar/ColorPicker.vue'
 import LinkPopover from './toolbar/LinkPopover.vue'
+import { normalizeColor } from '../utils/wordParser.shared'
+import { generateExportHtml } from '@/views/utils/documentExport'
 
 // Props
 interface Props {
@@ -741,42 +743,6 @@ const handleBubbleHighlightColor = (color: string) => {
   }
 }
 
-const normalizeCssColor = (value: string): string => {
-  const raw = (value || '').trim()
-  if (!raw) return ''
-  if (raw.toLowerCase() === 'transparent') return ''
-  if (raw.startsWith('#')) {
-    if (raw.length === 4) {
-      return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`
-    }
-    return raw
-  }
-  const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
-  if (rgbMatch) {
-    const [r, g, b] = rgbMatch.slice(1).map((v) => parseInt(v, 10))
-    return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  }
-  const namedMap: Record<string, string> = {
-    yellow: '#FFFF00',
-    green: '#00FF00',
-    cyan: '#00FFFF',
-    magenta: '#FF00FF',
-    blue: '#0000FF',
-    red: '#FF0000',
-    darkblue: '#00008B',
-    darkcyan: '#008B8B',
-    darkgreen: '#006400',
-    darkmagenta: '#8B008B',
-    darkred: '#8B0000',
-    darkyellow: '#808000',
-    darkgray: '#A9A9A9',
-    lightgray: '#D3D3D3',
-    black: '#000000',
-    white: '#FFFFFF'
-  }
-  return namedMap[raw.toLowerCase()] || raw
-}
-
 const getSelectionComputedStyle = (): { color?: string; backgroundColor?: string } => {
   if (!editor.value || typeof window === 'undefined') return {}
   const { from } = editor.value.state.selection
@@ -802,16 +768,16 @@ const updateBubbleColors = () => {
   const textColor = editor.value.getAttributes('textStyle').color
   const highlight = editor.value.getAttributes('highlight').color
 
-  let resolvedText = normalizeCssColor(textColor || '')
-  let resolvedHighlight = normalizeCssColor(highlight || '')
+  let resolvedText = normalizeColor(textColor || '')
+  let resolvedHighlight = normalizeColor(highlight || '')
 
   if (!resolvedText || !resolvedHighlight) {
     const computed = getSelectionComputedStyle()
     if (!resolvedText && computed.color) {
-      resolvedText = normalizeCssColor(computed.color)
+      resolvedText = normalizeColor(computed.color)
     }
     if (!resolvedHighlight && computed.backgroundColor) {
-      const bg = normalizeCssColor(computed.backgroundColor)
+      const bg = normalizeColor(computed.backgroundColor)
       if (bg && bg.toUpperCase() !== '#FFFFFF') {
         resolvedHighlight = bg
       }
@@ -828,106 +794,10 @@ const updateBubbleColors = () => {
 
 // ==================== 预览功能 ====================
 
-// 生成完整的 HTML 文档
-const generateFullHtml = () => {
+// 生成完整的 HTML 文档（异步，自动还原 blob 图片）
+const generateFullHtml = async (): Promise<string> => {
   if (isNil(editor.value)) return ''
-
-  const content = editor.value.getHTML()
-  const title = props.title || '文档'
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px 20px;
-      line-height: 1.8;
-      color: #333;
-      background: #fff;
-    }
-    h1 { font-size: 2em; color: #1a1a1a; margin: 0.67em 0; font-weight: 700; }
-    h2 { font-size: 1.5em; color: #2a2a2a; margin-top: 1.5em; font-weight: 600; }
-    h3 { font-size: 1.25em; color: #3a3a3a; margin-top: 1.2em; font-weight: 600; }
-    p { margin: 1em 0; }
-    ul, ol { padding-left: 2em; margin: 1em 0; }
-    ul { list-style-type: disc; }
-    ol { list-style-type: decimal; }
-    li { margin: 0.3em 0; }
-    blockquote {
-      border-left: 4px solid #2563eb;
-      padding-left: 1em;
-      margin: 1em 0;
-      color: #666;
-      font-style: italic;
-      background: #f8fafc;
-      padding: 0.5em 1em;
-    }
-    code {
-      background: #f3f4f6;
-      padding: 0.2em 0.4em;
-      border-radius: 4px;
-      font-family: 'Fira Code', 'Consolas', monospace;
-      font-size: 0.9em;
-      color: #dc2626;
-    }
-    pre {
-      background: #1f2937;
-      color: #f9fafb;
-      padding: 1em;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin: 1em 0;
-    }
-    pre code { background: transparent; color: inherit; padding: 0; }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin: 1em 0;
-    }
-    th, td {
-      border: 1px solid #e5e7eb;
-      padding: 8px 12px;
-      text-align: left;
-    }
-    th { background: #f9fafb; font-weight: 600; }
-    a { color: #2563eb; text-decoration: underline; }
-    img { max-width: 100%; height: auto; border-radius: 8px; }
-    mark { background: #fef08a; padding: 0 2px; }
-    strong { font-weight: 600; }
-    em { font-style: italic; }
-    s { text-decoration: line-through; }
-    u { text-decoration: underline; }
-    hr { border: none; border-top: 2px solid #e5e7eb; margin: 2em 0; }
-    /* 任务列表 */
-    ul[data-type="taskList"] {
-      list-style: none;
-      padding-left: 0;
-    }
-    ul[data-type="taskList"] li {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-    }
-    ul[data-type="taskList"] li input[type="checkbox"] {
-      margin-top: 6px;
-    }
-    @media print {
-      body { padding: 20px; }
-      pre { white-space: pre-wrap; word-wrap: break-word; }
-    }
-  </style>
-</head>
-<body>
-${content}
-</body>
-</html>`
+  return generateExportHtml(editor.value.getHTML(), props.title || '文档')
 }
 
 // HTML 预览
@@ -944,7 +814,7 @@ const previewHtml = () => {
 // 复制 HTML
 const copyHtml = async () => {
   try {
-    const html = generateFullHtml()
+    const html = await generateFullHtml()
     await navigator.clipboard.writeText(html)
     ElMessage.success('HTML 已复制到剪贴板')
   } catch (error) {
@@ -953,8 +823,8 @@ const copyHtml = async () => {
 }
 
 // 下载 HTML
-const downloadHtml = () => {
-  const html = generateFullHtml()
+const downloadHtml = async () => {
+  const html = await generateFullHtml()
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -978,11 +848,11 @@ const previewPdf = () => {
 }
 
 // 导出 PDF（使用浏览器打印功能）
-const exportToPdf = () => {
+const exportToPdf = async () => {
   exportingPdf.value = true
 
   try {
-    const html = generateFullHtml()
+    const html = await generateFullHtml()
     const printWindow = window.open('', '_blank')
 
     if (!printWindow) {

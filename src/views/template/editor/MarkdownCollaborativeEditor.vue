@@ -10,11 +10,15 @@
       :is-readonly="isReadonly"
       :is-saving="isSaving"
       :has-unsaved-changes="hasUnsavedChanges"
+      :show-diagnostics="docStreamDebugEnabled"
       @back="goBack"
       @save="handleSave"
       @submit-audit="handleSubmitAudit"
       @review-approve="handleReviewApprove"
       @review-reject="openReviewRejectDialog"
+      @diagnostics-compare="handleDiagnosticsCompare"
+      @diagnostics-export="handleDiagnosticsExport"
+      @diagnostics-export-images="handleDiagnosticsExportImages"
     />
 
     <!-- 主内容区域 -->
@@ -121,6 +125,12 @@ import {
 } from './api/markdownApi'
 import type { ElementItem } from '@/types/management'
 import { htmlToMarkdown, markdownToHtml } from './utils'
+import {
+  exportDocStreamReport,
+  exportSuspectImagesReport,
+  isDocStreamDebugEnabled,
+  printDocStreamCompareResult
+} from '@/views/utils/fileUtils'
 
 // Props
 interface Props {
@@ -217,6 +227,7 @@ const isReadonly = computed(() => route.query.readonly === 'true')
 const reviewRejectDialogVisible = ref(false)
 const reviewRejectLoading = ref(false)
 const reviewRejectReason = ref('')
+const docStreamDebugEnabled = ref(false)
 
 // 审核流程列表数据
 const auditFlowList = [
@@ -393,141 +404,86 @@ const applyInitialContent = () => {
   const editor = editorInstance.value
   if (!editor || !initialMarkdownContent.value) return
 
-  console.log('设置初始 Markdown 内容到编辑器')
   const content = initialMarkdownContent.value.trim()
-  const normalizedContent = normalizePreloadedHtml(content)
-
   if (!content) return
 
-  const tryApplyContent = (retryCount = 0, maxRetries = 5, delay = 300) => {
-    // 检查组件是否已卸载，避免内存泄漏
-    if (isUnmounted.value) return
-    if (!editorInstance.value) return
+  // 协同同步后检查：如果编辑器已有内容（来自其他用户的协作同步），跳过初始内容，防止重复/覆盖
+  const currentContent = editor.getHTML()
+  const currentStripped =
+    currentContent
+      ?.replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\u200B/g, '')
+      .replace(/\uFEFF/g, '')
+      .trim() || ''
 
+  const isEditorEmpty =
+    !currentContent ||
+    currentContent === '<p></p>' ||
+    currentContent === '<p><br></p>' ||
+    currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
+    currentStripped === ''
+
+  if (!isEditorEmpty) {
+    // 协同同步已带来内容（其他用户正在编辑），以协作内容为准
+    console.log('协同同步已有内容，跳过初始内容应用（防止覆盖/重复）')
+    initialMarkdownContent.value = ''
+    isFirstLoadWithContent.value = false
+    clearCachedContent()
+    return
+  }
+
+  // 编辑器为空（全新文档或无人协作），安全地应用初始内容
+  console.log('编辑器为空，应用初始 Markdown 内容')
+  const normalizedContent = normalizePreloadedHtml(content)
+
+  try {
+    setContentSafely(normalizedContent, true)
+    console.log('初始内容已设置并同步')
+  } catch (setContentError) {
+    console.warn('设置内容失败，尝试不触发同步:', setContentError)
     try {
-      // 检查当前编辑器是否为空
-      const currentContent = editorInstance.value.getHTML()
-      const currentStripped =
-        currentContent
-          ?.replace(/<[^>]*>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\u200B/g, '') // 零宽空格
-          .replace(/\uFEFF/g, '') // BOM
-          .trim() || ''
-
-      const isEditorEmpty =
-        !currentContent ||
-        currentContent === '<p></p>' ||
-        currentContent === '<p><br></p>' ||
-        currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
-        currentStripped === ''
-
-      console.log(`handleEditorReady 尝试 ${retryCount + 1}/${maxRetries}:`, {
-        currentContent: currentContent?.substring(0, 100),
-        currentStripped: currentStripped?.substring(0, 50),
-        isEditorEmpty,
-        isFirstLoadWithContent: isFirstLoadWithContent.value
-      })
-
-      // 首次加载有内容时强制应用，覆盖协同同步的旧内容
-      // 或者编辑器为空时应用
-      if (isFirstLoadWithContent.value || isEditorEmpty) {
-        if (isFirstLoadWithContent.value && !isEditorEmpty) {
-          console.log('首次加载模式：强制应用新内容，覆盖协同旧内容')
-          // 关键修复：先清空 Y.Doc fragment，确保旧的协同内容被删除
-          // 这会生成一个删除更新同步到服务器，然后再设置新内容
-          const currentFragment = fragment.value
-          if (ydoc.value && currentFragment) {
-            console.log('清空 Y.Doc fragment 以覆盖服务器旧内容')
-            ydoc.value.transact(() => {
-              // 删除 fragment 中的所有子节点
-              while (currentFragment.length > 0) {
-                currentFragment.delete(0, 1)
-              }
-            })
-          }
-        }
-        // 使用 setContentSafely 直接更新，避免首次载入时选区错误
-        try {
-          setContentSafely(normalizedContent, true)
-          console.log('初始内容已设置并同步')
-        } catch (setContentError) {
-          // 如果 chain 命令失败，尝试分步执行
-          console.warn('chain 命令失败，尝试分步设置内容:', setContentError)
-          try {
-            setContentSafely(normalizedContent, false)
-            console.log('初始内容已通过分步方式设置')
-          } catch (fallbackError) {
-            console.error('设置内容失败:', fallbackError)
-          }
-        }
-
-        const verifyTimerId = setTimeout(() => {
-          pendingTimers.value.delete(verifyTimerId)
-          if (isUnmounted.value || !editorInstance.value) return
-
-          const appliedContent = editorInstance.value.getHTML()
-          const appliedStripped =
-            appliedContent
-              ?.replace(/<[^>]*>/g, '')
-              .replace(/&nbsp;/g, ' ')
-              .replace(/\u200B/g, '')
-              .replace(/\uFEFF/g, '')
-              .trim() || ''
-
-          if (appliedStripped) {
-            initialMarkdownContent.value = ''
-            isFirstLoadWithContent.value = false
-            clearCachedContent()
-          } else if (retryCount < maxRetries - 1) {
-            console.warn('初始内容未生效，准备重试...')
-            tryApplyContent(retryCount + 1, maxRetries, delay)
-          }
-        }, 200)
-        pendingTimers.value.add(verifyTimerId)
-      } else {
-        // 非首次加载且编辑器有内容，保留现有内容
-        console.log('非首次加载，编辑器已有内容，保留现有内容')
-        initialMarkdownContent.value = ''
-        clearCachedContent()
-      }
-    } catch (error) {
-      console.error('设置初始内容失败:', error)
-      // 如果设置失败，尝试设置一个空段落
-      try {
-        setContentSafely('<p></p>', false)
-      } catch (e) {
-        console.error('设置空段落也失败:', e)
-      }
-      initialMarkdownContent.value = ''
-      isFirstLoadWithContent.value = false
+      setContentSafely(normalizedContent, false)
+      console.log('初始内容已通过备选方式设置')
+    } catch (fallbackError) {
+      console.error('设置内容彻底失败:', fallbackError)
     }
   }
 
-  // 初始延迟后开始尝试
-  const initialTimerId = setTimeout(() => {
-    pendingTimers.value.delete(initialTimerId)
-    tryApplyContent()
-  }, 500)
-  pendingTimers.value.add(initialTimerId)
+  // 验证并标记完成
+  const verifyTimerId = setTimeout(() => {
+    pendingTimers.value.delete(verifyTimerId)
+    if (isUnmounted.value || !editorInstance.value) return
+
+    const appliedContent = editorInstance.value.getHTML()
+    const appliedStripped =
+      appliedContent
+        ?.replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\u200B/g, '')
+        .replace(/\uFEFF/g, '')
+        .trim() || ''
+
+    if (appliedStripped) {
+      initialMarkdownContent.value = ''
+      isFirstLoadWithContent.value = false
+      clearCachedContent()
+    } else {
+      console.warn('初始内容应用未生效')
+    }
+  }, 200)
+  pendingTimers.value.add(verifyTimerId)
 }
 
 const tryApplyInitialContent = () => {
   if (!isEditorReady.value) return
+  if (!initialMarkdownContent.value) return
+  // 检查同步状态：先尝试从 provider 获取
   if (!isCollaborationSynced.value && provider.value?.synced) {
     isCollaborationSynced.value = true
   }
-  if (!isCollaborationSynced.value && !allowApplyWithoutSync.value) {
-    const fallbackTimerId = setTimeout(() => {
-      pendingTimers.value.delete(fallbackTimerId)
-      if (isUnmounted.value) return
-      allowApplyWithoutSync.value = true
-      tryApplyInitialContent()
-    }, 1500)
-    pendingTimers.value.add(fallbackTimerId)
-    return
-  }
-  if (!initialMarkdownContent.value) return
+  // 严格要求：必须等待协作同步完成后再决定是否应用
+  if (!isCollaborationSynced.value) return
   applyInitialContent()
 }
 
@@ -708,6 +664,18 @@ const handleReviewRejectSubmit = async () => {
   }
 }
 
+const handleDiagnosticsCompare = () => {
+  printDocStreamCompareResult(documentId.value)
+}
+
+const handleDiagnosticsExport = () => {
+  exportDocStreamReport(documentId.value)
+}
+
+const handleDiagnosticsExportImages = () => {
+  exportSuspectImagesReport(documentId.value)
+}
+
 const looksGarbled = (text: string) => {
   if (!text) return false
   const replacementCount = (text.match(/\uFFFD/g) || []).length
@@ -768,7 +736,6 @@ const initialMarkdownContent = ref<string>('')
 const isFirstLoadWithContent = ref(false)
 const isEditorReady = ref(false)
 const isCollaborationSynced = ref(false)
-const allowApplyWithoutSync = ref(false)
 // 用于清理 setTimeout 的 timer ID 集合
 const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
 // 组件是否已卸载的标记
@@ -864,7 +831,6 @@ watch(
     isFirstLoadWithContent.value = false
     isEditorReady.value = false
     isCollaborationSynced.value = false
-    allowApplyWithoutSync.value = false
     pendingCacheKey.value = null
     cacheCleared.value = false
     pendingTimers.value.forEach((timerId) => {
@@ -880,15 +846,35 @@ watch(
 
 watch(
   () => isCollaborationReady.value,
-  () => {
-    tryApplyInitialContent()
+  (ready) => {
+    if (ready) {
+      // 超时兜底：如果 onSynced 未触发，isCollaborationReady 由 useCollaboration 的 3s 超时设置
+      if (!isCollaborationSynced.value) {
+        isCollaborationSynced.value = true
+      }
+      tryApplyInitialContent()
+    }
   }
 )
 
 // 组件挂载
 onMounted(async () => {
+  docStreamDebugEnabled.value = isDocStreamDebugEnabled()
   loadDocument()
   initCollaboration()
+
+  // 第二级安全超时（8s）：覆盖 WebSocket 彻底连不上的场景
+  // 确保用户至少能看到预加载的文档内容，不会面对空白编辑器
+  const safetyTimeoutId = setTimeout(() => {
+    pendingTimers.value.delete(safetyTimeoutId)
+    if (isUnmounted.value) return
+    if (!isCollaborationSynced.value) {
+      console.warn('协作连接超时(8s)，强制应用初始内容')
+      isCollaborationSynced.value = true
+      tryApplyInitialContent()
+    }
+  }, 8000)
+  pendingTimers.value.add(safetyTimeoutId)
 })
 
 // 组件卸载 - 清理非协同相关的资源

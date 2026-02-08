@@ -295,8 +295,9 @@ import DrillSelector from './components/DrillSelector.vue'
 import PublishDialog from './components/PublishDialog.vue'
 import RejectDialog from './components/RejectDialog.vue'
 import ExamRecordDialog from './components/ExamRecordDialog.vue'
-import { saveDocContent } from '@/views/utils/docStorage'
-import { blobToBase64, blobToText } from '@/views/utils/fileUtils'
+import { useDocBufferStore } from '@/store/modules/docBuffer'
+import { blobToText } from '@/views/utils/fileUtils'
+import { logger } from '@/views/utils/logger'
 import { parseFileContent } from '@/views/training/document/utils/wordParser'
 import {
   isEmpty,
@@ -364,12 +365,12 @@ const getList = async () => {
     params.tabType =
       activeTab.value === 'review' ? 'review' : activeTab.value === 'publish' ? 'publish' : 'recent'
 
-    console.log('查询参数:', params)
+    logger.debug('查询参数:', params)
     const data = await PerformanceApi.getPageList(params as any)
     list.value = data.records || data || []
     total.value = data.total || 0
   } catch (error) {
-    console.error('获取数据失败:', error)
+    logger.error('获取数据失败:', error)
     ElMessage.error('获取数据失败，请确保后端服务已启动')
   } finally {
     loading.value = false
@@ -383,7 +384,7 @@ const getCategories = async () => {
     // 左侧分类列表使用带"全部"的数据
     categories.value = res.withAll || []
   } catch (error) {
-    console.error('获取分类失败:', error)
+    logger.error('获取分类失败:', error)
     ElMessage.error('获取文档分类失败，请确保后端服务已启动')
   }
 }
@@ -406,7 +407,7 @@ const resetQuery = () => {
 // 文档分类选择
 const handleCategorySelect = (index: string) => {
   selectedCategory.value = index
-  console.log('选择分类 value:', index)
+  logger.debug('选择分类 value:', index)
 
   // 使用 lodash find 根据 value 找到对应的 category
   const category = find(categories.value, (cat) => cat.value === index)
@@ -418,7 +419,7 @@ const handleCategorySelect = (index: string) => {
   } else if (category) {
     // 传递 label（分类名称）
     queryParams.fileType = category.label
-    console.log('传递 fileType:', category.label)
+    logger.debug('传递 fileType:', category.label)
   }
 
   // 触发查询
@@ -560,7 +561,7 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
 
     // 使用选择的分类 value 作为 fileType
     const fileType = formData.fileType || ''
-    console.log(fileType, 'fileType------')
+    logger.debug(fileType, 'fileType------')
 
     // 编辑模式
     if (isEditMode.value) {
@@ -578,7 +579,7 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
         description: formData.description, // 描述
         activeUser: formData.activeUser.join(',') // 可编辑用户
       }
-      console.log(editData, 'editData（编辑）------')
+      logger.debug(editData, 'editData（编辑）------')
       await PerformanceApi.updatePerformanceData(editData)
       ElMessage.success('更新成功')
       dialogVisible.value = false
@@ -604,11 +605,11 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
     // 判断创建方式
     if (formData.creationMethod === 'upload') {
       // 上传文档模式
-      console.log('上传文档文件:', uploadFile!.name)
+      logger.debug('上传文档文件:', uploadFile!.name)
       const uploadResult = await PerformanceApi.uploadDocument({
         file: uploadFile!
       })
-      console.log('上传结果:', uploadResult, typeof uploadResult)
+      logger.debug('上传结果:', uploadResult, typeof uploadResult)
 
       // 处理上传结果 - 兼容两种响应格式
       let fileId: string | null = null
@@ -616,13 +617,13 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
       if (isString(uploadResult)) {
         // axios 封装解包后直接返回了 data 值
         fileId = uploadResult
-        console.log('上传成功(解包响应), 文件ID:', fileId)
+        logger.debug('上传成功(解包响应), 文件ID:', fileId)
       } else if (isObject(uploadResult)) {
         // 完整响应对象
         const result = uploadResult as { code?: number; data?: string; msg?: string }
         if (result.code === 200 || result.code === 0) {
           fileId = result.data || null
-          console.log('上传成功(完整响应), 文件ID:', fileId)
+          logger.debug('上传成功(完整响应), 文件ID:', fileId)
         } else {
           ElMessage.error(result.msg || '上传文档失败')
           return
@@ -636,12 +637,12 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
 
       // 将上传返回的 fileId 传递给 createNewData
       saveData.fileId = fileId as string
-      console.log(saveData, 'saveData（上传文档）------')
+      logger.debug(saveData, 'saveData（上传文档）------')
       await PerformanceApi.createNewData(saveData)
       ElMessage.success('创建成功')
     } else {
       // 新建文档模式
-      console.log(saveData, 'saveData（新建文档）------')
+      logger.debug(saveData, 'saveData（新建文档）------')
       await PerformanceApi.createNewData(saveData)
       ElMessage.success('创建成功')
     }
@@ -651,7 +652,7 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
   } catch (error: any) {
     if (error !== false) {
       // 不是验证失败
-      console.error('保存失败:', error)
+      logger.error('保存失败:', error)
       ElMessage.error(error.message || '保存失败')
     }
   } finally {
@@ -677,14 +678,11 @@ const handleTabChange = () => {
 // 选择变化
 const handleSelectionChange = (val: PerformanceApi.TrainingPerformanceVO[]) => {
   selectedRows.value = val
-  console.log('选择变化:', val)
+  logger.debug('选择变化:', val)
 }
 
 // 写作
 const handleEdit = async (row: any) => {
-  console.log('写作:', row)
-
-  // 创建 loading 实例
   const loadingInstance = ElLoading.service({
     lock: true,
     text: '正在校验权限...',
@@ -692,49 +690,32 @@ const handleEdit = async (row: any) => {
   })
 
   try {
-    // 1. 获取或创建协作用户
+    // 1. 权限校验
     const collaborationUser = collaborationUserStore.getOrCreateUser()
-    const userId = collaborationUser.id
-    console.log('协作用户:', collaborationUser.name, `(${userId})`)
+    const permResult = await PerformanceApi.checkWritePermission({
+      id: row.id,
+      userId: collaborationUser.id as string
+    })
 
-    // 2. 调用权限校验接口
-    console.log('调用权限校验接口, id:', row.id, 'userId:', userId)
-    const checkData: PerformanceApi.checkWriteData = { id: row.id, userId: userId as string } // 权限校验请求数据
-    const permResult = await PerformanceApi.checkWritePermission(
-      checkData as PerformanceApi.checkWriteData
-    )
-    console.log('权限校验结果:', permResult)
-
-    // 3. 检查权限 - status=500 或 data=false 表示无权限
     if (permResult.status === 500 || permResult.data === false) {
       ElMessage.error('您没有该文档的写作权限')
       ElMessage.error(permResult.msg)
       return
     }
 
-    // 4. 权限通过，获取文件流
+    // 2. 获取文件流并存入内存 Store
     loadingInstance.setText('正在加载文档内容...')
-    console.log('调用文件流接口, id:', row.id)
     const streamResult = await PerformanceApi.getFileStream(row.id)
-    console.log('文件流结果:', streamResult, 'instanceof Blob:', streamResult instanceof Blob)
 
-    // 5. 处理文件流数据
     let hasContent = false
     if (streamResult && streamResult.size > 0) {
-      console.log('文件流有效, size:', streamResult.size, 'type:', streamResult.type)
-      // 将 blob 转为 base64 存储到 IndexedDB（避免 sessionStorage 配额限制）
-      const base64Content = await blobToBase64(streamResult)
-      console.log(
-        'base64 转换完成, 长度:',
-        base64Content.length,
-        '前100字符:',
-        base64Content.substring(0, 100)
-      )
-      await saveDocContent(row.id, base64Content)
+      const docBufferStore = useDocBufferStore()
+      const arrayBuffer = await streamResult.arrayBuffer()
+      docBufferStore.setBuffer(String(row.id), arrayBuffer)
       hasContent = true
-      console.log('文件流已存储到 IndexedDB, key:', `doc_content_${row.id}`)
+      logger.debug('文件流已存入内存 Store, size:', arrayBuffer.byteLength)
     } else {
-      console.warn('文件流为空或无效:', streamResult)
+      logger.warn('文件流为空或无效')
     }
 
     // 6. 准备文档信息并存储到 sessionStorage
@@ -761,7 +742,7 @@ const handleEdit = async (row: any) => {
       }
     })
   } catch (error) {
-    console.error('写作权限校验失败:', error)
+    logger.error('写作权限校验失败:', error)
     ElMessage.error('操作失败，请稍后重试')
   } finally {
     loadingInstance.close()
@@ -810,14 +791,14 @@ const handleAuditSubmit = async (submitData: {
 }) => {
   auditLoading.value = true
   try {
-    console.log('提交审核参数:', submitData)
+    logger.debug('提交审核参数:', submitData)
     // 转换为符合 API 类型的数据
     const apiData = {
       ...submitData,
       id: submitData.id
     }
     const result = await PerformanceApi.submitAudit(apiData)
-    console.log('提交审核结果:', result)
+    logger.debug('提交审核结果:', result)
 
     // 处理响应 - 兼容两种格式
     if (isObject(result) && !isNil(result)) {
@@ -836,7 +817,7 @@ const handleAuditSubmit = async (submitData: {
       getList()
     }
   } catch (error: any) {
-    console.error('提交审核失败:', error)
+    logger.error('提交审核失败:', error)
     ElMessage.error(error.message || '提交审核失败')
   } finally {
     auditLoading.value = false
@@ -861,14 +842,14 @@ const openPublishDialog = (row: PerformanceApi.TrainingPerformanceVO) => {
 // 确认发布（来自 PublishDialog 组件）
 const handlePublishDialogSubmit = async (visibleScope: string[]) => {
   if (isNil(currentPublishRow.value?.id)) return
-  console.log('发布参数:', currentPublishRow.value.id, visibleScope)
+  logger.debug('发布参数:', currentPublishRow.value.id, visibleScope)
   publishLoading.value = true
   try {
     const result = await PerformanceApi.publishDocument({
       id: currentPublishRow.value.id,
       visibleScope: visibleScope
     })
-    console.log('发布结果:', result)
+    logger.debug('发布结果:', result)
 
     // 处理响应 - 兼容两种格式
     if (isObject(result) && !isNil(result)) {
@@ -887,7 +868,7 @@ const handlePublishDialogSubmit = async (visibleScope: string[]) => {
       getList()
     }
   } catch (error: any) {
-    console.error('发布失败:', error)
+    logger.error('发布失败:', error)
     ElMessage.error(error.message || '发布失败')
   } finally {
     publishLoading.value = false
@@ -930,9 +911,9 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
     }
 
     if (isWordDoc) {
-      // Word 文档：转 base64 -> 解析为 HTML
-      const base64Content = await blobToBase64(blob)
-      const htmlContent = await parseFileContent(base64Content)
+      // Word 文档：直接转 ArrayBuffer 解析为 HTML
+      const arrayBuffer = await blob.arrayBuffer()
+      const htmlContent = await parseFileContent(arrayBuffer)
       if (htmlContent) {
         previewContent.value = htmlContent
         previewTitle.value = row.planName || '文档预览'
@@ -940,7 +921,7 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
         return
       }
       // 解析失败时回退为文本
-      console.warn('Word 解析失败，回退为文本预览')
+      logger.warn('Word 解析失败，回退为文本预览')
     }
 
     // 读取 Blob 内容为文本
@@ -953,7 +934,7 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
     previewTitle.value = row.planName || '文档预览'
     previewDialogVisible.value = true
   } catch (error) {
-    console.error('预览失败:', error)
+    logger.error('预览失败:', error)
     ElMessage.error('预览失败，请稍后重试')
   } finally {
     loadingInstance.close()
@@ -1013,7 +994,7 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
 
     ElMessage.success('导出成功')
   } catch (error) {
-    console.error('导出失败:', error)
+    logger.error('导出失败:', error)
     ElMessage.error('导出失败，请稍后重试')
   } finally {
     loadingInstance.close()
@@ -1037,7 +1018,7 @@ const openExamRecordDialog = async (row: PerformanceApi.TrainingPerformanceVO) =
     // 兼容两种返回格式：数组或 { data: [...] }
     examRecordList.value = Array.isArray(res) ? res : (res.data || [])
   } catch (error) {
-    console.error('获取审核记录失败:', error)
+    logger.error('获取审核记录失败:', error)
     ElMessage.error('获取审核记录失败')
   } finally {
     examRecordLoading.value = false
@@ -1076,7 +1057,7 @@ const handleRejectDialogSubmit = async (reason: string) => {
     rejectDialogRef.value?.reset()
     getList()
   } catch (error) {
-    console.error('驳回失败:', error)
+    logger.error('驳回失败:', error)
     ElMessage.error('驳回失败')
   } finally {
     rejectLoading.value = false
@@ -1085,7 +1066,7 @@ const handleRejectDialogSubmit = async (reason: string) => {
 
 // 审核 - 跳转到编辑器（只读模式）
 const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) => {
-  console.log('审核:', row)
+  logger.debug('审核:', row)
 
   // 创建 loading 实例
   const loadingInstance = ElLoading.service({
@@ -1099,11 +1080,12 @@ const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) =>
     loadingInstance.setText('正在加载文档内容...')
     const streamResult = await PerformanceApi.getFileStream(row.id!)
 
-    // 处理文件流数据（使用 IndexedDB 避免 sessionStorage 配额限制）
+    // 处理文件流数据 - 存入 Pinia 内存 Store
     let hasContent = false
     if (streamResult && streamResult.size > 0) {
-      const base64Content = await blobToBase64(streamResult)
-      await saveDocContent(row.id!, base64Content)
+      const docBufferStore = useDocBufferStore()
+      const arrayBuffer = await streamResult.arrayBuffer()
+      docBufferStore.setBuffer(String(row.id!), arrayBuffer)
       hasContent = true
     }
 
@@ -1133,7 +1115,7 @@ const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) =>
       }
     })
   } catch (error) {
-    console.error('加载文档失败:', error)
+    logger.error('加载文档失败:', error)
     ElMessage.error('加载失败，请稍后重试')
   } finally {
     loadingInstance.close()

@@ -655,6 +655,7 @@ import ColorPicker from './ColorPicker.vue'
 import { ColoredHorizontalRule } from '../extensions/ColoredHorizontalRule'
 // AI 模块扩展（块级 - 支持内部编辑）
 import { AIBlockNode } from '../extensions/AIBlockNode'
+import { generateExportHtml } from '@/views/utils/documentExport'
 
 // Props
 interface Props {
@@ -1204,7 +1205,7 @@ const handlePreview = () => {
 // 复制 HTML
 const copyHtml = async () => {
   try {
-    const html = generateFullHtml()
+    const html = await generateFullHtml()
     await navigator.clipboard.writeText(html)
     ElMessage.success('HTML 已复制到剪贴板')
   } catch (error) {
@@ -1213,8 +1214,8 @@ const copyHtml = async () => {
 }
 
 // 下载 HTML
-const downloadHtml = () => {
-  const html = generateFullHtml()
+const downloadHtml = async () => {
+  const html = await generateFullHtml()
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -1437,106 +1438,10 @@ const insertRedHeader = (type: 'standard' | 'simple') => {
   }
 }
 
-// 生成完整的 HTML 文档
-const generateFullHtml = () => {
+// 生成完整的 HTML 文档（异步，自动还原 blob 图片）
+const generateFullHtml = async (): Promise<string> => {
   if (isNil(editor.value)) return ''
-
-  const content = editor.value.getHTML()
-  const title = props.title || '模板文档'
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px 20px;
-      line-height: 1.8;
-      color: #333;
-      background: #fff;
-    }
-    h1 { font-size: 2em; font-weight: 700; margin: 0.67em 0; }
-    h2 { font-size: 1.5em; font-weight: 600; margin-top: 1.5em; }
-    h3 { font-size: 1.25em; font-weight: 600; margin-top: 1.2em; }
-    p { margin: 1em 0; }
-    ul, ol { padding-left: 2em; margin: 1em 0; }
-    ul { list-style-type: disc; }
-    ol { list-style-type: decimal; }
-    li { margin: 0.3em 0; }
-    blockquote {
-      border-left: 4px solid #2563eb;
-      padding-left: 1em;
-      margin: 1em 0;
-      color: #666;
-      font-style: italic;
-    }
-    code {
-      background: #f3f4f6;
-      padding: 0.2em 0.4em;
-      border-radius: 4px;
-      border: none;
-      font-size: 0.9em;
-      text-decoration: none !important;
-    }
-    pre {
-      background: #1f2937;
-      color: #f9fafb;
-      padding: 1em;
-      border-radius: 8px;
-      border: none;
-      overflow-x: auto;
-    }
-    pre code { background: transparent !important; color: inherit; padding: 0; border: none !important; text-decoration: none !important; }
-    pre * { text-decoration: none !important; background: transparent !important; border: none !important; }
-    table { border-collapse: collapse; width: 100%; margin: 1em 0; table-layout: fixed; }
-    th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; vertical-align: top; }
-    th { background: #f9fafb; font-weight: 600; color: #374151; }
-    tr:nth-child(even) { background: #f9fafb; }
-    a { color: #2563eb; text-decoration: underline; }
-    mark { background: #fef08a; padding: 0 2px; }
-    strong { font-weight: 600; }
-    em { font-style: italic; }
-    s { text-decoration: line-through; }
-    u { text-decoration: underline; }
-    hr { border: none; border-top: 2px solid #e5e7eb; margin: 2em 0; }
-    hr.red-line, hr[data-line-color="red"] { border-top-color: #ff0000; border-top-width: 2px; }
-    table.red-header-table { border: none !important; width: 100%; margin: 0; border-collapse: collapse; }
-    table.red-header-table td, table.red-header-table th { border: none !important; padding: 0; background: transparent !important; }
-    /* AI 模块样式 */
-    .ai-block-node, div[data-type="ai-block-node"] {
-      display: block;
-      width: 100%;
-      margin: 16px 0;
-      padding: 16px;
-      border: 1px solid #e8a849;
-      border-radius: 4px;
-      background-color: #fff;
-      position: relative;
-    }
-    .ai-block-node p, div[data-type="ai-block-node"] p {
-      margin: 0.5em 0;
-      line-height: 1.75;
-      text-indent: 2em;
-    }
-    .ai-block-node strong, div[data-type="ai-block-node"] strong { font-weight: 700; color: #333; }
-    .ai-block, span[data-type="ai-block"] {
-      background-color: #e3f2fd;
-      border: 1px solid #90caf9;
-      border-radius: 4px;
-      padding: 2px 6px;
-    }
-  </style>
-</head>
-<body>
-${content}
-</body>
-</html>`
+  return generateExportHtml(editor.value.getHTML(), props.title || '模板文档')
 }
 
 // 监听用户信息变化

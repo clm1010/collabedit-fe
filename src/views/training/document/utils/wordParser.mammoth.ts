@@ -125,22 +125,22 @@ export const parseWordDocument = async (
         return image.read('base64').then((imageBuffer: string) => {
           const contentType = image.contentType || 'image/png'
           return {
-            src: `data:${contentType};base64,${imageBuffer}`
+            src: `data:${contentType};base64,${imageBuffer.replace(/[\s\r\n]+/g, '')}`
           }
         })
       })
     } else {
       options.convertImage = {
         'image/png': async (image: any) => {
-          const buffer = await image.read('base64')
+          const buffer = (await image.read('base64')).replace(/[\s\r\n]+/g, '')
           return { src: `data:image/png;base64,${buffer}` }
         },
         'image/jpeg': async (image: any) => {
-          const buffer = await image.read('base64')
+          const buffer = (await image.read('base64')).replace(/[\s\r\n]+/g, '')
           return { src: `data:image/jpeg;base64,${buffer}` }
         },
         'image/gif': async (image: any) => {
-          const buffer = await image.read('base64')
+          const buffer = (await image.read('base64')).replace(/[\s\r\n]+/g, '')
           return { src: `data:image/gif;base64,${buffer}` }
         }
       }

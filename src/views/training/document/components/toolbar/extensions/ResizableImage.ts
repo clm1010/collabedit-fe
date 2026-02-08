@@ -73,11 +73,21 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
       height: {
         default: null,
         parseHTML: (element) => {
-          // 导入的图片忽略高度，让图片按自然比例显示
-          if (element.getAttribute('data-imported') === 'true') return null
+          // 默认忽略 height，让图片按 width + 自然宽高比显示
+          // 仅当用户手动调整过大小时才保留 height（通过 renderHTML 写入）
+          const width = element.getAttribute('width') || element.style.width
           const height = element.getAttribute('height') || element.style.height
           if (!height || height === 'auto') return null
           if (typeof height === 'string' && height.endsWith('%')) return null
+          // 如果同时有 width 和 height，检查比例是否合理（避免变形）
+          if (width) {
+            const w = parseFloat(String(width))
+            const h = parseFloat(String(height))
+            if (w > 0 && h > 0 && (h / w > 5 || w / h > 5)) {
+              // 极端比例（>5:1），忽略 height
+              return null
+            }
+          }
           return height.replace('px', '')
         },
         renderHTML: (attributes) => {
@@ -102,6 +112,15 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
       },
       draggable: {
         default: true
+      },
+      // 保留原始 data URL，用于 blob URL 失效时恢复 + 保存时还原图片数据
+      'data-origin-src': {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-origin-src'),
+        renderHTML: (attributes) => {
+          if (!attributes['data-origin-src']) return {}
+          return { 'data-origin-src': attributes['data-origin-src'] }
+        }
       }
     }
   },

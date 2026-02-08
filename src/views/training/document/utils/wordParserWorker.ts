@@ -193,7 +193,7 @@ async function processAllImages(zip: any): Promise<Map<string, string>> {
 
         if (imageFile) {
           try {
-            const imageData = await imageFile.async('base64')
+            const imageData = (await imageFile.async('base64')).replace(/[\s\r\n]+/g, '')
             const ext = target.split('.').pop()?.toLowerCase() || 'png'
             const mimeType =
               ext === 'jpg' || ext === 'jpeg'

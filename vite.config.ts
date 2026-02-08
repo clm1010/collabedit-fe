@@ -73,6 +73,10 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
           replacement: 'vue-i18n/dist/vue-i18n.cjs.js'
         },
         {
+          find: 'events',
+          replacement: 'events'
+        },
+        {
           find: /\@\//,
           replacement: `${pathResolve('src')}/`
         }

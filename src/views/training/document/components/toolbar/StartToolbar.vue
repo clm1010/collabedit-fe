@@ -552,6 +552,7 @@ import {
   serializeDocModelToHtml,
   ImageStore
 } from '../../utils/wordParser'
+import { normalizeColor } from '../../utils/wordParser.shared'
 
 // 获取编辑器实例
 const editor = useEditor()
@@ -786,42 +787,6 @@ const getSelectionComputedStyle = (): {
   }
 }
 
-const normalizeCssColor = (value: string): string => {
-  const raw = (value || '').trim()
-  if (!raw) return ''
-  if (raw.toLowerCase() === 'transparent') return ''
-  if (raw.startsWith('#')) {
-    if (raw.length === 4) {
-      return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`
-    }
-    return raw
-  }
-  const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
-  if (rgbMatch) {
-    const [r, g, b] = rgbMatch.slice(1).map((v) => parseInt(v, 10))
-    return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  }
-  const namedMap: Record<string, string> = {
-    yellow: '#FFFF00',
-    green: '#00FF00',
-    cyan: '#00FFFF',
-    magenta: '#FF00FF',
-    blue: '#0000FF',
-    red: '#FF0000',
-    darkblue: '#00008B',
-    darkcyan: '#008B8B',
-    darkgreen: '#006400',
-    darkmagenta: '#8B008B',
-    darkred: '#8B0000',
-    darkyellow: '#808000',
-    darkgray: '#A9A9A9',
-    lightgray: '#D3D3D3',
-    black: '#000000',
-    white: '#FFFFFF'
-  }
-  return namedMap[raw.toLowerCase()] || raw
-}
-
 // 更新当前样式的函数 - 根据选区更新工具栏显示
 const updateCurrentStyles = () => {
   if (!editor.value) return
@@ -847,19 +812,19 @@ const updateCurrentStyles = () => {
 
   // 获取当前文本颜色
   const color = editor.value.getAttributes('textStyle').color
-  let resolvedTextColor = normalizeCssColor(color || '')
+  let resolvedTextColor = normalizeColor(color || '')
 
   // 获取当前高亮颜色
   const highlight = editor.value.getAttributes('highlight').color
-  let resolvedHighlight = normalizeCssColor(highlight || '')
+  let resolvedHighlight = normalizeColor(highlight || '')
 
   if (!resolvedTextColor || !resolvedHighlight) {
     const computed = getSelectionComputedStyle()
     if (!resolvedTextColor && computed.color) {
-      resolvedTextColor = normalizeCssColor(computed.color)
+      resolvedTextColor = normalizeColor(computed.color)
     }
     if (!resolvedHighlight && computed.backgroundColor) {
-      const bg = normalizeCssColor(computed.backgroundColor)
+      const bg = normalizeColor(computed.backgroundColor)
       if (bg && bg.toUpperCase() !== '#FFFFFF') {
         resolvedHighlight = bg
       }
