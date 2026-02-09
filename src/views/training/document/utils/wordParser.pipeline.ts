@@ -1,6 +1,7 @@
 import type { ParseProgressCallback, WordFileType } from './wordParser/types'
 import {
   detectWordFormat,
+  hasStyleHintsInHtml,
   isDocFormat,
   isZipFormat,
   sanitizeImagesIfNeeded
@@ -126,6 +127,7 @@ export const parseFileContent = async (
 
     // ── 策略 2：DocModel 解析 ──
     let docModelError: string | null = null
+    let docModelResult: string | null = null
     try {
       const model = await parseDocxToDocModel(data, {
         onProgress,
@@ -136,11 +138,18 @@ export const parseFileContent = async (
       const html = serializeDocModelToHtml(model)
       const result = sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
       if (isValidParseResult(result)) {
-        logger.info('[parseFileContent] parser=docmodel, 成功')
-        return result
+        // 检查是否包含样式信息：如果有样式，直接返回；否则暂存结果，尝试 OOXML Enhanced
+        if (hasStyleHintsInHtml(result)) {
+          logger.info('[parseFileContent] parser=docmodel, 成功（含样式）')
+          return result
+        }
+        // DocModel 结果有效但无样式，暂存后尝试 OOXML Enhanced
+        docModelResult = result
+        logger.warn('[parseFileContent] DocModel 结果无样式，尝试 OOXML Enhanced')
+      } else {
+        docModelError = '解析结果为空或无效'
+        logger.warn('[parseFileContent] DocModel 结果无效，尝试 OOXML Enhanced')
       }
-      docModelError = '解析结果为空或无效'
-      logger.warn('[parseFileContent] DocModel 结果无效，尝试 mammoth')
     } catch (e) {
       docModelError = formatParseError(e)
       logger.warn(
@@ -150,7 +159,39 @@ export const parseFileContent = async (
       )
     }
 
-    // ── 策略 3：Mammoth fallback ──
+    // ── 策略 2.5：OOXML Enhanced 直接解析（输出带内联样式的 HTML） ──
+    let ooxmlError: string | null = null
+    try {
+      onProgress?.(55, '正在使用增强解析器...')
+      const ooxmlHtml = await parseOoxmlDocumentEnhanced(data, onProgress)
+      const result = sanitizeImagesIfNeeded(convertInlineStylesToTiptap(ooxmlHtml), 'ooxml-enhanced')
+      if (isValidParseResult(result) && hasStyleHintsInHtml(result)) {
+        logger.info('[parseFileContent] parser=ooxml-enhanced, 成功（含样式）')
+        return result
+      }
+      // OOXML Enhanced 也无样式，如果之前 DocModel 有有效结果就用 DocModel 的
+      if (isValidParseResult(result)) {
+        ooxmlError = 'OOXML Enhanced 结果无样式'
+        // 优先用 OOXML Enhanced 的有效结果（即使无样式也比 Mammoth 好）
+        if (!docModelResult) {
+          docModelResult = result
+        }
+      } else {
+        ooxmlError = 'OOXML Enhanced 结果为空或无效'
+      }
+      logger.warn('[parseFileContent] OOXML Enhanced 无样式结果，尝试 mammoth')
+    } catch (e) {
+      ooxmlError = formatParseError(e)
+      logger.warn('[parseFileContent] OOXML Enhanced 解析失败:', ooxmlError)
+    }
+
+    // 如果 DocModel 有有效结果（虽然无样式），优先使用它而不是 Mammoth（Mammoth 更差）
+    if (docModelResult) {
+      logger.info('[parseFileContent] 使用 DocModel 结果（无样式但有效，优于 Mammoth）')
+      return docModelResult
+    }
+
+    // ── 策略 3：Mammoth fallback（最终兜底） ──
     try {
       const result = sanitizeImagesIfNeeded(
         await parseWordDocument(data, onProgress),

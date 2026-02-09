@@ -1,7 +1,8 @@
 <template>
   <div class="performance-container">
     <el-row :gutter="20" class="h-full">
-      <!-- 左侧文档分类 -->
+      <!-- 左侧文档分类 - 已注释：改为下拉框方式，如需恢复请取消下方注释 -->
+      <!-- 
       <el-col :span="4" :xs="24" class="h-full">
         <ContentWrap class="category-wrap">
           <div class="p-4 h-full flex flex-col">
@@ -24,13 +25,15 @@
           </div>
         </ContentWrap>
       </el-col>
+      -->
 
-      <el-col :span="20" :xs="24" class="h-full">
+      <el-col :span="24" :xs="24" class="h-full">
         <div class="h-full flex flex-col">
           <!-- 搜索栏 -->
           <PerformanceSearch
             ref="searchRef"
             v-model="queryParams"
+            :categories="categories"
             @search="handleQuery"
             @reset="resetQuery"
           />
@@ -320,7 +323,7 @@ const loading = ref(false)
 const total = ref(0)
 const list = ref<PerformanceApi.TrainingPerformanceVO[]>([])
 const activeTab = ref('recent')
-const selectedCategory = ref('0') // '0' 对应 "全部"
+// const selectedCategory = ref('0') // 已注释：改为下拉框方式，如需恢复请取消注释 // '0' 对应 "全部"
 const categories = ref<PerformanceApi.DocCategoryVO[]>([])
 const selectedRows = ref<PerformanceApi.TrainingPerformanceVO[]>([])
 
@@ -398,13 +401,14 @@ const handleQuery = () => {
 // 重置按钮
 const resetQuery = () => {
   searchRef.value?.resetFields()
-  selectedCategory.value = '0' // '0' 对应 "全部"
+  // selectedCategory.value = '0' // 已注释：改为下拉框方式，如需恢复请取消注释 // '0' 对应 "全部"
   queryParams.fileType = undefined // 重置分类过滤
   activeTab.value = 'recent' // 重置标签页
   handleQuery()
 }
 
-// 文档分类选择
+// 文档分类选择 - 已注释：改为下拉框方式，如需恢复请取消下方注释
+/*
 const handleCategorySelect = (index: string) => {
   selectedCategory.value = index
   logger.debug('选择分类 value:', index)
@@ -425,6 +429,7 @@ const handleCategorySelect = (index: string) => {
   // 触发查询
   handleQuery()
 }
+*/
 
 // 新建/编辑弹窗
 const dialogVisible = ref(false)
@@ -1284,6 +1289,8 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+// 分类相关样式 - 已注释：改为下拉框方式，如需恢复请取消下方注释
+/*
 .category-wrap {
   height: 100%;
   :deep(.el-card__body) {
@@ -1295,6 +1302,7 @@ onUnmounted(() => {
 .category-menu {
   border-right: none !important;
 }
+*/
 
 .table-container-wrap {
   margin: 0;
@@ -1306,15 +1314,21 @@ onUnmounted(() => {
   }
 }
 
+// 菜单项样式 - 已注释：改为下拉框方式，如需恢复请取消下方注释
+/*
 :deep(.el-menu-item) {
   height: 40px;
   line-height: 40px;
   margin-bottom: 4px;
   border-radius: 4px;
 }
+*/
 
+// 菜单项激活样式 - 已注释：改为下拉框方式，如需恢复请取消下方注释
+/*
 :deep(.el-menu-item.is-active) {
   background-color: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
 }
+*/
 </style>

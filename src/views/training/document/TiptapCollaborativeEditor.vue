@@ -167,9 +167,131 @@ import {
 } from './utils/wordParser'
 import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { getFileStream as getFileStreamApi } from '@/api/training'
-import { restoreBlobImagesFromOrigin } from '@/views/utils/fileUtils'
+import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
 import { logger } from '@/views/utils/logger'
+
+// ==================== IndexedDB 文档解析缓存工具 ====================
+// 使用浏览器原生 IndexedDB 缓存成功解析的带样式 HTML，关闭浏览器后仍保留
+const DOC_CACHE_DB_NAME = 'docParseCache'
+const DOC_CACHE_STORE_NAME = 'parsedHtml'
+const DOC_CACHE_VERSION = 1
+const DOC_CACHE_EXPIRE_MS = 7 * 24 * 60 * 60 * 1000 // 7 天过期
+
+interface DocCacheEntry {
+  html: string
+  timestamp: number
+  size: number
+}
+
+/** 打开 IndexedDB 数据库 */
+const openDocCacheDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DOC_CACHE_DB_NAME, DOC_CACHE_VERSION)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      if (!db.objectStoreNames.contains(DOC_CACHE_STORE_NAME)) {
+        db.createObjectStore(DOC_CACHE_STORE_NAME)
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+/** 从 IndexedDB 获取缓存的解析结果 */
+const getDocCache = async (docId: string): Promise<string | null> => {
+  try {
+    const db = await openDocCacheDB()
+    return new Promise((resolve) => {
+      const tx = db.transaction(DOC_CACHE_STORE_NAME, 'readonly')
+      const store = tx.objectStore(DOC_CACHE_STORE_NAME)
+      const request = store.get(docId)
+      request.onsuccess = () => {
+        const entry = request.result as DocCacheEntry | undefined
+        if (entry && Date.now() - entry.timestamp < DOC_CACHE_EXPIRE_MS) {
+          logger.debug('[DocCache] 命中 IndexedDB 缓存, docId:', docId, 'size:', entry.size)
+          resolve(entry.html)
+        } else {
+          if (entry) {
+            // 缓存已过期，清理
+            void deleteDocCache(docId)
+          }
+          resolve(null)
+        }
+      }
+      request.onerror = () => resolve(null)
+      tx.oncomplete = () => db.close()
+    })
+  } catch (e) {
+    logger.warn('[DocCache] 读取 IndexedDB 失败:', e)
+    return null
+  }
+}
+
+/** 将解析结果存入 IndexedDB */
+const setDocCache = async (docId: string, html: string): Promise<void> => {
+  try {
+    const db = await openDocCacheDB()
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_CACHE_STORE_NAME, 'readwrite')
+      const store = tx.objectStore(DOC_CACHE_STORE_NAME)
+      const entry: DocCacheEntry = {
+        html,
+        timestamp: Date.now(),
+        size: html.length
+      }
+      store.put(entry, docId)
+      tx.oncomplete = () => {
+        logger.debug('[DocCache] 已缓存到 IndexedDB, docId:', docId, 'size:', html.length)
+        db.close()
+        resolve()
+      }
+      tx.onerror = () => {
+        db.close()
+        reject(tx.error)
+      }
+    })
+  } catch (e) {
+    logger.warn('[DocCache] 写入 IndexedDB 失败:', e)
+  }
+}
+
+/** 删除指定文档的缓存 */
+const deleteDocCache = async (docId: string): Promise<void> => {
+  try {
+    const db = await openDocCacheDB()
+    const tx = db.transaction(DOC_CACHE_STORE_NAME, 'readwrite')
+    tx.objectStore(DOC_CACHE_STORE_NAME).delete(docId)
+    tx.oncomplete = () => db.close()
+  } catch {
+    // 删除失败可忽略
+  }
+}
+
+/** 清理所有过期缓存 */
+const cleanExpiredDocCache = async (): Promise<void> => {
+  try {
+    const db = await openDocCacheDB()
+    const tx = db.transaction(DOC_CACHE_STORE_NAME, 'readwrite')
+    const store = tx.objectStore(DOC_CACHE_STORE_NAME)
+    const request = store.openCursor()
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (cursor) {
+        const entry = cursor.value as DocCacheEntry
+        if (Date.now() - entry.timestamp >= DOC_CACHE_EXPIRE_MS) {
+          cursor.delete()
+        }
+        cursor.continue()
+      }
+    }
+    tx.oncomplete = () => db.close()
+  } catch {
+    // 清理失败可忽略
+  }
+}
+// ==================== IndexedDB 工具函数结束 ====================
 
 // Props
 interface Props {
@@ -700,11 +822,8 @@ const applyPreloadedContent = async () => {
       return
     }
 
-    // 3. 将 data:image 转为 blob URL（源头已清洗 base64 空白，atob 可正确解码）
-    // 必须转换：浏览器对超长 data URL 的 <img src> 有长度限制（ERR_INVALID_URL）
-    const contentToApply = /data:image\//i.test(safeHtml)
-      ? await replaceDataImagesWithBlobUrls(safeHtml)
-      : safeHtml
+    // 3. 直接使用 data:image（跳过 blob URL 转换，避免竞态错误）
+    const contentToApply = safeHtml
 
     // 4. 等待编辑器 DOM 稳定后再尝试
     await sleep(300)
@@ -806,7 +925,7 @@ const handleSave = async () => {
   try {
     // 获取编辑器的 HTML 内容
     const content = editorInstance.value.getHTML()
-    const restored = restoreBlobImagesFromOrigin(content)
+    const restored = await restoreBlobImagesFromOriginAsync(content)
     const normalizedHtml = normalizeHtmlThroughDocModel(restored, {
       source: 'html',
       method: 'tiptap-html'
@@ -977,9 +1096,25 @@ onMounted(async () => {
       logger.debug('开始解析文件内容, 大小:', arrayBuffer.byteLength)
       const parsedContent = await parseFileContent(arrayBuffer)
       if (parsedContent) {
-        preloadedContent.value = parsedContent
+        // IndexedDB 缓存策略：解析结果有样式时缓存，无样式时尝试用缓存版本恢复
+        if (hasStyleHintsInHtml(parsedContent)) {
+          // 解析成功且带样式 -> 缓存到 IndexedDB
+          preloadedContent.value = parsedContent
+          void setDocCache(documentId.value, parsedContent)
+          logger.debug('预加载内容解析成功（含样式），已缓存到 IndexedDB，HTML 长度:', parsedContent.length)
+        } else {
+          // 解析结果无样式 -> 尝试从 IndexedDB 恢复带样式的缓存版本
+          const cachedHtml = await getDocCache(documentId.value)
+          if (cachedHtml && hasStyleHintsInHtml(cachedHtml)) {
+            preloadedContent.value = cachedHtml
+            logger.info('解析结果无样式，使用 IndexedDB 缓存的带样式版本，长度:', cachedHtml.length)
+          } else {
+            // 没有缓存或缓存也无样式，使用当前解析结果
+            preloadedContent.value = parsedContent
+            logger.debug('预加载内容解析成功（无样式，无可用缓存），HTML 长度:', parsedContent.length)
+          }
+        }
         isFirstLoadWithContent.value = true
-        logger.debug('预加载内容解析成功，HTML 长度:', parsedContent.length)
       } else {
         logger.warn('解析结果为空')
       }
@@ -987,6 +1122,9 @@ onMounted(async () => {
       console.error('解析预加载内容失败:', error)
     }
   }
+
+  // 组件挂载时清理过期的 IndexedDB 缓存
+  void cleanExpiredDocCache()
 
   loadDocument()
   // 始终立即连接协作（不再延迟），由 onSynced 回调触发 tryApplyPreloadedContent

@@ -8,7 +8,7 @@
         :model="queryParams"
         ref="queryFormRef"
         :inline="true"
-        label-width="80px"
+        label-width="100px"
       >
         <el-form-item label="创建时间" prop="createTime">
           <el-date-picker
@@ -49,8 +49,8 @@
             placeholder="模板子类"
             clearable
             class="!w-150px"
-            @change="handleQuery"
           >
+            <!-- @change="handleQuery" 已注释：统一改为点击查询按钮触发，与演训管理保持一致 -->
             <!-- <el-option
               v-for="item in subClassOptions"
               :key="item.template_id"
@@ -867,7 +867,7 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
       console.log('文件流已存储到 sessionStorage, key:', `markdown_content_${row.id}`)
     } else {
       logDocStreamDebug('template blob empty', { id: row.id })
-      console.warn('文件流为空或无效:', streamResult)
+      console.log('空文档，将打开空白编辑器')
     }
 
     // 6. 准备文档信息并存储到 sessionStorage
@@ -1426,7 +1426,7 @@ const openExamRecordDialog = async (row: TemplateApi.TemplateVO) => {
     const res = await TemplateApi.getExamRecordList(row.id)
     console.log('获取审核记录结果:', res)
     // 兼容两种返回格式：数组或 { data: [...] }
-    examRecordList.value = Array.isArray(res) ? res : (res.data || [])
+    examRecordList.value = Array.isArray(res) ? res : res.data || []
   } catch (error) {
     console.error('获取审核记录失败:', error)
     ElMessage.error('获取审核记录失败')

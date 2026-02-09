@@ -617,6 +617,8 @@
 import { ref, onBeforeUnmount, watch, onMounted, toRefs, nextTick } from 'vue'
 import { isNil, isEmpty } from 'lodash-es'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
+import { createNodeFromContent } from '@tiptap/core'
+import { Selection } from '@tiptap/pm/state'
 import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Collaboration } from '@tiptap/extension-collaboration'
@@ -739,6 +741,57 @@ const normalizeImportedHtml = (html: string): string => {
   return `${wrapped}<p></p>`
 }
 
+// 安全地将内容设置到编辑器（低级 ProseMirror 事务，返回是否成功）
+// 与演训文档编辑器的 trySetContent 一致：显式设置 Selection，避免 TextSelection 警告
+const trySetContentSafely = (html: string, emitUpdate = true): boolean => {
+  if (isComponentDestroyed || isNil(editor.value)) return false
+
+  try {
+    const { state, view, schema } = editor.value
+    const tr = state.tr
+    const newContent = createNodeFromContent(html, schema, {
+      parseOptions: { preserveWhitespace: 'full' },
+      errorOnInvalidContent: false
+    })
+
+    tr.replaceWith(0, tr.doc.content.size, newContent as any)
+
+    // 确保文档至少有一个段落（防止完全空文档）
+    if (tr.doc.content.size === 0 && schema.nodes.paragraph) {
+      tr.insert(0, schema.nodes.paragraph.create())
+    }
+
+    // 显式设置选区到文档开头 —— 关键：防止 y-prosemirror 光标插件
+    // 在 _forceRerender 中创建无效 TextSelection
+    try {
+      tr.setSelection(Selection.atStart(tr.doc))
+    } catch {
+      // 选区设置失败可忽略
+    }
+
+    tr.setMeta('preventUpdate', !emitUpdate)
+    view.dispatch(tr)
+    return true
+  } catch (e) {
+    console.warn('trySetContentSafely 失败，尝试不触发同步:', e)
+    try {
+      const { state, view, schema } = editor.value
+      const tr = state.tr
+      const newContent = createNodeFromContent(html, schema, {
+        parseOptions: { preserveWhitespace: 'full' },
+        errorOnInvalidContent: false
+      })
+      tr.replaceWith(0, tr.doc.content.size, newContent as any)
+      tr.setMeta('preventUpdate', true)
+      view.dispatch(tr)
+      return true
+    } catch (e2) {
+      console.error('trySetContentSafely 彻底失败:', e2)
+      return false
+    }
+  }
+}
+
 // 将导入的 HTML 插入到编辑器当前光标位置
 const applyImportedHtml = async (html: string, fileName?: string) => {
   if (isComponentDestroyed || isNil(editor.value)) return
@@ -746,15 +799,69 @@ const applyImportedHtml = async (html: string, fileName?: string) => {
   const safeHtml = normalizeImportedHtml(html)
 
   try {
-    // 在当前光标位置插入内容，而不是覆盖
-    editor.value
-      .chain()
-      .focus() // 保持当前光标位置
-      .insertContent(safeHtml)
-      .run()
+    // 检查编辑器是否有实际文本内容
+    const strippedContent = editor.value
+      .getHTML()
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\u200B/g, '')
+      .replace(/\uFEFF/g, '')
+      .trim()
+
+    if (strippedContent !== '') {
+      // 编辑器有实际内容 - 在当前光标位置插入（原有逻辑）
+      editor.value.chain().focus().insertContent(safeHtml).run()
+    } else {
+      // 编辑器无文本内容（空文档或有结构无文本）
+      // 使用低级 ProseMirror 事务 + 重试机制（与演训编辑器 applyPreloadedContent 一致）
+      let applied = false
+      const maxRetries = 3
+
+      for (let i = 0; i < maxRetries && !applied; i++) {
+        if (isComponentDestroyed || isNil(editor.value)) return
+        if (i > 0) await new Promise((r) => setTimeout(r, 200 * i))
+
+        const setOk = trySetContentSafely(safeHtml)
+        if (!setOk) continue
+
+        // 等待渲染后验证内容是否生效
+        await new Promise((r) => setTimeout(r, 200))
+        if (isComponentDestroyed || isNil(editor.value)) return
+
+        const appliedContent = editor.value
+          .getHTML()
+          .replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\u200B/g, '')
+          .replace(/\uFEFF/g, '')
+          .trim()
+
+        if (appliedContent) {
+          applied = true
+        } else {
+          console.warn(`导入内容第 ${i + 1} 次未生效，重试...`)
+        }
+      }
+
+      // 所有重试失败的最终 fallback
+      if (!applied) {
+        console.warn('低级事务方式全部失败，尝试 Tiptap 命令 fallback...')
+        try {
+          editor.value?.commands.setContent(safeHtml)
+        } catch (fallbackError) {
+          console.error('导入内容彻底失败:', fallbackError)
+          throw new Error('导入内容写入编辑器失败，请检查文件格式是否包含有效文本或块元素')
+        }
+      }
+    }
   } catch (error) {
-    console.error('导入内容失败:', error)
-    throw new Error('导入内容写入编辑器失败，请检查文件格式是否包含有效文本或块元素')
+    console.error('导入内容失败, 尝试备选方案:', error)
+    try {
+      editor.value?.commands.setContent(safeHtml)
+    } catch (fallbackError) {
+      console.error('导入内容彻底失败:', fallbackError)
+      throw new Error('导入内容写入编辑器失败，请检查文件格式是否包含有效文本或块元素')
+    }
   }
 
   if (fileName) {

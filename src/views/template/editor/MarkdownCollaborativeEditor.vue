@@ -400,32 +400,40 @@ const setContentSafely = (content: string, emitUpdate = true) => {
   view.dispatch(tr)
 }
 
-const applyInitialContent = () => {
+/**
+ * 应用初始 Markdown 内容到编辑器
+ * 重构：for + await sleep 替代嵌套 setTimeout，3 次重试
+ * 与演训文档编辑器的 applyPreloadedContent 对齐
+ */
+const applyInitialContent = async () => {
   const editor = editorInstance.value
   if (!editor || !initialMarkdownContent.value) return
+  if (isUnmounted.value || isApplyingContent.value) return
 
   const content = initialMarkdownContent.value.trim()
   if (!content) return
 
+  // 检查编辑器内容是否为空的辅助函数
+  const isEditorContentEmpty = (html: string | null | undefined): boolean => {
+    if (!html) return true
+    const stripped =
+      html
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\u200B/g, '')
+        .replace(/\uFEFF/g, '')
+        .trim()
+    return (
+      !stripped ||
+      html === '<p></p>' ||
+      html === '<p><br></p>' ||
+      html === '<p><br class="ProseMirror-trailingBreak"></p>'
+    )
+  }
+
   // 协同同步后检查：如果编辑器已有内容（来自其他用户的协作同步），跳过初始内容，防止重复/覆盖
   const currentContent = editor.getHTML()
-  const currentStripped =
-    currentContent
-      ?.replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/\u200B/g, '')
-      .replace(/\uFEFF/g, '')
-      .trim() || ''
-
-  const isEditorEmpty =
-    !currentContent ||
-    currentContent === '<p></p>' ||
-    currentContent === '<p><br></p>' ||
-    currentContent === '<p><br class="ProseMirror-trailingBreak"></p>' ||
-    currentStripped === ''
-
-  if (!isEditorEmpty) {
-    // 协同同步已带来内容（其他用户正在编辑），以协作内容为准
+  if (!isEditorContentEmpty(currentContent)) {
     console.log('协同同步已有内容，跳过初始内容应用（防止覆盖/重复）')
     initialMarkdownContent.value = ''
     isFirstLoadWithContent.value = false
@@ -433,49 +441,71 @@ const applyInitialContent = () => {
     return
   }
 
-  // 编辑器为空（全新文档或无人协作），安全地应用初始内容
-  console.log('编辑器为空，应用初始 Markdown 内容')
-  const normalizedContent = normalizePreloadedHtml(content)
+  isApplyingContent.value = true
 
   try {
-    setContentSafely(normalizedContent, true)
-    console.log('初始内容已设置并同步')
-  } catch (setContentError) {
-    console.warn('设置内容失败，尝试不触发同步:', setContentError)
-    try {
-      setContentSafely(normalizedContent, false)
-      console.log('初始内容已通过备选方式设置')
-    } catch (fallbackError) {
-      console.error('设置内容彻底失败:', fallbackError)
+    const normalizedContent = normalizePreloadedHtml(content)
+
+    // 等待 Y.Doc 同步稳定（与演训编辑器一致的 300ms 初始等待）
+    await new Promise((r) => setTimeout(r, 300))
+
+    // 重试循环（最多 3 次）
+    let applied = false
+    const maxRetries = 3
+
+    for (let i = 0; i < maxRetries && !applied; i++) {
+      if (isUnmounted.value || !editorInstance.value) return
+      if (i > 0) await new Promise((r) => setTimeout(r, 300 * i))
+
+      // 每次重试前重新检查：编辑器可能已有内容（协同同步带来）
+      const currentHtml = editorInstance.value?.getHTML() || ''
+      if (!isEditorContentEmpty(currentHtml)) {
+        console.log('编辑器已有实质内容（协同同步带来），跳过初始内容应用')
+        applied = true
+        break
+      }
+
+      console.log(`编辑器为空，应用初始 Markdown 内容（第 ${i + 1} 次尝试）`)
+      try {
+        setContentSafely(normalizedContent, true)
+      } catch (setContentError) {
+        console.warn(`第 ${i + 1} 次设置内容失败:`, setContentError)
+        try {
+          setContentSafely(normalizedContent, false)
+        } catch (fallbackError) {
+          console.error(`第 ${i + 1} 次设置内容彻底失败:`, fallbackError)
+          continue
+        }
+      }
+
+      // 等待渲染后验证
+      await new Promise((r) => setTimeout(r, 200))
+      if (isUnmounted.value || !editorInstance.value) return
+
+      const appliedHtml = editorInstance.value.getHTML()
+      if (!isEditorContentEmpty(appliedHtml)) {
+        console.log('初始内容应用成功')
+        applied = true
+      } else {
+        console.warn(`初始内容第 ${i + 1} 次应用未生效，重试...`)
+      }
     }
-  }
 
-  // 验证并标记完成
-  const verifyTimerId = setTimeout(() => {
-    pendingTimers.value.delete(verifyTimerId)
-    if (isUnmounted.value || !editorInstance.value) return
-
-    const appliedContent = editorInstance.value.getHTML()
-    const appliedStripped =
-      appliedContent
-        ?.replace(/<[^>]*>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/\u200B/g, '')
-        .replace(/\uFEFF/g, '')
-        .trim() || ''
-
-    if (appliedStripped) {
+    if (applied) {
       initialMarkdownContent.value = ''
       isFirstLoadWithContent.value = false
       clearCachedContent()
     } else {
-      console.warn('初始内容应用未生效')
+      console.error('初始内容应用最终失败（3 次重试均未生效）')
     }
-  }, 200)
-  pendingTimers.value.add(verifyTimerId)
+  } finally {
+    isApplyingContent.value = false
+  }
 }
 
 const tryApplyInitialContent = () => {
+  // 防重入：如果正在应用内容，跳过
+  if (isApplyingContent.value) return
   if (!isEditorReady.value) return
   if (!initialMarkdownContent.value) return
   // 检查同步状态：先尝试从 provider 获取
@@ -484,7 +514,7 @@ const tryApplyInitialContent = () => {
   }
   // 严格要求：必须等待协作同步完成后再决定是否应用
   if (!isCollaborationSynced.value) return
-  applyInitialContent()
+  void applyInitialContent()
 }
 
 // 编辑器就绪回调
@@ -740,6 +770,8 @@ const isCollaborationSynced = ref(false)
 const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
 // 组件是否已卸载的标记
 const isUnmounted = ref(false)
+// 防重入锁：防止多个触发源（handleEditorReady / onSynced / watch）同时调用 applyInitialContent
+const isApplyingContent = ref(false)
 const pendingCacheKey = ref<string | null>(null)
 const cacheCleared = ref(false)
 // 自动保存相关状态

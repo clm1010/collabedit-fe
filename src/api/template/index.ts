@@ -141,7 +141,13 @@ const javaApi = {
       }
       return null
     } catch (error) {
-      console.error('获取文件流失败:', error)
+      // 区分"文件不存在"（空文档正常场景）和其他异常
+      const errMsg = error instanceof Error ? error.message : String(error)
+      if (errMsg.includes('文件不存在') || errMsg.includes('不存在')) {
+        console.warn('模板文件不存在（空文档），将创建新文档')
+      } else {
+        console.error('获取文件流失败:', error)
+      }
       return null
     }
   },

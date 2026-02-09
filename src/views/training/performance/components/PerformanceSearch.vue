@@ -55,6 +55,21 @@
               />
             </el-select>
           </el-form-item>
+          <el-form-item label="文档分类" prop="fileType">
+            <el-select
+              v-model="localParams.fileType"
+              placeholder="请选择"
+              clearable
+              class="!w-260px"
+            >
+              <el-option
+                v-for="item in fileTypeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.label"
+              />
+            </el-select>
+          </el-form-item>
         </el-col>
         <el-col :span="24">
           <el-form-item label="审核状态" prop="applyNode">
@@ -101,6 +116,7 @@
 import { computed } from 'vue'
 import { Icon } from '@/components/Icon'
 import type { TrainingPerformancePageReqVO } from '@/api/training'
+import type { DocCategoryVO } from '@/api/training'
 
 // 演训主题选项
 // const exerciseThemeOptions = [
@@ -126,12 +142,20 @@ const collegeOptions = [
   { label: '研究生院', value: 'YJSY' }
 ]
 
+// 文档分类选项（过滤掉"全部"）
+const fileTypeOptions = computed(() => {
+  return props.categories.filter((item) => item.value !== '0')
+})
+
 // Props
 interface Props {
   modelValue: TrainingPerformancePageReqVO
+  categories?: DocCategoryVO[] // 文档分类数据
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  categories: () => []
+})
 
 // Emits
 const emit = defineEmits<{
@@ -160,6 +184,7 @@ const handleReset = () => {
   localParams.value.collegeCode = undefined
   localParams.value.applyNode = undefined
   localParams.value.createTime = undefined
+  localParams.value.fileType = undefined // 重置文档分类
   emit('reset')
 }
 
@@ -172,6 +197,7 @@ defineExpose({
     localParams.value.collegeCode = undefined
     localParams.value.applyNode = undefined
     localParams.value.createTime = undefined
+    localParams.value.fileType = undefined // 重置文档分类
   }
 })
 </script>

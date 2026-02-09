@@ -1,11 +1,44 @@
 import { formatPx, ptToPx } from './wordParser.shared'
 
 /**
+ * 保护 HTML 中的 base64 图片数据，防止全局正则替换破坏 base64 内容。
+ * 将 src="data:...;base64,..." 提取为占位符，返回替换后的 HTML 和还原函数。
+ *
+ * 背景：base64 字符集（A-Z a-z 0-9 + / =）中的字母数字组合可能被
+ * pt→px、mso- 清理等全局正则误匹配，导致 atob 解码失败和 ERR_INVALID_URL。
+ */
+const protectBase64 = (html: string): { html: string; restore: (h: string) => string } => {
+  if (!html.includes(';base64,')) {
+    return { html, restore: (h) => h }
+  }
+  const chunks: string[] = []
+  const replaced = html.replace(
+    /(src=["'])data:([^;]+);base64,([^"']*)(["'])/gi,
+    (_match, prefix, mime, base64, suffix) => {
+      const idx = chunks.length
+      chunks.push(`${prefix}data:${mime};base64,${base64}${suffix}`)
+      return `__BASE64_PLACEHOLDER_${idx}__`
+    }
+  )
+  return {
+    html: replaced,
+    restore: (h: string) => {
+      if (chunks.length === 0) return h
+      return h.replace(/__BASE64_PLACEHOLDER_(\d+)__/g, (_, i) => chunks[parseInt(i)])
+    }
+  }
+}
+
+/**
  * 清理 Word 导出的 HTML - 保持更好的排版
  * @param html 原始 HTML
  * @returns 清理后的 HTML
  */
 export const cleanWordHtml = (html: string): string => {
+  // 保护 base64 图片数据，防止后续正则替换破坏
+  const { html: safeHtml, restore } = protectBase64(html)
+  html = safeHtml
+
   // 移除多余的连续空段落（保留单个空段落用于间距）
   html = html.replace(/(<p>\s*<\/p>\s*){2,}/g, '<p></p>')
 
@@ -85,13 +118,18 @@ export const cleanWordHtml = (html: string): string => {
     '<img$1 style="max-width: 100%; height: auto; display: block;">'
   )
 
-  return html
+  // 还原 base64 图片数据
+  return restore(html)
 }
 
 /**
  * 转换内联样式为 Tiptap 支持的格式
  */
 export const convertInlineStylesToTiptap = (html: string): string => {
+  // 保护 base64 图片数据，防止 pt→px 等正则替换破坏 base64 中的字母数字序列
+  const { html: safeHtml, restore } = protectBase64(html)
+  html = safeHtml
+
   html = html.replace(/mso-highlight:\s*([^;"]+)/gi, 'background-color: $1')
   html = html.replace(/background(?!-color)\s*:\s*([^;"]+)/gi, 'background-color: $1')
   html = html.replace(/(\d+(?:\.\d+)?)\s*pt/gi, (_, size) => `${ptToPx(parseFloat(size))}px`)
@@ -283,7 +321,8 @@ export const convertInlineStylesToTiptap = (html: string): string => {
     return `<p${attrs} style="${spacingCss}">`
   })
 
-  return html
+  // 还原 base64 图片数据
+  return restore(html)
 }
 
 /**

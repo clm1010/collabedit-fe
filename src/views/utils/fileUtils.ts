@@ -314,13 +314,22 @@ export const restoreBlobImagesFromOriginAsync = async (html: string): Promise<st
     const root = doc.getElementById('export-root')
     if (!root) return html
     const images = Array.from(root.querySelectorAll('img'))
+
+    // 统计计数
+    let blobCount = 0
+    let restoredByOrigin = 0
+    let restoredByFetch = 0
+    let failedCount = 0
+
     for (const img of images) {
       const src = img.getAttribute('src') || ''
       if (!src.startsWith('blob:')) continue
+      blobCount++
       // 优先使用 data-origin-src
       const origin = img.getAttribute('data-origin-src') || ''
       if (origin.startsWith('data:image/')) {
         img.setAttribute('src', origin)
+        restoredByOrigin++
         continue
       }
       // 没有 data-origin-src 时，通过 fetch 获取 blob 数据并转为 data URL
@@ -329,6 +338,7 @@ export const restoreBlobImagesFromOriginAsync = async (html: string): Promise<st
         const blob = await response.blob()
         if (blob.size === 0) {
           logger.warn('[restoreBlob] blob 为空，跳过:', src.substring(0, 60))
+          failedCount++
           continue
         }
         const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -339,12 +349,25 @@ export const restoreBlobImagesFromOriginAsync = async (html: string): Promise<st
         })
         if (dataUrl && dataUrl.startsWith('data:')) {
           img.setAttribute('src', dataUrl)
+          restoredByFetch++
           logger.info('[restoreBlob] blob→data URL 成功:', blob.type, blob.size, 'bytes')
+        } else {
+          failedCount++
         }
       } catch (e) {
+        failedCount++
         logger.warn('[restoreBlob] fetch blob 失败:', src.substring(0, 60), e)
       }
     }
+
+    // 汇总日志
+    if (blobCount > 0) {
+      logger.info(
+        `[restoreBlob] 处理完成: 共 ${blobCount} 张 blob 图片, ` +
+          `data-origin-src 恢复 ${restoredByOrigin} 张, fetch 恢复 ${restoredByFetch} 张, 失败 ${failedCount} 张`
+      )
+    }
+
     return root.innerHTML
   } catch {
     return html

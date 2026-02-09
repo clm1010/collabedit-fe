@@ -1,4 +1,5 @@
 import type { ParseProgressCallback } from '../wordParser/types'
+import { hasStyleHintsInHtml } from '../wordParser.shared'
 import { parseWordDocument } from '../wordParser.mammoth'
 import { parseWithDocxPreview } from '../wordParser.preview'
 import { parseOoxmlDocumentEnhanced, validateDocxFile } from '../wordParser.ooxml'
@@ -161,6 +162,10 @@ export const parseDocxToDocModel = async (
           html = await parseWithDocxPreview(arrayBuffer, onProgress)
           if (html && html.trim().length >= 20) {
             metadata.method = method
+            // 如果 docx-preview 输出的 HTML 已含内联样式，直接透传，避免 parseHtmlToDocModel 丢失 class 样式
+            if (hasStyleHintsInHtml(html)) {
+              return createHtmlDocModel(html, metadata)
+            }
             return parseHtmlToDocModel(html, metadata)
           }
         }
@@ -203,6 +208,10 @@ export const parseDocxToDocModel = async (
 
   metadata.method = method
   if (html && html.trim()) {
+    // 如果 HTML 已含内联样式，直接透传为 HtmlBlock，避免 parseHtmlToDocModel round-trip 丢失 class 样式
+    if (hasStyleHintsInHtml(html)) {
+      return createHtmlDocModel(html, metadata)
+    }
     return parseHtmlToDocModel(html, metadata)
   }
   return createHtmlDocModel('', metadata)

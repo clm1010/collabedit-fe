@@ -282,7 +282,7 @@ export const detectWordFormat = (bytes: Uint8Array, filename?: string): WordFile
 
 export const hasStyleHintsInHtml = (html: string): boolean => {
   if (!html) return false
-  return /font-family:|font-size:|color:|background-color:|text-align:|data-text-align|<h[1-6]\\b|<mark\\b/i.test(
+  return /font-family:|font-size:|color:|background-color:|text-align:|data-text-align|<h[1-6][\s>]|<mark[\s>]/i.test(
     html
   )
 }
@@ -532,7 +532,9 @@ export const validateAndFixImages = (html: string): string => {
       // 仅从头部检测图片类型，不修改 base64 数据本身
       const detected = detectImageType(base64Data)
       const mime = detected ? `image/${detected}` : 'application/octet-stream'
-      logger.info(`[validateAndFixImages] octet-stream -> ${mime}, base64 长度: ${base64Data.length}`)
+      logger.info(
+        `[validateAndFixImages] octet-stream -> ${mime}, base64 长度: ${base64Data.length}`
+      )
       return `<img${before}src=${quote}data:${mime};base64,${base64Data}${quote}${after}>`
     }
   )
@@ -548,9 +550,11 @@ export const validateAndFixImages = (html: string): string => {
       if (base64Data.length < 10) {
         logger.warn('[validateAndFixImages] base64 图片数据过短，可能已损坏，但仍保留')
       }
-      // 超大图片（>2MB base64 ≈ >1.5MB 原图）替换为占位符，防止性能问题
-      if (base64Data.length > 2_000_000) {
-        logger.warn(`[validateAndFixImages] 图片过大 (${(base64Data.length / 1_000_000).toFixed(1)}MB base64)，已替换为占位符`)
+      // 超大图片（>10MB base64 ≈ >10MB 原图）替换为占位符，防止性能问题
+      if (base64Data.length > 10_000_000) {
+        logger.warn(
+          `[validateAndFixImages] 图片过大 (${(base64Data.length / 1_000_000).toFixed(1)}MB base64)，已替换为占位符`
+        )
         return `<img${before}src=${quote}data:image/png;base64,${emptyImagePlaceholder}${quote} data-image-invalid="oversized" data-original-size="${base64Data.length}"${after}>`
       }
       return `<img${before}src=${quote}data:image/${type};base64,${base64Data}${quote}${after}>`
