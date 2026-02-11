@@ -318,6 +318,8 @@ const currentUser = reactive({
   name: collaborationUser.name,
   avatar: '',
   color: collaborationUser.color,
+  deviceId: collaborationUser.deviceId,
+  tabId: collaborationUser.tabId,
   role: '编辑者',
   joinTime: Date.now()
 })

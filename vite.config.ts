@@ -39,15 +39,18 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       // },
       proxy: {
         '/api': {
-          target: env.VITE_JAVA_API_URL || 'http://192.168.20.199:8081',
+          target: env.VITE_BACKEND_TYPE === 'node'
+            ? (env.VITE_NODE_API_URL || 'http://localhost:8080')
+            : (env.VITE_JAVA_API_URL || 'http://192.168.20.199:8081'),
           changeOrigin: true,
-          // 如果后端接口路径不以 /api 开头，取消下面注释来重写路径
+          // ===== 后端已统一 /api 前缀，无需 strip =====
           // rewrite: (path) => path.replace(/^\/api/, ''),
           configure: (proxy, options) => {
+            const backendType = env.VITE_BACKEND_TYPE || 'node'
             proxy.on('proxyReq', (proxyReq, req) => {
-              console.log(`[Proxy] ${req.method} ${req.url} -> ${options.target}${req.url}`)
+              console.log(`[Proxy:${backendType}] ${req.method} ${req.url} -> ${options.target}${proxyReq.path}`)
             })
-            proxy.on('error', (err, req, res) => {
+            proxy.on('error', (err) => {
               console.error('[Proxy Error]', err.message)
             })
           }
@@ -83,7 +86,7 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       ]
     },
     define: {
-      'import.meta.env.VITE_BASE_URL': JSON.stringify(env.VITE_BASE_URL || 'http://localhost:3001'),
+      'import.meta.env.VITE_BASE_URL': JSON.stringify(env.VITE_BASE_URL ?? ''),
       'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || '/api'),
       'import.meta.env.VITE_WS_URL': JSON.stringify(env.VITE_WS_URL || 'ws://localhost:3001')
     },

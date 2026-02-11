@@ -65,6 +65,7 @@ export interface CollaborationUser {
   name: string
   color: string
   deviceId?: string // 设备唯一标识，支持同一用户多设备连接
+  tabId?: string    // 标签页唯一标识（内存生成，每个标签页独立）
   avatar?: string
   role?: string
   joinTime?: number
@@ -342,7 +343,8 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
 
       // 初始化 WebSocket Provider
       const deviceId = user.deviceId || ''
-      logConnectionEvent('WebSocket 连接参数', `URL: ${wsUrl}, deviceId: ${deviceId || '未设置'}`)
+      const tabId = user.tabId || ''
+      logConnectionEvent('WebSocket 连接参数', `URL: ${wsUrl}, deviceId: ${deviceId || '未设置'}, tabId: ${tabId || '未设置'}`)
 
       const { autoConnect = true } = initOptions
       provider.value = new WebsocketProvider(wsUrl, currentDocumentId, ydoc.value, {
@@ -352,7 +354,8 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
           userId: String(user.id),
           userName: user.name,
           userColor: user.color,
-          deviceId // 设备ID，支持同一用户多设备连接
+          deviceId, // 设备ID（localStorage，同一浏览器共享）
+          tabId     // 标签页ID（sessionStorage，每个标签页独立，用于中间件去重）
         }
       })
 
@@ -379,6 +382,19 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
             ElMessage.success('已连接到协同服务')
           }
           updateCollaborators()
+
+          // 挂载底层 WebSocket close 事件拦截器（每次重连都会创建新 ws，需每次挂载）
+          // 服务端已不再主动踢人（Google Docs 模式），4001 仅作为通用断连保留
+          const ws = (provider.value as any)?.ws
+          if (ws && typeof ws.addEventListener === 'function') {
+            ws.addEventListener('close', (ev: CloseEvent) => {
+              if (ev.code === 4001) {
+                logConnectionEvent('连接断开', ev.reason || '连接已关闭')
+                provider.value?.disconnect()
+                ElMessage.warning('协同连接已断开，请刷新页面重新连接')
+              }
+            })
+          }
         } else if (status === 'connecting') {
           connectionStatus.value = '连接中...'
           logConnectionEvent('正在连接')

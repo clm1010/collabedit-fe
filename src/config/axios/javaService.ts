@@ -5,7 +5,8 @@
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import qs from 'qs'
-import { getAccessToken } from '@/utils/auth'
+import { getAccessToken, getRefreshToken } from '@/utils/auth'
+import { handle401, handleAuthorized } from './refreshToken'
 
 /**
  * 获取 Java API 的 baseURL
@@ -27,8 +28,10 @@ const getJavaBaseUrl = (): string => {
     return '/api'
   }
 
-  // 直接请求后端（需后端配置 CORS）
-  return import.meta.env.VITE_JAVA_API_URL || 'http://192.168.8.104:8080'
+  // 直接请求后端（需后端配置 CORS）— Java 后端无 /api 前缀，直连裸路径
+  //return import.meta.env.VITE_JAVA_API_URL || 'http://192.168.20.199:8081'
+  // 直接请求后端（需后端配置 CORS）— Java 后端统一 /api 前缀
+  return (import.meta.env.VITE_JAVA_API_URL || 'http://192.168.20.199:8081') + '/api'
 }
 
 // Java 后端配置
@@ -74,6 +77,12 @@ javaService.interceptors.request.use(
     const accessToken = getAccessToken()
     if (accessToken) {
       config.headers.Authorization = 'Bearer ' + accessToken
+    }
+    // 每次请求携带 refreshToken（用于后端识别刷新凭证）
+    const refreshToken = getRefreshToken()
+    if (refreshToken) {
+      // config.headers['X-Refresh-Token'] = refreshToken
+      config.headers['refreshToken'] = refreshToken
     }
 
     const method = config.method?.toUpperCase()
@@ -136,6 +145,12 @@ javaService.interceptors.response.use(
     if (code === 200 || code === 0) {
       // 成功响应
       return data
+    } else if (code === 401) {
+      // 访问令牌过期，使用共享刷新逻辑
+      return handle401(response.config, javaService)
+    } else if (code === 403) {
+      // 权限被拒绝，不刷新，直接提示重新登录
+      return handleAuthorized()
     } else if (code === 500) {
       ElMessage.error(msg)
       return Promise.reject(new Error(msg))
@@ -149,6 +164,19 @@ javaService.interceptors.response.use(
     return data
   },
   (error) => {
+    // HTTP 状态码级别的 401/403 处理
+    const status = error.response?.status
+    if (status === 401) {
+      const config = error.config
+      if (config) {
+        return handle401(config, javaService)
+      }
+      return handleAuthorized()
+    }
+    if (status === 403) {
+      return handleAuthorized()
+    }
+
     console.error('Java API 响应错误:', error)
     let message = error.message || '请求失败'
 

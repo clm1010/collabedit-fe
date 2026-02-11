@@ -6,9 +6,8 @@
  * - Pinia Store：运行时响应式访问
  * - sessionStorage：刷新页面后恢复，标签页关闭自动清除（符合嵌入式安全需求）
  *
- * 数据获取：
- * - Java 后端: /system/auth/get-permission-info（芋道）
- * - Node 后端: /api/user/info
+ * 数据获取：统一使用 /system/auth/get-permission-info 接口
+ * - Java 后端与 Node 后端返回格式一致
  */
 import { store } from '@/store'
 import { defineStore } from 'pinia'
@@ -21,52 +20,66 @@ const STORAGE_KEY = 'external_user'
 // 后端类型：java | node
 const backendType = import.meta.env.VITE_BACKEND_TYPE || 'node'
 
-// 接口路径映射
+// 接口路径映射（Java 使用真实权限接口，Node 保持原有接口）
 const USER_INFO_API: Record<string, string> = {
-  java: '/system/auth/get-permission-info',
-  node: '/api/user/info'
+  java: '/sjrh/permission/getPermission',
+  node: '/system/auth/get-permission-info'
 }
 
 /**
  * 外部用户信息接口
  */
 export interface ExternalUserVO {
-  username: string // 用户名
-  level: string // 职级
+  id: string        // 用户唯一标识（协同编辑器需要）
+  deptId: string     // 部门ID
+  nickname: string   // 显示昵称（优先）
+  username: string   // 用户名
+  email: string      // 邮箱
+  avatar: string     // 头像URL
+  roles: string[]    // 角色列表
   permissions: string[] // 权限列表
 }
 
 /**
- * 响应适配器 - 将不同后端的响应格式统一转换为 ExternalUserVO
- * @param res 后端原始响应
+ * 响应适配器 - 将后端响应格式统一转换为 ExternalUserVO
+ *
+ * 注意：request.get() 经过两层解包（service.ts 拦截器 + index.ts return res.data），
+ * 所以 res 已经是内层数据，不需要再 res.data 取值。
+ *
+ * 目前 Java 和 Node 返回格式一致，统一适配
+ *
+ * @param res 解包后的响应数据
  * @returns 统一的用户信息格式
  */
 const adaptUserInfo = (res: any): ExternalUserVO => {
-  if (backendType === 'java') {
-    // 芋道格式: { code: 0, data: { user: { nickname, avatar, ... }, roles, permissions } }
-    const data = res.data || res
-    return {
-      username: data?.user?.nickname || data?.user?.username || '未知用户',
-      level: data?.user?.level || '普通用户',
-      permissions: data?.permissions || []
-    }
-  }
-  // Node 格式: { code: 200, data: { username, level, permissions } }
-  const data = res.data || res
+  const user = res?.user || {}
   return {
-    username: data?.username || '未知用户',
-    level: data?.level || '普通用户',
-    permissions: data?.permissions || []
+    id: String(user.id || ''),
+    deptId: String(user.deptId || ''),
+    nickname: user.nickname || user.username || '未知用户',
+    username: user.username || '',
+    email: user.email || '',
+    avatar: user.avatar || '',
+    roles: res?.roles || [],
+    permissions: res?.permissions || []
   }
 }
 
 /**
  * 从 sessionStorage 读取用户信息
+ * 增加格式校验：旧格式数据（有 level 无 roles）视为无效，触发重新 fetchUserInfo
  */
 const loadFromStorage = (): ExternalUserVO | null => {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : null
+    if (!stored) return null
+    const parsed = JSON.parse(stored)
+    // 校验新格式必要字段（旧格式缺少 roles 数组）
+    if (!parsed.id || !parsed.username || !Array.isArray(parsed.roles)) {
+      sessionStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+    return parsed as ExternalUserVO
   } catch (e) {
     console.warn('[ExternalUser] 读取用户信息失败:', e)
     return null
@@ -108,17 +121,17 @@ export const useExternalUserStore = defineStore('external-user', {
     },
 
     /**
-     * 获取用户名
+     * 获取用户名（优先返回 nickname）
      */
     getUsername(): string {
-      return this.user?.username || '未知用户'
+      return this.user?.nickname || this.user?.username || '未知用户'
     },
 
     /**
-     * 获取职级
+     * 获取角色列表
      */
-    getLevel(): string {
-      return this.user?.level || '普通用户'
+    getRoles(): string[] {
+      return this.user?.roles || []
     },
 
     /**
@@ -132,8 +145,7 @@ export const useExternalUserStore = defineStore('external-user', {
   actions: {
     /**
      * 从后端获取用户信息
-     * - Java 后端: /system/auth/get-permission-info
-     * - Node 后端: /api/user/info
+     * 统一使用 /system/auth/get-permission-info 接口
      */
     async fetchUserInfo() {
       try {
@@ -141,13 +153,10 @@ export const useExternalUserStore = defineStore('external-user', {
         console.log(`[ExternalUser] 使用 ${backendType} 后端, 接口: ${apiUrl}`)
 
         const res = await request.get({ url: apiUrl })
-        // 兼容两种成功码: Java (code: 0) 和 Node (code: 200)
-        if (res.code === 200 || res.code === 0 || res.data) {
-          const userInfo = adaptUserInfo(res)
-          this.user = userInfo
-          saveToStorage(userInfo)
-          console.log('[ExternalUser] 用户信息已获取:', userInfo.username)
-        }
+        const userInfo = adaptUserInfo(res)
+        this.user = userInfo
+        saveToStorage(userInfo)
+        console.log('[ExternalUser] 用户信息已获取:', userInfo.nickname, `(${userInfo.id})`)
       } catch (e) {
         console.warn('[ExternalUser] 获取用户信息失败:', e)
       }
@@ -159,7 +168,7 @@ export const useExternalUserStore = defineStore('external-user', {
     setUser(user: ExternalUserVO) {
       this.user = user
       saveToStorage(user)
-      console.log('[ExternalUser] 用户信息已存储:', user.username)
+      console.log('[ExternalUser] 用户信息已存储:', user.nickname)
     },
 
     /**

@@ -47,6 +47,15 @@ export const setExternalToken = (token: string) => {
 }
 
 /**
+ * 设置外部refreshToken（用于嵌入式场景）
+ * 存储到与标准登录相同的 REFRESH_TOKEN key，使现有刷新机制生效
+ * @param refreshToken - 外部系统传递的refreshToken
+ */
+export const setExternalRefreshToken = (refreshToken: string) => {
+  wsCache.set(RefreshTokenKey, refreshToken)
+}
+
+/**
  * 判断是否为外部token登录模式
  * 通过环境变量 VITE_EXTERNAL_TOKEN_LOGIN 控制
  */

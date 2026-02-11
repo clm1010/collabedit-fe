@@ -926,6 +926,7 @@ const editor = useEditor({
     CollaborationCaret.configure({
       provider: props.provider,
       user: {
+        id: props.user.id,
         name: props.user.name,
         color: props.user.color
       }

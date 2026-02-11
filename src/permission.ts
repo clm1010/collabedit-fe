@@ -2,7 +2,13 @@ import router from './router'
 import type { RouteRecordRaw } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { isRelogin } from '@/config/axios/service'
-import { getAccessToken, isExternalTokenMode, setExternalToken } from '@/utils/auth'
+import {
+  getAccessToken,
+  getRefreshToken,
+  isExternalTokenMode,
+  setExternalToken,
+  setExternalRefreshToken
+} from '@/utils/auth'
 import { useTitle } from '@/hooks/web/useTitle'
 import { useNProgress } from '@/hooks/web/useNProgress'
 import { usePageLoading } from '@/hooks/web/usePageLoading'
@@ -62,6 +68,9 @@ const whiteList = [
 // 是否跳过登录验证（仅开发调试用）
 const skipAuth = import.meta.env.VITE_SKIP_AUTH === 'true'
 
+// 备用：缺少 token 时允许进入演训/模板页面（需配合下方 else 分支的注释代码）
+// let tokenWarningShown = false
+
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
   start()
@@ -95,14 +104,20 @@ router.beforeEach(async (to, from, next) => {
   // ===== 外部Token登录模式（嵌入式场景）=====
   // 当启用外部Token登录时，支持从任意页面URL参数获取token
   if (isExternalTokenMode()) {
-    // 1. 检查URL参数中是否有token，如果有则存储
+    // 1. 检查URL参数中是否有token和refreshToken，如果有则存储
     const urlToken = to.query.token as string
+    const urlRefreshToken = to.query.refreshToken as string
     if (urlToken) {
       // 存储token
       setExternalToken(urlToken)
+      // 存储refreshToken（用于token自动刷新）
+      if (urlRefreshToken) {
+        setExternalRefreshToken(urlRefreshToken)
+      }
       // 移除URL中的token参数（避免token暴露在浏览器历史记录中）
       const query = { ...to.query }
       delete query.token
+      delete query.refreshToken
       // 重定向到不带token参数的URL
       next({ path: to.path, query, replace: true })
       return
@@ -131,26 +146,77 @@ router.beforeEach(async (to, from, next) => {
       return
     }
 
-    // 5. 有token则放行，无token则弹窗提示
-    if (getAccessToken()) {
-      // 【新增】首次获取用户信息（通过 /api/user/info 接口）
+    // 5. 校验 token + refreshToken 双重凭证
+    if (getAccessToken() && getRefreshToken()) {
+      // 首次获取用户信息
       const externalUserStore = useExternalUserStoreWithOut()
       if (!externalUserStore.hasUser) {
         await externalUserStore.fetchUserInfo()
       }
+      // 校验用户信息是否获取成功
+      if (!externalUserStore.hasUser) {
+        ElMessageBox.alert('用户信息获取失败，请联系管理员', '访问受限', {
+          confirmButtonText: '确定',
+          type: 'warning',
+          showClose: false,
+          closeOnClickModal: false,
+          closeOnPressEscape: false
+        })
+        done()
+        loadDone()
+        return // 阻止导航
+      }
+      // ====== 嵌入式模式路由白名单 ======
+      const externalAllowedPaths = ['/training', '/template']
+      const isAllowed =
+        to.path === '/' || // 根路径允许（router 会 redirect 到 /training/performance）
+        externalAllowedPaths.some((prefix) => to.path.startsWith(prefix))
+      if (!isAllowed) {
+        ElMessageBox.alert('当前页面无访问权限，仅支持演训方案和模板管理', '访问受限', {
+          confirmButtonText: '确定',
+          type: 'warning',
+          showClose: false,
+          closeOnClickModal: false,
+          closeOnPressEscape: false
+        })
+        done()
+        loadDone()
+        return
+      }
+      // ====== 白名单结束 ======
       next()
     } else {
-      // 【修改】没有token，弹窗提示，不跳转页面
-      ElMessageBox.alert('没有token，请先验证', '访问受限', {
-        confirmButtonText: '确定',
-        type: 'warning',
-        showClose: false,
-        closeOnClickModal: false,
-        closeOnPressEscape: false
-      })
+      // 缺少 token 或 refreshToken，弹窗阻止，不允许进入任何页面
+      ElMessageBox.alert(
+        '缺少访问凭证（token 或 refreshToken），请从外部系统重新进入',
+        '访问受限',
+        {
+          confirmButtonText: '确定',
+          type: 'warning',
+          showClose: false,
+          closeOnClickModal: false,
+          closeOnPressEscape: false
+        }
+      )
       done()
       loadDone()
       return // 不调用 next()，阻止导航
+
+      // ===== 备用：缺少 token 时允许进入演训方案和模板管理页面（取消注释启用） =====
+      // if (!tokenWarningShown) {
+      //   tokenWarningShown = true
+      //   ElMessageBox.alert(
+      //     '缺少访问凭证（token 或 refreshToken），请从外部系统重新进入',
+      //     '访问受限',
+      //     { confirmButtonText: '确定', type: 'warning', showClose: false, closeOnClickModal: false, closeOnPressEscape: false }
+      //   )
+      // }
+      // const noTokenAllowedPaths = ['/training', '/template']
+      // const isAllowedPath = to.path === '/' || noTokenAllowedPaths.some((prefix) => to.path.startsWith(prefix))
+      // if (isAllowedPath) { next() } else { next('/training/performance') }
+      // done()
+      // loadDone()
+      // return
     }
     return
   }
