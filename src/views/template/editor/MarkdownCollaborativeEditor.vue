@@ -28,7 +28,7 @@
         <div class="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
           <!-- 协同编辑器：等待 ydoc、fragment 和 provider 都就绪后再渲染，避免 Yjs sync-plugin 初始化错误 -->
           <MarkdownEditor
-            v-if="isCollaborationReady && provider && ydoc && fragment"
+            v-if="provider && ydoc && fragment"
             ref="markdownEditorRef"
             :ydoc="ydoc!"
             :fragment="fragment!"
@@ -37,14 +37,13 @@
             :title="documentTitle"
             :placeholder="'开始编写 ' + documentTitle + '...'"
             :loading="false"
+            :content-loading="!isContentReady"
             :editable="!isReadonly"
             @update="handleContentUpdate"
             @ready="handleEditorReady"
           />
-          <!-- 协同未就绪时显示加载状态 -->
-          <div v-else class="p-6 h-full">
-            <el-skeleton :rows="12" animated />
-          </div>
+          <!-- provider/ydoc/fragment 同步创建，此处仅存在一帧 -->
+          <div v-else class="h-full bg-gray-100"></div>
         </div>
       </div>
 
@@ -439,6 +438,7 @@ const applyInitialContent = async () => {
     console.log('协同同步已有内容，跳过初始内容应用（防止覆盖/重复）')
     initialMarkdownContent.value = ''
     isFirstLoadWithContent.value = false
+    contentApplied.value = true
     clearCachedContent()
     return
   }
@@ -502,6 +502,7 @@ const applyInitialContent = async () => {
     }
   } finally {
     isApplyingContent.value = false
+    contentApplied.value = true
   }
 }
 
@@ -768,6 +769,17 @@ const initialMarkdownContent = ref<string>('')
 const isFirstLoadWithContent = ref(false)
 const isEditorReady = ref(false)
 const isCollaborationSynced = ref(false)
+const contentApplied = ref(false)
+
+// 内容是否真正加载完成（控制子组件骨架屏）
+const isContentReady = computed(() => {
+  // 初始内容已应用（含协同同步已有内容跳过的情况）
+  if (contentApplied.value) return true
+  // 协同已同步 且 没有需要应用的初始内容（空文档）
+  if (isCollaborationSynced.value && !initialMarkdownContent.value) return true
+  return false
+})
+
 // 用于清理 setTimeout 的 timer ID 集合
 const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
 // 组件是否已卸载的标记
@@ -865,6 +877,7 @@ watch(
     isFirstLoadWithContent.value = false
     isEditorReady.value = false
     isCollaborationSynced.value = false
+    contentApplied.value = false
     pendingCacheKey.value = null
     cacheCleared.value = false
     pendingTimers.value.forEach((timerId) => {

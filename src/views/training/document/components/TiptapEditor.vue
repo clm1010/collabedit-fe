@@ -1,18 +1,24 @@
 <template>
   <div class="tiptap-editor-wrapper">
-    <!-- 工具栏仅在编辑器就绪且可编辑时展示 -->
+    <!-- 工具栏：editor 就绪即显示，不等待内容加载 -->
     <EditorToolbar
-      v-if="editor && !loading && editable"
+      v-if="editor && editable"
       :editor="editor"
       :save-status="saveStatus"
     />
 
     <!-- 编辑器内容区域 -->
     <div class="tiptap-content-wrapper" ref="contentWrapperRef" @scroll="handleScroll">
-      <div v-if="loading || !editor" class="p-6 h-full">
-        <el-skeleton :rows="12" animated />
-      </div>
-      <template v-else>
+      <!-- 内容加载骨架覆盖层（绝对定位，不影响编辑器初始化和内容接收） -->
+      <Transition name="skeleton-fade">
+        <div v-if="contentLoading || !editor" class="content-skeleton-overlay">
+          <div class="a4-skeleton-box">
+            <el-skeleton :rows="12" animated />
+          </div>
+        </div>
+      </Transition>
+      <!-- 编辑器内容（始终渲染，在覆盖层下方接收协同内容） -->
+      <template v-if="editor">
         <!-- A4 页面容器 -->
         <div class="page-container">
           <div
@@ -146,7 +152,7 @@
     <!-- 回到顶部按钮 -->
     <transition name="fade">
       <button
-        v-show="showBackToTop && !loading"
+        v-show="showBackToTop && !contentLoading"
         class="back-to-top-btn"
         @click="scrollToTop"
         title="回到顶部"
@@ -265,6 +271,7 @@ interface Props {
   placeholder?: string
   title?: string
   loading?: boolean
+  contentLoading?: boolean // 内容是否仍在加载中（由父组件控制）
   editable?: boolean // 是否可编辑（只读模式为 false）
 }
 
@@ -272,6 +279,7 @@ const props = withDefaults(defineProps<Props>(), {
   placeholder: '开始编写文档内容...',
   title: '文档',
   loading: false,
+  contentLoading: false,
   editable: true
 })
 
@@ -981,6 +989,7 @@ defineExpose({
 }
 
 .tiptap-content-wrapper {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
@@ -1009,6 +1018,36 @@ defineExpose({
   &::-webkit-scrollbar-corner {
     background: transparent;
   }
+}
+
+// 内容骨架覆盖层
+.content-skeleton-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: #e8eaed;
+  overflow: hidden;
+}
+
+.a4-skeleton-box {
+  max-width: 794px;
+  margin: 24px auto;
+  padding: 40px 60px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+// 骨架屏淡出过渡
+.skeleton-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.skeleton-fade-leave-to {
+  opacity: 0;
 }
 
 // A4 页面容器

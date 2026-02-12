@@ -22,7 +22,7 @@
       <!-- 编辑器容器 -->
       <div class="flex-1 flex flex-col overflow-hidden bg-gray-100 p-4">
         <div class="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-          <!-- 协同编辑器：只要 ydoc/fragment/provider 就绪即可渲染，避免卡在加载态 -->
+          <!-- 协同编辑器：只要 ydoc/fragment/provider 就绪即可渲染 -->
           <TiptapEditor
             v-if="provider && ydoc && fragment"
             ref="tiptapEditorRef"
@@ -33,14 +33,13 @@
             :title="documentTitle"
             :placeholder="'开始编写 ' + documentTitle + '...'"
             :loading="false"
+            :content-loading="!isContentReady"
             :editable="!isReadonly"
             @update="handleContentUpdate"
             @ready="handleEditorReady"
           />
-          <!-- 协同未就绪时显示加载状态 -->
-          <div v-else class="p-6 h-full">
-            <el-skeleton :rows="12" animated />
-          </div>
+          <!-- provider/ydoc/fragment 同步创建，此处仅存在一帧，用空白占位即可 -->
+          <div v-else class="h-full bg-gray-100"></div>
         </div>
       </div>
 
@@ -384,6 +383,15 @@ const lastSavedContentHash = ref<string>('')
 const isAutoSaving = ref(false)
 const hasUserEdited = ref(false) // 标记用户是否真的编辑过（避免首次加载触发保存）
 const hasUnsavedChanges = ref(false) // 文档是否有未保存的更改
+
+// 内容是否真正加载完成（控制子组件骨架屏）
+const isContentReady = computed(() => {
+  // 预加载内容已应用（含"编辑器已有协同内容，跳过预加载"的情况）
+  if (preloadedApplied.value) return true
+  // 协同已同步 且 没有需要应用的预加载内容（空文档 / 仅靠协同同步的文档）
+  if (isCollaborationSynced.value && !preloadedContent.value) return true
+  return false
+})
 
 // 参考素材
 const referenceMaterials = ref<any[]>([])

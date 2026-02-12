@@ -1,7 +1,7 @@
 <template>
   <div class="markdown-editor-wrapper">
     <!-- 工具栏 - 只读模式下隐藏 -->
-    <div v-if="editor && !loading && editable" class="editor-toolbar">
+    <div v-if="editor && editable" class="editor-toolbar">
       <div class="toolbar-group">
         <!-- 导入 Word -->
         <button
@@ -464,11 +464,17 @@
     </el-dialog>
 
     <!-- 编辑器内容区域 -->
-    <div class="editor-content-wrapper" ref="contentWrapperRef">
-      <div v-if="loading || !editor" class="p-6 h-full">
-        <el-skeleton :rows="12" animated />
-      </div>
-      <template v-else>
+    <div class="editor-content-wrapper" ref="contentWrapperRef" @scroll="handleScroll">
+      <!-- 内容加载骨架覆盖层 -->
+      <Transition name="skeleton-fade">
+        <div v-if="contentLoading || !editor" class="content-skeleton-overlay">
+          <div class="a4-skeleton-box">
+            <el-skeleton :rows="12" animated />
+          </div>
+        </div>
+      </Transition>
+      <!-- 编辑器内容 -->
+      <template v-if="editor">
         <div class="page-container">
           <div class="page-content">
             <!-- 官方 DragHandle 组件 - 只读模式下隐藏 -->
@@ -609,6 +615,18 @@
         </div>
       </template>
     </div>
+
+    <!-- 回到顶部按钮 -->
+    <transition name="fade">
+      <button
+        v-show="showBackToTop && !contentLoading"
+        class="back-to-top-btn"
+        @click="scrollToTop"
+        title="回到顶部"
+      >
+        <Icon icon="mdi:arrow-up" />
+      </button>
+    </transition>
   </div>
 </template>
 
@@ -672,6 +690,7 @@ interface Props {
   placeholder?: string
   title?: string
   loading?: boolean
+  contentLoading?: boolean // 内容是否仍在加载中（由父组件控制）
   editable?: boolean // 是否可编辑（只读模式为 false）
 }
 
@@ -679,6 +698,7 @@ const props = withDefaults(defineProps<Props>(), {
   placeholder: '开始编写模板内容...',
   title: '模板文档',
   loading: false,
+  contentLoading: false,
   editable: true
 })
 
@@ -696,6 +716,26 @@ let isComponentDestroyed = false
 
 // 内容区域引用
 const contentWrapperRef = ref<HTMLElement | null>(null)
+
+// 回到顶部按钮显示状态
+const showBackToTop = ref(false)
+
+// 处理滚动事件
+const handleScroll = () => {
+  if (contentWrapperRef.value) {
+    showBackToTop.value = contentWrapperRef.value.scrollTop > 300
+  }
+}
+
+// 回到顶部
+const scrollToTop = () => {
+  if (contentWrapperRef.value) {
+    contentWrapperRef.value.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    })
+  }
+}
 
 // 泡泡菜单引用 - 参考 https://tiptap.dev/docs/editor/extensions/functionality/bubble-menu
 const bubbleMenuRef = ref<HTMLElement | null>(null)
@@ -1645,6 +1685,7 @@ defineExpose({
   background: #f4f5f7;
   border-radius: 8px;
   overflow: hidden;
+  position: relative;
 }
 
 .editor-toolbar {
@@ -1718,6 +1759,7 @@ defineExpose({
 }
 
 .editor-content-wrapper {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
@@ -1740,6 +1782,85 @@ defineExpose({
       background: #a8a8a8;
     }
   }
+}
+
+// 内容骨架覆盖层
+.content-skeleton-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: #e8eaed;
+  overflow: hidden;
+}
+
+.a4-skeleton-box {
+  max-width: 794px;
+  margin: 24px auto;
+  padding: 40px 60px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+// 骨架屏淡出过渡
+.skeleton-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.skeleton-fade-leave-to {
+  opacity: 0;
+}
+
+// 回到顶部按钮
+.back-to-top-btn {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+  transition: all 0.2s ease;
+  z-index: 100;
+
+  &:hover {
+    background: #1557b0;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(26, 115, 232, 0.5);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  :deep(svg) {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// 回到顶部按钮渐变动画
+.fade-enter-active,
+.fade-leave-active {
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 
 .page-container {
