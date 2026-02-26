@@ -23,4 +23,4 @@
 ## 4 刷新页面 REFRESH_TOKEN 是 Node 签发的、数据库中存在，刷新流程就能走通。
 
 - 能返回 {code: 200, data: {accessToken: '...', refreshToken: '...'}} 的 JSON 数据。
-- 示例：http://192.168.2.169:5173/training/performance?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI5MmIzNGIzMC1mZTk3LTRkOWYtOGE0YS0zY2Y2MTU1ZDJkOTciLCJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzcwODIzMDExLCJleHAiOjE3NzA4MzAyMTF9.ar9EpI8beRRXuQyDv1PwsrGLrCYLYhBkEA_AQ6Rii8w&refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI5MmIzNGIzMC1mZTk3LTRkOWYtOGE0YS0zY2Y2MTU1ZDJkOTciLCJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzcwODIzMDExLCJleHAiOjE3NzE0Mjc4MTF9.HDM3Lrix_Mg6t9wrY_VWOJNRReXCNtZdom7f8XX2Dzs
+- 示例：http://192.168.2.169:5173/training/performance?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjEsInVuIjoiYWRtaW4iLCJpYXQiOjE3NzIwMTAxNzUsImV4cCI6MTc3MjAxNzM3NX0.AthP4F6Jd9oL8POnmsksSclDaQG-3wj2Yv-otEmkUwk&refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjEsInVuIjoiYWRtaW4iLCJpYXQiOjE3NzIwMTAxNzUsImV4cCI6MTc3MjYxNDk3NX0.O1ywJzSWZ4m4_skzTB4Cn5SU1e5W8_5bQPiCZ2UFDiw

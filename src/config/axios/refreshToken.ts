@@ -27,8 +27,8 @@ const { base_url } = config
 
 // ========== 共享状态 ==========
 
-/** 请求队列（等待刷新完成后回放） */
-let requestList: (() => void)[] = []
+/** 请求队列（等待刷新完成后回放或拒绝） */
+let requestList: { resolve: (value: any) => void; reject: (reason: any) => void }[] = []
 
 /** 是否正在刷新中 */
 let isRefreshToken = false
@@ -52,7 +52,12 @@ const REFRESH_TOKEN_URL: Record<string, string> = {
 const doRefreshToken = async () => {
   axios.defaults.headers.common['tenant-id'] = getTenantId()
   const refreshUrl = REFRESH_TOKEN_URL[backendType] || REFRESH_TOKEN_URL.node
-  return await axios.post(base_url + refreshUrl + '?refreshToken=' + getRefreshToken())
+  const url = base_url + refreshUrl + '?refreshToken=' + getRefreshToken()
+  // Java 后端刷新接口只接受 GET，Node 后端接受 POST
+  if (backendType === 'java') {
+    return await axios.get(url)
+  }
+  return await axios.post(url)
 }
 
 /**
@@ -76,15 +81,22 @@ export async function handle401(
     // 2. 进行刷新访问令牌
     try {
       const refreshTokenRes = await doRefreshToken()
-      // 2.1 刷新成功，则回放队列的请求 + 当前请求
-      setToken((await refreshTokenRes).data.data)
+      const resData = refreshTokenRes.data
+      // 2.1 校验业务状态码（兼容 Java code:0 和 Node code:200）
+      if (resData.code !== 200 && resData.code !== 0) {
+        throw new Error(resData.msg || resData.message || '刷新令牌失败')
+      }
+      // 2.2 刷新成功，回放队列 + 当前请求
+      setToken(resData.data)
       originalConfig.headers!.Authorization = 'Bearer ' + getAccessToken()
-      requestList.forEach((cb) => cb())
+      requestList.forEach(({ resolve }) => {
+        resolve(undefined) // 触发队列中的 resolve，由入队处重新发请求
+      })
       requestList = []
       return axiosInstance(originalConfig)
     } catch (e) {
-      // 2.2 刷新失败，只回放队列的请求
-      requestList.forEach((cb) => cb())
+      // 2.3 刷新失败，拒绝队列中所有请求（不再用失效 token 重试）
+      requestList.forEach(({ reject }) => reject(new Error('刷新令牌失败')))
       // 提示登出。不回放当前请求，避免递归
       return handleAuthorized()
     } finally {
@@ -93,10 +105,13 @@ export async function handle401(
     }
   } else {
     // 已有刷新在进行，添加到队列等待
-    return new Promise((resolve) => {
-      requestList.push(() => {
-        originalConfig.headers!.Authorization = 'Bearer ' + getAccessToken()
-        resolve(axiosInstance(originalConfig))
+    return new Promise((resolve, reject) => {
+      requestList.push({
+        resolve: () => {
+          originalConfig.headers!.Authorization = 'Bearer ' + getAccessToken()
+          resolve(axiosInstance(originalConfig))
+        },
+        reject
       })
     })
   }

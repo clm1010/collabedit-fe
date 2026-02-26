@@ -40,13 +40,14 @@ const service: AxiosInstance = axios.create({
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // 是否需要设置 token
-    let isToken = (config!.headers || {}).isToken === false
+    let skipToken = (config!.headers || {}).isToken === false
     whiteList.some((v) => {
       if (config.url && config.url.indexOf(v) > -1) {
-        return (isToken = false)
+        skipToken = true
+        return true // 中断 .some() 迭代
       }
     })
-    if (getAccessToken() && !isToken) {
+    if (getAccessToken() && !skipToken) {
       config.headers.Authorization = 'Bearer ' + getAccessToken() // 让每个请求携带自定义token
     }
     // 每次请求携带 refreshToken（用于后端识别刷新凭证）
@@ -144,7 +145,7 @@ service.interceptors.response.use(
     }
     const code = data.code || result_code
     // 获取错误信息
-    const msg = data.msg || errorCode[code] || errorCode['default']
+    const msg = data.msg || data.message || errorCode[code] || errorCode['default']
     if (ignoreMsgs.indexOf(msg) !== -1) {
       // 如果是忽略的错误码，直接返回 msg 异常
       return Promise.reject(msg)
@@ -199,6 +200,10 @@ service.interceptors.response.use(
     }
     if (status === 403) {
       // HTTP 403：不刷新，直接提示重新登录
+      return handleAuthorized()
+    }
+    if (status === 405) {
+      // HTTP 405：可能是代理/路由异常导致方法不匹配，引导重新登录
       return handleAuthorized()
     }
 

@@ -574,7 +574,7 @@ const handleSave = async () => {
     // 调用保存文档接口，使用 .md 后缀
     const result = await saveMarkdownFile(documentId.value, blob, `${documentTitle.value}.md`)
 
-    if (result.code === 200 || result.status === 200) {
+    if (result.code === 200 || result.code === 0 || result.status === 200) {
       ElMessage.success('文档已保存')
       // 标记文档已保存
       hasUnsavedChanges.value = false

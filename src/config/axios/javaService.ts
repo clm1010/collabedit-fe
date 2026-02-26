@@ -176,6 +176,10 @@ javaService.interceptors.response.use(
     if (status === 403) {
       return handleAuthorized()
     }
+    if (status === 405) {
+      // HTTP 405：可能是代理/路由异常导致方法不匹配，引导重新登录
+      return handleAuthorized()
+    }
 
     console.error('Java API 响应错误:', error)
     let message = error.message || '请求失败'
