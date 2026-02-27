@@ -330,12 +330,6 @@
           <span class="btn-text">打印</span>
         </button>
       </el-tooltip>
-      <el-tooltip content="导出诊断文件" placement="bottom" :show-after="500">
-        <button class="toolbar-btn-large" @click="exportDebugArtifacts">
-          <Icon icon="mdi:bug-outline" class="btn-icon-large" />
-          <span class="btn-text">诊断导出</span>
-        </button>
-      </el-tooltip>
     </div>
 
     <!-- Word 导入对话框 -->
@@ -398,16 +392,6 @@
         </div>
       </div>
       <template #footer>
-        <el-button text @click="exportDocModelJson" :disabled="!wordImportDocModel">
-          导出 DocModel
-        </el-button>
-        <el-button
-          text
-          @click="exportComparisonHtml"
-          :disabled="!wordImportNormalizedHtml && !wordImportDocxPreviewHtml"
-        >
-          导出对比 HTML
-        </el-button>
         <el-button @click="cancelWordImport">取消</el-button>
         <el-button
           type="primary"
@@ -543,12 +527,10 @@ import {
   validateDocxFile,
   parseOoxmlDocument,
   parseRedHeadDocument,
-  parseWithDocxPreview,
   parseOoxmlDocumentEnhanced,
   parseHtmlDocument,
   parseMhtmlDocument,
   parseDocxToDocModel,
-  parseHtmlToDocModel,
   serializeDocModelToHtml,
   ImageStore
 } from '../../utils/wordParser'
@@ -583,15 +565,6 @@ const documentTitle = ref('')
 const previewContent = ref('')
 const previewZoom = ref(100)
 const previewSidebarVisible = ref(false)
-
-const exportDebugArtifacts = () => {
-  const fn = (globalThis as any).__exportDocDebug
-  if (typeof fn === 'function') {
-    fn()
-    return
-  }
-  ElMessage.warning('诊断导出未就绪，请稍后重试')
-}
 
 // 字体别名映射表 - 用于将文档中的字体名称映射到选项中的字体
 const fontAliasMap: Record<string, string[]> = {
@@ -1040,8 +1013,6 @@ const wordImportLoading = ref(false)
 const wordImportPreview = ref('')
 const wordImportRawHtml = ref('')
 const wordImportNormalizedHtml = ref('')
-const wordImportDocxPreviewHtml = ref('')
-const wordImportDocModel = ref<any | null>(null)
 const wordImportFile = ref<File | null>(null)
 const wordImportOptions = reactive({
   preserveStyles: true,
@@ -1065,8 +1036,6 @@ const clearWordImportContent = () => {
   wordImportPreview.value = ''
   wordImportRawHtml.value = ''
   wordImportNormalizedHtml.value = ''
-  wordImportDocxPreviewHtml.value = ''
-  wordImportDocModel.value = null
   clearImportBlobUrls()
 }
 
@@ -1077,74 +1046,6 @@ const replaceDataImagesWithBlobUrls = async (html: string): Promise<string> => {
     wordImportBlobUrls.value = Array.from(new Set(detectedUrls))
   }
   return replaced
-}
-
-const downloadTextFile = (content: string, filename: string, mimeType: string) => {
-  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-const buildComparisonHtml = (): string => {
-  const left = wordImportDocxPreviewHtml.value || '<p>无 docx-preview 渲染结果</p>'
-  const right = wordImportNormalizedHtml.value || '<p>无 DocModel 规范化结果</p>'
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Docx 解析对比</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; background: #f5f6f8; }
-    .wrap { display: flex; gap: 12px; padding: 12px; }
-    .panel { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: auto; }
-    .panel-header { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; background: #fafafa; font-weight: 600; }
-    .panel-body { padding: 16px; }
-    img { max-width: 100%; height: auto; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #ddd; padding: 6px 8px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="panel">
-      <div class="panel-header">docx-preview 渲染</div>
-      <div class="panel-body">${left}</div>
-    </div>
-    <div class="panel">
-      <div class="panel-header">DocModel 规范化</div>
-      <div class="panel-body">${right}</div>
-    </div>
-  </div>
-</body>
-</html>`
-}
-
-const exportDocModelJson = () => {
-  if (!wordImportDocModel.value) {
-    ElMessage.warning('暂无 DocModel 结果')
-    return
-  }
-  const json = JSON.stringify(wordImportDocModel.value, null, 2)
-  const filename = `${wordImportFile.value?.name || 'docx'}-docmodel.json`
-  downloadTextFile(json, filename, 'application/json')
-}
-
-const exportComparisonHtml = () => {
-  if (!wordImportNormalizedHtml.value && !wordImportDocxPreviewHtml.value) {
-    ElMessage.warning('暂无对比结果')
-    return
-  }
-  const html = buildComparisonHtml()
-  const filename = `${wordImportFile.value?.name || 'docx'}-compare.html`
-  downloadTextFile(html, filename, 'text/html')
 }
 
 // 导入 Word
@@ -1224,10 +1125,6 @@ const handleWordFileSelect = async (uploadFile: any) => {
         html = cleanWordHtml(html)
         html = validateAndFixImages(html)
 
-        wordImportDocModel.value = parseHtmlToDocModel(html, {
-          source: 'html',
-          method: 'html-import'
-        })
         wordImportNormalizedHtml.value = html
         wordImportRawHtml.value = html
         wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
@@ -1286,7 +1183,6 @@ const handleWordFileSelect = async (uploadFile: any) => {
         useWorkerForLargeFiles: true,
         mergeRedheadOoxml: true
       })
-      wordImportDocModel.value = docModel
       html = serializeDocModelToHtml(docModel)
       console.log('DocModel 解析完成，原始HTML长度:', html?.length || 0)
     } catch (e) {
@@ -1328,12 +1224,6 @@ const handleWordFileSelect = async (uploadFile: any) => {
     wordImportRawHtml.value = html
     wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
 
-    try {
-      const previewHtml = await parseWithDocxPreview(arrayBuffer, updateProgress)
-      wordImportDocxPreviewHtml.value = cleanWordHtml(previewHtml)
-    } catch (e) {
-      console.warn('docx-preview 对比渲染失败:', e)
-    }
     importProgress.value = 100
     importProgressText.value = '解析完成'
 
@@ -1917,54 +1807,6 @@ const preprocessHtmlForTiptap = (html: string): string => {
   }
 }
 
-const replaceImageSourcesFromPreview = (html: string, previewHtml: string): string => {
-  if (!html || !previewHtml) return html
-  try {
-    const parser = new DOMParser()
-    const contentDoc = parser.parseFromString(
-      `<div id="word-import-root">${html}</div>`,
-      'text/html'
-    )
-    const previewDoc = parser.parseFromString(
-      `<div id="word-import-root">${previewHtml}</div>`,
-      'text/html'
-    )
-    const contentRoot = contentDoc.getElementById('word-import-root')
-    const previewRoot = previewDoc.getElementById('word-import-root')
-    if (!contentRoot || !previewRoot) return html
-    const previewImages = Array.from(previewRoot.querySelectorAll('img'))
-      .map((img) => img.getAttribute('src') || img.getAttribute('data-origin-src') || '')
-      .filter((src) => /^data:image\//i.test(src))
-    if (!previewImages.length) return html
-    const contentImages = Array.from(contentRoot.querySelectorAll('img'))
-    contentImages.forEach((img, index) => {
-      const src = previewImages[index]
-      if (!src) return
-      img.setAttribute('src', src)
-      img.setAttribute('data-origin-src', src)
-      img.removeAttribute('height')
-      const style = img.getAttribute('style')
-      if (style && /height\s*:/i.test(style)) {
-        const cleaned = style
-          .replace(/height\s*:\s*[^;]+;?/gi, '')
-          .replace(/;\s*;/g, ';')
-          .replace(/^\s*;\s*/, '')
-          .replace(/\s*;\s*$/, '')
-          .trim()
-        if (cleaned) {
-          img.setAttribute('style', cleaned)
-        } else {
-          img.removeAttribute('style')
-        }
-      }
-    })
-    return contentRoot.innerHTML
-  } catch (e) {
-    console.warn('replaceImageSourcesFromPreview failed:', e)
-    return html
-  }
-}
-
 const protectDataImages = (
   html: string
 ): { html: string; images: Array<{ key: string; src: string }> } => {
@@ -2025,21 +1867,14 @@ const confirmWordImport = async () => {
   }
 
   try {
-    // 优先使用 DocModel 解析结果（与预览一致，避免 docx-preview 图片被裁剪）
     const rawContent = wordImportRawHtml.value?.trim()
-    const previewContent = wordImportDocxPreviewHtml.value?.trim()
-    let content = (rawContent || previewContent || wordImportPreview.value).trim()
+    let content = (rawContent || wordImportPreview.value).trim()
     if (!content) {
       ElMessage.warning('导入内容为空')
       return
     }
 
     console.log('原始预览内容长度:', content.length)
-
-    // 仅在 docmodel 不可用时才用 docx-preview 补图，避免引入裁剪后的图片
-    if (!rawContent && previewContent) {
-      content = replaceImageSourcesFromPreview(content, previewContent)
-    }
 
     // 清理开头的空段落和空白 - 解决"总是空出一行"的问题
     // 但要小心不要删除所有内容
