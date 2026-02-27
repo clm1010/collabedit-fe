@@ -407,14 +407,8 @@ export const convertLargeFontParagraphsToHeadings = (html: string): string => {
     const root = doc.getElementById('root')
     if (!root) return html
 
-    const existingHeadings = root.querySelectorAll('h1, h2, h3, h4, h5, h6')
-    console.log(`convertLargeFontParagraphsToHeadings: 已有 ${existingHeadings.length} 个标题元素`)
-
     const paragraphs = root.querySelectorAll('p')
     let modified = false
-    let convertedCount = 0
-
-    console.log(`convertLargeFontParagraphsToHeadings: 检查 ${paragraphs.length} 个段落`)
 
     paragraphs.forEach((p) => {
       const text = p.textContent?.trim() || ''
@@ -429,12 +423,6 @@ export const convertLargeFontParagraphsToHeadings = (html: string): string => {
 
       const fontSize = extractMaxFontSize(p)
       const isBold = checkIsBold(p)
-
-      if (fontSize > 0 || isBold) {
-        console.log(
-          `段落检测: "${text.substring(0, 30)}..." fontSize=${fontSize.toFixed(1)}px, isBold=${isBold}, isCenter=${isCenter}`
-        )
-      }
 
       let headingLevel = 0
       if (fontSize >= 29) headingLevel = 1
@@ -465,14 +453,8 @@ export const convertLargeFontParagraphsToHeadings = (html: string): string => {
         }
         p.parentNode?.replaceChild(heading, p)
         modified = true
-        convertedCount++
-        console.log(
-          `✓ 转换段落为 h${headingLevel}: "${text.substring(0, 50)}..." (fontSize=${fontSize.toFixed(1)}px)`
-        )
       }
     })
-
-    console.log(`convertLargeFontParagraphsToHeadings: 共转换 ${convertedCount} 个段落为标题`)
 
     if (modified) {
       return root.innerHTML

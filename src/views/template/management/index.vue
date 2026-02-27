@@ -313,8 +313,8 @@
         </el-form-item>
         <el-form-item label="模板状态" prop="temStatus">
           <el-radio-group v-model="formData.temStatus">
-            <el-radio label="启用" value="0">启用</el-radio>
-            <el-radio label="禁用" value="1">禁用</el-radio>
+            <el-radio value="0">启用</el-radio>
+            <el-radio value="1">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <!-- 创建方式（仅新建时显示） -->
@@ -679,8 +679,6 @@ const getList = async () => {
       return !isNil(value) && value !== ''
     })
 
-    console.log('查询参数', cleanParams)
-
     const data = await TemplateApi.getPageList(cleanParams as TemplateApi.TemplatePageReqVO)
     list.value = data.records || []
     total.value = data.total || 0
@@ -780,8 +778,6 @@ const handleAdd = () => {
 
 // 编辑/写作 - 跳转到 Markdown 协同编辑器
 const handleEdit = async (row: TemplateApi.TemplateVO) => {
-  console.log('写作:', row)
-
   // 创建 loading 实例
   const loadingInstance = ElLoading.service({
     lock: true,
@@ -793,13 +789,10 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
     // 1. 获取或创建协作用户
     const collaborationUser = collaborationUserStore.getOrCreateUser()
     const userId = collaborationUser.id
-    console.log('协作用户:', collaborationUser.name, `(${userId})`)
 
     // 2. 调用权限校验接口
-    console.log('调用权限校验接口, id:', row.id, 'userId:', userId)
     const checkData = { id: String(row.id), userId: userId as string }
     const permResult = await TemplateApi.checkWritePermission(checkData)
-    console.log('权限校验结果:', permResult)
 
     // 3. 检查权限 - status=500 或 data=false 表示无权限
     if (permResult.status === 500 || permResult.data === false) {
@@ -812,9 +805,7 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
 
     // 4. 权限通过，获取文件流
     loadingInstance.setText('正在加载文档内容...')
-    console.log('调用文件流接口, id:', row.id)
     const streamResult = await TemplateApi.getFileStream(String(row.id))
-    console.log('文件流结果:', streamResult, 'instanceof Blob:', streamResult instanceof Blob)
 
     // 5. 处理文件流数据
     let hasContent = false
@@ -835,7 +826,6 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
         sha256: blobSha256 || 'unavailable'
       })
       addDocStreamSnapshot('template_blob_sha256', { sha256: blobSha256 || 'unavailable' }, row.id)
-      console.log('文件流有效, size:', streamResult.size, 'type:', streamResult.type)
       // 将 blob 转为 base64 存储到 sessionStorage
       const base64Content = await blobToBase64(streamResult)
       logDocStreamDebug('template base64 converted', {
@@ -851,12 +841,6 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
         },
         row.id
       )
-      console.log(
-        'base64 转换完成, 长度:',
-        base64Content.length,
-        '前100字符:',
-        base64Content.substring(0, 100)
-      )
       sessionStorage.setItem(`markdown_content_${row.id}`, base64Content)
       logDocStreamDebug('template base64 stored', {
         id: row.id,
@@ -864,10 +848,8 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
       })
       addDocStreamSnapshot('template_base64_stored', { key: `markdown_content_${row.id}` }, row.id)
       hasContent = true
-      console.log('文件流已存储到 sessionStorage, key:', `markdown_content_${row.id}`)
     } else {
       logDocStreamDebug('template blob empty', { id: row.id })
-      console.log('空文档，将打开空白编辑器')
     }
 
     // 6. 准备文档信息并存储到 sessionStorage
@@ -925,7 +907,6 @@ const handleSave = async () => {
         description: formData.description,
         elements_items: formData.elements_items
       } as TemplateApi.TemplateVO
-      console.log(updateData, '-----------updateData-----------')
       await TemplateApi.updateTemplate(updateData)
       ElMessage.success('更新成功')
     } else {
@@ -945,11 +926,9 @@ const handleSave = async () => {
       if (formData.creationMethod === 'upload') {
         // 上传文档模式
         // 先上传文档文件
-        console.log('上传文档文件:', uploadFile.value!.name)
         const uploadResult = await TemplateApi.saveDocument({
           file: uploadFile.value!
         })
-        console.log('上传结果:', uploadResult, typeof uploadResult)
 
         // 处理上传结果 - 兼容两种响应格式
         let fileId: string | null = null
@@ -957,13 +936,11 @@ const handleSave = async () => {
         if (isString(uploadResult)) {
           // axios 封装解包后直接返回了 data 值
           fileId = uploadResult
-          console.log('上传成功(解包响应), 文件ID:', fileId)
         } else if (isObject(uploadResult)) {
           // 完整响应对象
           const result = uploadResult as { code?: number; data?: string; msg?: string }
           if (result.code === 200 || result.code === 0) {
             fileId = result.data || null
-            console.log('上传成功(完整响应), 文件ID:', fileId)
           } else {
             ElMessage.error(result.msg || '上传文档失败')
             return
@@ -977,12 +954,10 @@ const handleSave = async () => {
 
         // 将上传返回的 fileId 传递给 savaTemplate
         saveData.fileId = fileId as string
-        console.log(saveData, '-----------saveData-----------')
         // 创建模板记录
         await TemplateApi.savaTemplate(saveData)
         ElMessage.success('创建成功')
       } else {
-        console.log(saveData, '-----------saveData-----------')
         // 新建文档模式
         await TemplateApi.savaTemplate(saveData)
         ElMessage.success('创建成功')
@@ -1112,9 +1087,7 @@ const handleAuditSubmit = async (submitData: {
 }) => {
   auditLoading.value = true
   try {
-    console.log('提交审核参数:', submitData)
     const result = await TemplateApi.submitAudit(submitData)
-    console.log('提交审核结果:', result)
 
     // 处理响应 - 兼容两种格式
     if (isObject(result) && !isNil(result)) {
@@ -1325,14 +1298,12 @@ const openPublishDialog = (row: TemplateApi.TemplateVO) => {
 // 确认发布
 const handlePublishSubmit = async () => {
   if (isNil(currentPublishRow.value?.id)) return
-  console.log('发布参数:', currentPublishRow.value.id, publishFormData.visibleScope)
   publishLoading.value = true
   try {
     const result = await TemplateApi.publishDocument({
       id: currentPublishRow.value.id,
       visibleScope: publishFormData.visibleScope
     })
-    console.log('发布结果:', result)
 
     // 处理响应 - 兼容两种格式
     if (isObject(result) && !isNil(result)) {
@@ -1360,8 +1331,6 @@ const handlePublishSubmit = async () => {
 
 // 审核执行 - 跳转到编辑器（只读模式）
 const handleReviewExecute = async (row: TemplateApi.TemplateVO) => {
-  console.log('审核执行:', row)
-
   // 创建 loading 实例
   const loadingInstance = ElLoading.service({
     lock: true,
@@ -1422,9 +1391,7 @@ const openExamRecordDialog = async (row: TemplateApi.TemplateVO) => {
   examRecordList.value = []
 
   try {
-    console.log('获取审核记录:', row.id)
     const res = await TemplateApi.getExamRecordList(row.id)
-    console.log('获取审核记录结果:', res)
     // 兼容两种返回格式：数组或 { data: [...] }
     examRecordList.value = Array.isArray(res) ? res : res.data || []
   } catch (error) {

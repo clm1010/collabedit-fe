@@ -15,7 +15,7 @@ export function parseWithWorker(
       })
 
       worker.onmessage = (e) => {
-        const { type, html, progress, text, error, reason } = e.data
+        const { type, html, progress, text, error } = e.data
 
         if (type === 'progress') {
           onProgress?.(progress, text)
@@ -24,7 +24,6 @@ export function parseWithWorker(
           worker.terminate()
         } else if (type === 'fallback') {
           worker.terminate()
-          console.log('Worker 需要 DOM，回退到主线程:', reason)
           parseWithDocxPreview(arrayBuffer, onProgress).then(resolve).catch(reject)
         } else if (type === 'error') {
           reject(new Error(error))

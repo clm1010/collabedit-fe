@@ -63,7 +63,7 @@ const javaApi = {
       temCategory: data.temCategory || '',
       temSubclass: data.temSubclass,
       temSubName: data.temSubName || '',
-      temStatus: data.temStatus === '启用' ? '0' : '1',
+      temStatus: data.temStatus,
       description: data.description || '',
       elements_items: data.elements_items || []
     }
@@ -83,7 +83,7 @@ const javaApi = {
       temCategory: data.temCategory || '',
       temSubclass: data.temSubclass,
       temSubName: data.temSubName || '',
-      temStatus: data.temStatus === '启用' ? '0' : '1',
+      temStatus: data.temStatus,
       description: data.description || '',
       elements_items: data.elements_items || []
     }

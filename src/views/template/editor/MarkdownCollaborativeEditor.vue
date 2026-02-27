@@ -285,17 +285,14 @@ const performAutoSave = async () => {
 
   // 检查内容是否有变化
   if (currentHash === lastSavedContentHash.value) {
-    console.log('[自动保存] 内容无变化，跳过保存')
     return
   }
 
   isAutoSaving.value = true
-  console.log('[自动保存] 开始保存...')
 
   try {
     await handleSave()
     lastSavedContentHash.value = currentHash
-    console.log('[自动保存] 保存成功')
   } catch (error) {
     console.error('[自动保存] 保存失败:', error)
   } finally {
@@ -435,7 +432,6 @@ const applyInitialContent = async () => {
   // 协同同步后检查：如果编辑器已有内容（来自其他用户的协作同步），跳过初始内容，防止重复/覆盖
   const currentContent = editor.getHTML()
   if (!isEditorContentEmpty(currentContent)) {
-    console.log('协同同步已有内容，跳过初始内容应用（防止覆盖/重复）')
     initialMarkdownContent.value = ''
     isFirstLoadWithContent.value = false
     contentApplied.value = true
@@ -462,12 +458,10 @@ const applyInitialContent = async () => {
       // 每次重试前重新检查：编辑器可能已有内容（协同同步带来）
       const currentHtml = editorInstance.value?.getHTML() || ''
       if (!isEditorContentEmpty(currentHtml)) {
-        console.log('编辑器已有实质内容（协同同步带来），跳过初始内容应用')
         applied = true
         break
       }
 
-      console.log(`编辑器为空，应用初始 Markdown 内容（第 ${i + 1} 次尝试）`)
       try {
         setContentSafely(normalizedContent, true)
       } catch (setContentError) {
@@ -486,7 +480,6 @@ const applyInitialContent = async () => {
 
       const appliedHtml = editorInstance.value.getHTML()
       if (!isEditorContentEmpty(appliedHtml)) {
-        console.log('初始内容应用成功')
         applied = true
       } else {
         console.warn(`初始内容第 ${i + 1} 次应用未生效，重试...`)
@@ -523,7 +516,6 @@ const tryApplyInitialContent = () => {
 // 编辑器就绪回调
 const handleEditorReady = async (editor: any) => {
   editorInstance.value = editor
-  console.log('Markdown 编辑器已就绪')
   isEditorReady.value = true
   tryApplyInitialContent()
 }
@@ -569,8 +561,6 @@ const handleSave = async () => {
     // 将 HTML 内容转换为 Markdown 文件 Blob
     const blob = htmlToMarkdownBlob(content)
 
-    console.log('保存文件，文档ID:', documentId.value, '文件大小:', blob.size, 'bytes')
-
     // 调用保存文档接口，使用 .md 后缀
     const result = await saveMarkdownFile(documentId.value, blob, `${documentTitle.value}.md`)
 
@@ -603,9 +593,7 @@ const handleSubmitAudit = () => {
 const handleAuditSubmit = async (data: SubmitAuditReqVO) => {
   auditLoading.value = true
   try {
-    console.log('提交审核参数:', data)
     const result = await submitAudit(data)
-    console.log('提交审核结果:', result)
 
     // 处理响应
     if (result && (result.code === 200 || result.code === 0)) {

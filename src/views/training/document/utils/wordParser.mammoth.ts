@@ -86,7 +86,6 @@ export const parseWordDocument = async (
     }
 
     if (format === 'unknown') {
-      console.log('格式未知，尝试作为 HTML 解析...')
       const decoder = new TextDecoder('utf-8')
       const text = decoder.decode(bytes)
       const trimmedText = text.trim()
@@ -97,7 +96,6 @@ export const parseWordDocument = async (
         trimmedText.startsWith('<HTML') ||
         (trimmedText.startsWith('\ufeff') && trimmedText.includes('<html'))
       ) {
-        console.log('检测到 HTML 格式的 Word 兼容文件')
         onProgress?.(80, '正在处理 HTML 内容...')
         const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
         if (bodyMatch) {
@@ -157,12 +155,10 @@ export const parseWordDocument = async (
 
     const headingPattern = /<h[1-6][^>]*>/i
     if (!headingPattern.test(html)) {
-      console.log('mammoth 未检测到标题，尝试从大字体段落转换')
       html = convertLargeFontParagraphsToHeadings(html)
     }
 
     html = convertInlineStylesToTiptap(html)
-    console.log('Word 文档解析成功，警告信息:', result.messages)
     return html
   } catch (error) {
     console.error('Word 文档解析失败:', error)
