@@ -64,7 +64,7 @@ export function createVitePlugins() {
       dts: 'src/types/auto-components.d.ts',
       // 自定义组件的解析器
       resolvers: [ElementPlusResolver()],
-      globs: ["src/components/**/**.{vue, md}", '!src/components/DiyEditor/components/mobile/**']
+      globs: ["src/components/**/*.vue", '!src/components/DiyEditor/components/mobile/**']
     }),
     EslintPlugin({
       cache: false,
