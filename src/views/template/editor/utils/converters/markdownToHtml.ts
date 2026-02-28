@@ -1,22 +1,10 @@
-/**
- * Markdown 转 HTML 转换器
- * 将 Markdown 格式文本转换为编辑器可用的 HTML
- */
-
 import { createPlaceholderManager, encodeHtmlEntities } from './shared'
 
-/**
- * 将普通 Markdown 内容转换为 HTML（不包含红头文件标记）
- * @param content Markdown 内容
- * @returns HTML 内容
- */
 const convertMarkdownContent = (content: string): string => {
   if (!content || content.trim() === '') return ''
 
-  // 创建占位符管理器
   const pm = createPlaceholderManager()
 
-  // 处理代码块 ```language\ncode\n```
   let html = content.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
     const escapedCode = encodeHtmlEntities(code)
     const langClass = lang ? ` class="language-${lang}"` : ''
@@ -63,12 +51,10 @@ const convertMarkdownContent = (content: string): string => {
     )
   })
 
-  // 处理图片 ![alt](url)
   html = html.replace(/!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)/g, (_match, alt, url) => {
     return pm.add(`<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`)
   })
 
-  // 处理 Markdown 链接 [text](url)
   html = html.replace(/\[((?:[^\[\]]|\[[^\]]*\])+)\]\(([^)]+)\)/g, (_match, text, url) => {
     return pm.add(
       `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${text}</a>`
@@ -97,50 +83,36 @@ const convertMarkdownContent = (content: string): string => {
   html = html.replace(/<mark>[\s\S]*?<\/mark>/gi, (match) => pm.add(match))
 
   html = html
-    // 转义 HTML 特殊字符
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    // 标题
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // 粗体和斜体
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/___(.+?)___/g, '<strong><em>$1</em></strong>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
     .replace(/_(.+?)_/g, '<em>$1</em>')
-    // 行内代码
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // 删除线
     .replace(/~~(.+?)~~/g, '<s>$1</s>')
-    // 高亮文本 ==text==
     .replace(/==([^=]+)==/g, '<mark>$1</mark>')
-    // 水平线
     .replace(/^---$/gm, '<hr>')
     .replace(/^\*\*\*$/gm, '<hr>')
-    // 引用
     .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    // 无序列表
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/^\* (.+)$/gm, '<li>$1</li>')
-    // 有序列表
     .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    // 自动链接裸 URL
     .replace(/(\(|（)?(https?:\/\/[^\s<>]+)(\)|）)?/g, (_m, l, url, r) => {
       const left = l || ''
       const right = r || ''
       return `${left}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline cursor-pointer">${url}</a>${right}`
     })
-    // 段落
     .replace(/\n\n/g, '</p><p>')
 
-  // 包裹在段落中
   html = '<p>' + html + '</p>'
 
-  // 清理多余的空段落
   html = html.replace(/<p><\/p>/g, '')
   html = html.replace(/<p>(<h[1-6]>)/g, '$1')
   html = html.replace(/(<\/h[1-6]>)<\/p>/g, '$1')
@@ -151,21 +123,13 @@ const convertMarkdownContent = (content: string): string => {
   html = html.replace(/(<\/li>)<\/p>/g, '$1</ul>')
   html = html.replace(/<p>(XYZPLACEHOLDER\d+XYZ)<\/p>/g, '$1') // 清理代码块周围的段落
 
-  // 合并连续的列表项
   html = html.replace(/<\/ul><ul>/g, '')
-
-  // 恢复占位符内容
   html = pm.restore(html)
 
   return html
 }
 
-/**
- * Markdown 转 HTML
- * 支持红头文件标记块 <!-- REDHEADER:type -->...<!-- /REDHEADER -->
- * @param markdown Markdown 文本
- * @returns HTML 内容
- */
+/** 支持红头文件标记块 <!-- REDHEADER:type -->...<!-- /REDHEADER --> */
 export const markdownToHtml = (markdown: string): string => {
   if (!markdown || markdown.trim() === '') return ''
 

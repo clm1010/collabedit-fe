@@ -7,7 +7,6 @@
 import { USE_MOCK } from '@/config/apiConfig'
 import { javaRequest } from '@/config/axios/javaService'
 
-// 导出类型定义（从统一的 types 文件夹导出）
 export * from '@/types/management'
 
 import type {
@@ -25,10 +24,7 @@ import type {
   TemplateSubclassVO
 } from '@/types/management'
 
-// 模板分类本地数据（用于兼容旧代码）
 const templateCategories = [{ id: 'CHWD', name: '筹划文档' }]
-
-// ==================== Java 后端 API 实现 ====================
 
 const javaApi = {
   /**
@@ -204,14 +200,10 @@ const javaApi = {
   }
 }
 
-// ==================== Mock API 实现 ====================
-// Mock API 返回格式与 Java 后端响应拦截器处理后的格式保持一致
-
 const mockApi = {
   getPageList: async (params: TemplatePageReqVO) => {
     const { getPageList } = await import('@/mock/template/management')
     const res = await getPageList(params)
-    // 返回 data 部分，与 javaRequest 响应拦截器处理后格式一致
     return res.data
   },
 
@@ -291,9 +283,6 @@ const mockApi = {
   }
 }
 
-// ==================== 统一导出 API (自动切换) ====================
-
-// 选择使用的 API 实现
 const api = USE_MOCK ? mockApi : javaApi
 
 /**

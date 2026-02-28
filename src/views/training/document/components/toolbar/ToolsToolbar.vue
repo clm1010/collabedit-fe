@@ -1,6 +1,5 @@
 <template>
   <div class="tools-toolbar">
-    <!-- 二维码 -->
     <div class="toolbar-group">
       <el-tooltip content="二维码" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="openQrcodeDialog">
@@ -10,7 +9,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 条形码 -->
     <div class="toolbar-group">
       <el-tooltip content="条形码" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="openBarcodeDialog">
@@ -22,7 +20,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 电子签名 -->
     <div class="toolbar-group">
       <el-tooltip content="电子签名" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="openSignatureDialog">
@@ -32,7 +29,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 电子签章 -->
     <div class="toolbar-group">
       <el-tooltip content="电子签章" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="openSealDialog">
@@ -44,7 +40,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 流程图 -->
     <div class="toolbar-group">
       <el-tooltip content="流程图" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="openFlowchartDialog">
@@ -54,7 +49,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 图表 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="280" trigger="click">
         <template #reference>
@@ -83,7 +77,6 @@
       </el-popover>
     </div>
 
-    <!-- Mermaid -->
     <div class="toolbar-group">
       <el-tooltip content="Mermaid 图" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="openMermaidDialog">
@@ -95,7 +88,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 中文大小写 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="200" trigger="click">
         <template #reference>
@@ -127,7 +119,6 @@
       </el-popover>
     </div>
 
-    <!-- 二维码对话框 -->
     <el-dialog v-model="qrcodeDialogVisible" title="插入二维码" width="480px">
       <el-form :model="qrcodeForm" label-width="80px">
         <el-form-item label="内容">
@@ -155,7 +146,6 @@
       </template>
     </el-dialog>
 
-    <!-- 条形码对话框 -->
     <el-dialog v-model="barcodeDialogVisible" title="插入条形码" width="480px">
       <el-form :model="barcodeForm" label-width="80px">
         <el-form-item label="内容">
@@ -180,7 +170,6 @@
       </template>
     </el-dialog>
 
-    <!-- 电子签名对话框 -->
     <el-dialog v-model="signatureDialogVisible" title="电子签名" width="600px">
       <div class="signature-container">
         <div class="signature-toolbar">
@@ -216,7 +205,6 @@
       </template>
     </el-dialog>
 
-    <!-- 电子签章对话框 -->
     <el-dialog v-model="sealDialogVisible" title="电子签章" width="480px">
       <div class="seal-container">
         <div class="seal-preview" :style="{ borderColor: sealColor }">
@@ -253,7 +241,6 @@
       </template>
     </el-dialog>
 
-    <!-- 流程图对话框 -->
     <el-dialog v-model="flowchartDialogVisible" title="插入流程图" width="700px">
       <div class="flowchart-container">
         <div class="flowchart-toolbar">
@@ -281,7 +268,6 @@
       </template>
     </el-dialog>
 
-    <!-- Mermaid 对话框 -->
     <el-dialog v-model="mermaidDialogVisible" title="插入 Mermaid 图" width="700px">
       <div class="mermaid-container">
         <div class="mermaid-types">
@@ -317,10 +303,8 @@ import { ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
 import { useEditor } from './useEditor'
 
-// 获取编辑器实例
 const editor = useEditor()
 
-// 图表类型
 const chartTypes = [
   { type: 'bar', label: '柱状图', icon: 'mdi:chart-bar' },
   { type: 'line', label: '折线图', icon: 'mdi:chart-line' },
@@ -330,7 +314,6 @@ const chartTypes = [
   { type: 'scatter', label: '散点图', icon: 'mdi:chart-scatter-plot' }
 ]
 
-// 二维码相关
 const qrcodeDialogVisible = ref(false)
 const qrcodeCanvas = ref<HTMLCanvasElement | null>(null)
 const qrcodeForm = ref({
@@ -338,7 +321,6 @@ const qrcodeForm = ref({
   size: 200
 })
 
-// 条形码相关
 const barcodeDialogVisible = ref(false)
 const barcodeForm = ref({
   content: '',
@@ -346,7 +328,6 @@ const barcodeForm = ref({
   height: 80
 })
 
-// 电子签名相关
 const signatureDialogVisible = ref(false)
 const signatureCanvas = ref<HTMLCanvasElement | null>(null)
 const signatureColor = ref('#000000')
@@ -355,7 +336,6 @@ const signatureColors = ['#000000', '#1a73e8', '#ff0000', '#00aa00']
 let isDrawing = false
 let ctx: CanvasRenderingContext2D | null = null
 
-// 电子签章相关
 const sealDialogVisible = ref(false)
 const sealText = ref('')
 const sealBottomText = ref('专用章')
@@ -363,7 +343,6 @@ const sealColor = ref('#ff0000')
 const sealColors = ['#ff0000', '#0000ff', '#000000']
 const sealForm = ref({})
 
-// 流程图相关
 const flowchartDialogVisible = ref(false)
 const flowchartTemplate = ref('simple')
 const flowchartCode = ref(`graph TD
@@ -373,7 +352,6 @@ const flowchartCode = ref(`graph TD
     C --> E[结束]
     D --> E`)
 
-// Mermaid 相关
 const mermaidDialogVisible = ref(false)
 const mermaidType = ref('flowchart')
 const mermaidCode = ref('')
@@ -411,7 +389,6 @@ const mermaidPlaceholder = computed(() => {
   return placeholders[mermaidType.value] || ''
 })
 
-// 监听二维码内容变化，生成预览
 watch(
   () => qrcodeForm.value.content,
   async (content) => {
@@ -429,7 +406,6 @@ watch(
   }
 )
 
-// 签名画布初始化
 watch(signatureDialogVisible, async (visible) => {
   if (visible) {
     await nextTick()
@@ -480,7 +456,6 @@ const clearSignature = () => {
   ctx.fillRect(0, 0, signatureCanvas.value.width, signatureCanvas.value.height)
 }
 
-// 打开对话框
 const openQrcodeDialog = () => {
   qrcodeForm.value.content = ''
   qrcodeDialogVisible.value = true
@@ -508,7 +483,6 @@ const openMermaidDialog = () => {
   mermaidDialogVisible.value = true
 }
 
-// 插入二维码
 const insertQrcode = async () => {
   if (!editor || !qrcodeForm.value.content) {
     ElMessage.warning('请输入二维码内容')
@@ -528,14 +502,12 @@ const insertQrcode = async () => {
   }
 }
 
-// 插入条形码
 const insertBarcode = () => {
   if (!editor || !barcodeForm.value.content) {
     ElMessage.warning('请输入条形码内容')
     return
   }
 
-  // 条形码需要专门的库来生成，这里简化处理
   const placeholder = `<div class="barcode-placeholder" data-content="${barcodeForm.value.content}" data-format="${barcodeForm.value.format}">
     <svg viewBox="0 0 200 ${barcodeForm.value.height}">
       <text x="100" y="${barcodeForm.value.height / 2}" text-anchor="middle">条形码: ${barcodeForm.value.content}</text>
@@ -547,7 +519,6 @@ const insertBarcode = () => {
   ElMessage.success('条形码已插入')
 }
 
-// 插入签名
 const insertSignature = () => {
   if (!editor || !signatureCanvas.value) return
 
@@ -557,14 +528,12 @@ const insertSignature = () => {
   ElMessage.success('签名已插入')
 }
 
-// 插入签章
 const insertSeal = () => {
   if (!editor || !sealText.value) {
     ElMessage.warning('请输入公司名称')
     return
   }
 
-  // 生成 SVG 签章
   const sealSvg = `<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
     <circle cx="60" cy="60" r="55" fill="none" stroke="${sealColor.value}" stroke-width="3"/>
     <circle cx="60" cy="60" r="48" fill="none" stroke="${sealColor.value}" stroke-width="1"/>
@@ -576,7 +545,6 @@ const insertSeal = () => {
     <text x="60" y="90" text-anchor="middle" font-size="10" fill="${sealColor.value}">${sealBottomText.value}</text>
   </svg>`
 
-  // 将 SVG 转换为 Data URL
   const svgBlob = new Blob([sealSvg], { type: 'image/svg+xml' })
   const url = URL.createObjectURL(svgBlob)
 
@@ -598,7 +566,6 @@ const insertSeal = () => {
   img.src = url
 }
 
-// 插入流程图
 const insertFlowchart = () => {
   if (!editor || !flowchartCode.value) {
     ElMessage.warning('请输入流程图代码')
@@ -614,7 +581,6 @@ const insertFlowchart = () => {
   ElMessage.success('流程图已插入')
 }
 
-// 插入图表
 const insertChart = (type: string) => {
   if (!editor.value) return
 
@@ -626,7 +592,6 @@ const insertChart = (type: string) => {
   ElMessage.info('图表已插入（需要配置数据源）')
 }
 
-// 插入 Mermaid
 const insertMermaid = () => {
   if (!editor || !mermaidCode.value) {
     ElMessage.warning('请输入 Mermaid 代码')
@@ -642,7 +607,6 @@ const insertMermaid = () => {
   ElMessage.success('Mermaid 图已插入')
 }
 
-// 中文数字转换
 const chineseLowerNumbers = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
 const chineseUpperNumbers = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
 
@@ -678,7 +642,6 @@ const convertToChineseMoney = () => {
     return
   }
 
-  // 简化版人民币大写转换
   const amount = parseFloat(selectedText)
   if (isNaN(amount)) {
     ElMessage.warning('无效的金额')

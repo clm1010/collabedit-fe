@@ -1,16 +1,6 @@
-/**
- * 红头文件检测器
- * 用于识别和提取红头文件区块
- */
-
 import type { RedHeader, RedHeaderType } from './types'
 
-/**
- * 检测并提取红头文件区块
- * 红头文件特征：包含红色文字（#ff0000）和红色横线（data-line-color 或 class="red-line"）
- * @param html HTML 内容
- * @returns 红头文件区块和剩余内容，如果没有检测到则返回 null
- */
+/** 红头文件特征：包含红色文字（#ff0000）和红色横线（data-line-color 或 class="red-line"） */
 export const extractRedHeader = (html: string): RedHeader | null => {
   // 查找红色横线的位置（红头文件的结束标志）
   const redLineMatch = html.match(
@@ -46,11 +36,6 @@ export const extractRedHeader = (html: string): RedHeader | null => {
   }
 }
 
-/**
- * 检测红头文件类型
- * @param header 红头文件 HTML 内容
- * @returns 红头文件类型
- */
 export const detectRedHeaderType = (header: string): RedHeaderType => {
   // 检测机关公文特征
   if (
@@ -92,21 +77,11 @@ export const detectRedHeaderType = (header: string): RedHeaderType => {
   return 'custom'
 }
 
-/**
- * 检查 HTML 是否包含红头文件
- * @param html HTML 内容
- * @returns 是否包含红头文件
- */
 export const hasRedHeader = (html: string): boolean => {
   return extractRedHeader(html) !== null
 }
 
-/**
- * 从 Markdown 中提取红头文件标记
- * 用于解析保存的 Markdown 文件
- * @param markdown Markdown 内容
- * @returns 红头文件 HTML 和剩余内容，如果没有则返回 null
- */
+/** 匹配红头文件标记块 <!-- REDHEADER:type -->...<!-- /REDHEADER --> */
 export const extractRedHeaderFromMarkdown = (
   markdown: string
 ): { type: RedHeaderType; header: string; rest: string } | null => {

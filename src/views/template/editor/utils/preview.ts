@@ -1,11 +1,3 @@
-/**
- * 预览工具
- * 生成预览用的完整 HTML 文档
- */
-
-/**
- * 预览样式配置
- */
 const previewStyles = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -135,12 +127,6 @@ span[data-type="ai-block"] {
 }
 `
 
-/**
- * 生成预览用的完整 HTML 文档
- * @param content 编辑器内容
- * @param title 文档标题
- * @returns 完整的 HTML 文档字符串
- */
 export const generatePreviewHtml = (content: string, title: string): string => {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -156,11 +142,6 @@ ${content}
 </html>`
 }
 
-/**
- * 在新窗口中打开预览
- * @param content 编辑器内容
- * @param title 文档标题
- */
 export const openPreviewWindow = (content: string, title: string): void => {
   const html = generatePreviewHtml(content, title)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
@@ -179,10 +160,6 @@ export const openPreviewWindow = (content: string, title: string): void => {
   }
 }
 
-/**
- * 获取预览样式
- * @returns 预览样式字符串
- */
 export const getPreviewStyles = (): string => {
   return previewStyles
 }

@@ -1,35 +1,8 @@
 <template>
   <div class="performance-container">
     <el-row :gutter="20" class="h-full">
-      <!-- 左侧文档分类 - 已注释：改为下拉框方式，如需恢复请取消下方注释 -->
-      <!-- 
-      <el-col :span="4" :xs="24" class="h-full">
-        <ContentWrap class="category-wrap">
-          <div class="p-4 h-full flex flex-col">
-            <div class="font-bold mb-4 text-16px">文档分类</div>
-            <el-scrollbar class="flex-1">
-              <el-menu
-                :default-active="selectedCategory"
-                class="border-0 category-menu"
-                @select="handleCategorySelect"
-              >
-                <el-menu-item
-                  v-for="category in categories"
-                  :key="category.value"
-                  :index="category.value"
-                >
-                  <span>{{ category.label }}</span>
-                </el-menu-item>
-              </el-menu>
-            </el-scrollbar>
-          </div>
-        </ContentWrap>
-      </el-col>
-      -->
-
       <el-col :span="24" :xs="24" class="h-full">
         <div class="h-full flex flex-col">
-          <!-- 搜索栏 -->
           <PerformanceSearch
             ref="searchRef"
             v-model="queryParams"
@@ -40,8 +13,7 @@
 
           <ContentWrap class="flex-1 overflow-hidden mt-4 table-container-wrap">
             <div class="h-full flex flex-col p-4">
-              <!-- 工具栏 -->
-              <div class="mb-4 flex-shrink-0">
+            <div class="mb-4 flex-shrink-0">
                 <el-button type="primary" size="large" @click="handleAdd">
                   <Icon icon="ep:plus" class="mr-1" />
                   新建
@@ -58,14 +30,12 @@
                 </el-button>
               </div>
 
-              <!-- 标签页 -->
               <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="flex-shrink-0">
                 <el-tab-pane label="最近文档" name="recent" />
                 <el-tab-pane label="审核列表" name="review" />
                 <el-tab-pane label="文档发布" name="publish" />
               </el-tabs>
 
-              <!-- 表格 -->
               <div class="flex-1 overflow-hidden">
                 <el-table
                   v-loading="loading"
@@ -93,11 +63,6 @@
                     </template>
                   </el-table-column>
 
-                  <!-- <el-table-column label="演训主题" prop="exerciseTheme" align="center" width="120">
-                    <template #default="scope">
-                      {{ getExerciseThemeLabel(scope.row.exerciseTheme) }}
-                    </template>
-                  </el-table-column> -->
                   <el-table-column label="演训类型" prop="exerciseType" align="center" width="120">
                     <template #default="scope">
                       {{ getExerciseTypeLabel(scope.row.exerciseType) }}
@@ -210,7 +175,6 @@
                 </el-table>
               </div>
 
-              <!-- 分页 -->
               <div class="mt-4 flex-shrink-0">
                 <Pagination
                   :total="total"
@@ -226,7 +190,6 @@
     </el-row>
   </div>
 
-  <!-- 新建/编辑筹划方案弹窗 -->
   <PerformanceForm
     ref="performanceFormRef"
     v-model:visible="dialogVisible"
@@ -237,10 +200,8 @@
     @open-drill-selector="openDrillSelector"
   />
 
-  <!-- 演训数据选择弹窗 -->
   <DrillSelector v-model:visible="drillSelectorVisible" @select="handleDrillSelect" />
 
-  <!-- 审核流配置弹窗 -->
   <AuditFlowDialog
     v-model="auditDialogVisible"
     :document-id="currentAuditRow?.id || 0"
@@ -250,7 +211,6 @@
     @submit="handleAuditSubmit"
   />
 
-  <!-- 发布配置弹窗 -->
   <PublishDialog
     ref="publishDialogRef"
     v-model:visible="publishDialogVisible"
@@ -259,7 +219,6 @@
     @submit="handlePublishDialogSubmit"
   />
 
-  <!-- 驳回原因弹窗 -->
   <RejectDialog
     ref="rejectDialogRef"
     v-model:visible="rejectDialogVisible"
@@ -267,14 +226,12 @@
     @submit="handleRejectDialogSubmit"
   />
 
-  <!-- 审核记录弹窗 -->
   <ExamRecordDialog
     v-model:visible="examRecordDialogVisible"
     :loading="examRecordLoading"
     :record-list="examRecordList"
   />
 
-  <!-- 文档预览弹窗 -->
   <DocumentPreviewDialog
     v-model:visible="previewDialogVisible"
     :content="previewContent"
@@ -323,11 +280,10 @@ const loading = ref(false)
 const total = ref(0)
 const list = ref<PerformanceApi.TrainingPerformanceVO[]>([])
 const activeTab = ref('recent')
-// const selectedCategory = ref('0') // 已注释：改为下拉框方式，如需恢复请取消注释 // '0' 对应 "全部"
 const categories = ref<PerformanceApi.DocCategoryVO[]>([])
 const selectedRows = ref<PerformanceApi.TrainingPerformanceVO[]>([])
 
-// 计算属性：判断是否可以批量删除（只有选中的数据都是"编辑中"(1)或"驳回"(5)状态才能删除）
+// 只有选中的数据都是"编辑中"(1)或"驳回"(5)状态才能批量删除
 const canBatchDelete = computed(() => {
   if (isEmpty(selectedRows.value)) return false
   return every(selectedRows.value, (row) => row.applyNode === '1' || row.applyNode === '5')
@@ -340,31 +296,27 @@ const queryParams = reactive<PerformanceApi.TrainingPerformancePageReqVO>({
   collegeCode: undefined,
   createTime: undefined,
   applyNode: undefined,
-  fileType: undefined, // 左侧文档分类
-  // exerciseTheme: undefined, // 演训主题
-  exerciseType: undefined, // 演训类型
-  level: undefined, // 演训等级
-  docType: undefined // 文档类型
+  fileType: undefined,
+  exerciseType: undefined,
+  level: undefined,
+  docType: undefined
 })
 
 const searchRef = ref()
 
-// 获取数据列表 - 调用 Java 后端 /api/users/getPageList
 const getList = async () => {
   loading.value = true
   try {
-    // 使用 lodash pickBy 过滤空值
     const params = pickBy(queryParams, (value) => {
       if (isArray(value)) return !isEmpty(value)
       return !isNil(value) && value !== ''
     }) as Record<string, any>
 
-    // 将 createTime 数组转换为字符串格式 '2025-10-10,2025-12-12'
+    // createTime 数组转换为 '2025-10-10,2025-12-12' 格式
     if (isArray(params.createTime) && params.createTime.length === 2) {
       params.createTime = params.createTime.join(',')
     }
 
-    // 添加标签页类型参数
     params.tabType =
       activeTab.value === 'review' ? 'review' : activeTab.value === 'publish' ? 'publish' : 'recent'
 
@@ -380,11 +332,9 @@ const getList = async () => {
   }
 }
 
-// 获取文档分类
 const getCategories = async () => {
   try {
     const res = await PerformanceApi.getDocCategories()
-    // 左侧分类列表使用带"全部"的数据
     categories.value = res.withAll || []
   } catch (error) {
     logger.error('获取分类失败:', error)
@@ -392,52 +342,23 @@ const getCategories = async () => {
   }
 }
 
-// 查询按钮
 const handleQuery = () => {
   queryParams.pageNo = 1
   getList()
 }
 
-// 重置按钮
 const resetQuery = () => {
   searchRef.value?.resetFields()
-  // selectedCategory.value = '0' // 已注释：改为下拉框方式，如需恢复请取消注释 // '0' 对应 "全部"
-  queryParams.fileType = undefined // 重置分类过滤
-  activeTab.value = 'recent' // 重置标签页
+  queryParams.fileType = undefined
+  activeTab.value = 'recent'
   handleQuery()
 }
 
-// 文档分类选择 - 已注释：改为下拉框方式，如需恢复请取消下方注释
-/*
-const handleCategorySelect = (index: string) => {
-  selectedCategory.value = index
-  logger.debug('选择分类 value:', index)
-
-  // 使用 lodash find 根据 value 找到对应的 category
-  const category = find(categories.value, (cat) => cat.value === index)
-
-  // 将选择的分类传递到查询参数
-  if (index === '0') {
-    // 选择全部时 (value='0')，清空分类过滤
-    queryParams.fileType = undefined
-  } else if (category) {
-    // 传递 label（分类名称）
-    queryParams.fileType = category.label
-    logger.debug('传递 fileType:', category.label)
-  }
-
-  // 触发查询
-  handleQuery()
-}
-*/
-
-// 新建/编辑弹窗
 const dialogVisible = ref(false)
-const isEditMode = ref(false) // 是否为编辑模式（编辑模式隐藏创建方式）
-const currentEditId = ref<string | null>(null) // 当前编辑的数据ID
+const isEditMode = ref(false)
+const currentEditId = ref<string | null>(null)
 const performanceFormRef = ref()
 
-// 文档分类下拉选项（过滤掉"全部"，用于新建/编辑弹窗）
 const fileTypeOptions = computed(() => {
   const filtered = filter(categories.value, (item) => item.value !== '0')
   return map(filtered, (item) => ({
@@ -446,18 +367,6 @@ const fileTypeOptions = computed(() => {
   }))
 })
 
-// 演训主题选项（供标签转换和 DrillSelector 使用）
-// const exerciseThemeOptions = [
-//   { label: '联合作战训练', value: 'LHZZYX' },
-//   { label: '作战训练', value: 'ZUOZL' },
-//   { label: '政治训练', value: 'ZZL' },
-//   { label: '经济训练', value: 'JJL' },
-//   { label: '认知训练', value: 'RZL' },
-//   { label: '文化训练', value: 'WHL' },
-//   { label: '后装训练', value: 'HZL' }
-// ]
-
-// 演训类型选项（供标签转换和 DrillSelector 使用）
 const exerciseTypeOptions = [
   { label: '大学年度演训', value: 'DXNDYX' },
   { label: '联合类', value: 'LHL' },
@@ -473,14 +382,12 @@ const exerciseTypeOptions = [
   { label: '太空类', value: 'TKL' }
 ]
 
-// 演训等级选项（供标签转换使用）
 const levelOptions = [
   { label: '战略级', value: 'ZLJ' },
   { label: '战役级', value: 'YXJ' },
   { label: '战术级', value: 'ZSJ' }
 ]
 
-// 所属学院选项（供标签转换和 DrillSelector 使用）
 const collegeOptions = [
   { label: '国防大学', value: 'GFDX' },
   { label: '联合作战学院', value: 'LHZZXY' },
@@ -493,7 +400,7 @@ const collegeOptions = [
   { label: '研究生院', value: 'YJSY' }
 ]
 
-// 模拟用户列表（用于审核和发布配置）
+// 模拟用户列表
 const userOptions = [
   { label: 'user1', value: 'user1' },
   { label: 'user2', value: 'user2' },
@@ -502,46 +409,38 @@ const userOptions = [
   { label: 'user5', value: 'user5' }
 ]
 
-// 演训数据选择器
 const drillSelectorVisible = ref(false)
 
 const openDrillSelector = () => {
   drillSelectorVisible.value = true
 }
 
-// 演训数据选择回调
 const handleDrillSelect = (row: any) => {
   if (!row) return
-  // 调用表单组件的方法设置演训数据
   performanceFormRef.value?.setDrillData(row)
   drillSelectorVisible.value = false
 }
 
-// 新建
 const handleAdd = () => {
-  isEditMode.value = false // 新建模式
+  isEditMode.value = false
   currentEditId.value = null
   dialogVisible.value = true
-  // 重置表单
   nextTick(() => {
     performanceFormRef.value?.resetForm()
   })
 }
 
-// 编辑数据
 const handleEditData = (row: PerformanceApi.TrainingPerformanceVO) => {
-  isEditMode.value = true // 编辑模式（隐藏创建方式）
+  isEditMode.value = true
   currentEditId.value = row.id || null
   dialogVisible.value = true
 
-  // 填充表单数据
   nextTick(() => {
     performanceFormRef.value?.setFormData({
       id: row.id || '',
       planId: row.planId || '',
       exerciseName: row.exerciseName || '',
       planName: row.planName || '',
-      // exerciseTheme: row.exerciseTheme || '',
       exerciseType: row.exerciseType || '',
       level: row.level || '',
       fileType: row.fileType || '',
@@ -553,7 +452,6 @@ const handleEditData = (row: PerformanceApi.TrainingPerformanceVO) => {
   })
 }
 
-// 表单保存（接收来自 PerformanceForm 组件的数据）
 const handleFormSave = async (formData: any, uploadFile: File | null) => {
   try {
     // 只有新建模式且选择上传文档时，才验证是否已选择文件
@@ -564,25 +462,21 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
 
     loading.value = true
 
-    // 使用选择的分类 value 作为 fileType
     const fileType = formData.fileType || ''
     logger.debug(fileType, 'fileType------')
 
-    // 编辑模式
     if (isEditMode.value) {
-      // 构建编辑数据（不传递 creationMethod），映射到标准字段名
       const editData: any = {
-        id: currentEditId.value, // 演训方案ID
-        planId: formData.planId, // 演训数据ID
-        exerciseName: formData.exerciseName, // 演训数据名称
-        planName: formData.planName, // 演训方案名称
-        // exerciseTheme: formData.exerciseTheme, // 演训主题
-        exerciseType: formData.exerciseType, // 演训类型
-        level: formData.level, // 演训等级
-        fileType: fileType, // 文件类型
-        collegeCode: formData.collegeCode, // 所属学院
-        description: formData.description, // 描述
-        activeUser: formData.activeUser.join(',') // 可编辑用户
+        id: currentEditId.value,
+        planId: formData.planId,
+        exerciseName: formData.exerciseName,
+        planName: formData.planName,
+        exerciseType: formData.exerciseType,
+        level: formData.level,
+        fileType: fileType,
+        collegeCode: formData.collegeCode,
+        description: formData.description,
+        activeUser: formData.activeUser.join(',')
       }
       logger.debug(editData, 'editData（编辑）------')
       await PerformanceApi.updatePerformanceData(editData)
@@ -592,31 +486,26 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
       return
     }
 
-    // 新建模式
-    // 构建保存数据，映射到标准字段名
     const saveData: PerformanceApi.TrainingPerformanceVO = {
-      planId: formData.planId, // 演训数据ID
-      exerciseName: formData.exerciseName, // 演训数据名称
-      planName: formData.planName, // 演训方案名称
-      // exerciseTheme: formData.exerciseTheme, // 演训主题
-      exerciseType: formData.exerciseType, // 演训类型
-      level: formData.level, // 演训等级
-      fileType: fileType, // 文档分类
-      collegeCode: formData.collegeCode, // 所属学院
-      description: formData.description, // 描述
-      activeUser: formData.activeUser.join(',') // 可编辑用户
+      planId: formData.planId,
+      exerciseName: formData.exerciseName,
+      planName: formData.planName,
+      exerciseType: formData.exerciseType,
+      level: formData.level,
+      fileType: fileType,
+      collegeCode: formData.collegeCode,
+      description: formData.description,
+      activeUser: formData.activeUser.join(',')
     }
 
-    // 判断创建方式
     if (formData.creationMethod === 'upload') {
-      // 上传文档模式
       logger.debug('上传文档文件:', uploadFile!.name)
       const uploadResult = await PerformanceApi.uploadDocument({
         file: uploadFile!
       })
       logger.debug('上传结果:', uploadResult, typeof uploadResult)
 
-      // 处理上传结果 - 兼容两种响应格式
+      // 兼容两种响应格式
       let fileId: string | null = null
 
       if (isString(uploadResult)) {
@@ -640,13 +529,11 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
         return
       }
 
-      // 将上传返回的 fileId 传递给 createNewData
       saveData.fileId = fileId as string
       logger.debug(saveData, 'saveData（上传文档）------')
       await PerformanceApi.createNewData(saveData)
       ElMessage.success('创建成功')
     } else {
-      // 新建文档模式
       logger.debug(saveData, 'saveData（新建文档）------')
       await PerformanceApi.createNewData(saveData)
       ElMessage.success('创建成功')
@@ -665,28 +552,20 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
   }
 }
 
-// 文档生成
-// const handleGenerate = () => {
-//   ElMessage.info('文档生成功能开发中')
-// }
-
-// Tab 切换 list（使用 tab-change 事件，在值更新后触发）
 const handleTabChange = () => {
   // 标签页切换：
   // 1、最近文档 - 查询全部数据（不传 tabType）
   // 2、审核列表 - 传递 tabType='review'
   // 3、文档发布 - 传递 tabType='publish'
-  queryParams.pageNo = 1 // 切换时重置页码
+  queryParams.pageNo = 1
   getList()
 }
 
-// 选择变化
 const handleSelectionChange = (val: PerformanceApi.TrainingPerformanceVO[]) => {
   selectedRows.value = val
   logger.debug('选择变化:', val)
 }
 
-// 写作
 const handleEdit = async (row: any) => {
   const loadingInstance = ElLoading.service({
     lock: true,
@@ -695,7 +574,6 @@ const handleEdit = async (row: any) => {
   })
 
   try {
-    // 1. 权限校验
     const collaborationUser = collaborationUserStore.getOrCreateUser()
     const permResult = await PerformanceApi.checkWritePermission({
       id: row.id,
@@ -708,7 +586,6 @@ const handleEdit = async (row: any) => {
       return
     }
 
-    // 2. 获取文件流并存入内存 Store
     loadingInstance.setText('正在加载文档内容...')
     const streamResult = await PerformanceApi.getFileStream(row.id)
 
@@ -723,7 +600,6 @@ const handleEdit = async (row: any) => {
       logger.warn('文件流为空或无效')
     }
 
-    // 6. 准备文档信息并存储到 sessionStorage
     const documentInfo = {
       id: String(row.id),
       title: row.planName,
@@ -737,12 +613,11 @@ const handleEdit = async (row: any) => {
     }
     sessionStorage.setItem(`doc_info_${row.id}`, JSON.stringify(documentInfo))
 
-    // 7. 跳转编辑器
     router.push({
       name: 'DocumentEdit',
       params: { id: row.id },
       query: {
-        title: row.planName, // 传递方案名称作为标题
+        title: row.planName,
         hasContent: hasContent ? 'true' : 'false'
       }
     })
@@ -754,12 +629,10 @@ const handleEdit = async (row: any) => {
   }
 }
 
-// 审核弹窗相关
 const auditDialogVisible = ref(false)
 const auditLoading = ref(false)
 const currentAuditRow = ref<PerformanceApi.TrainingPerformanceVO>()
 
-// 审核流程列表数据（传递给 AuditFlowDialog 组件）
 const auditFlowList = [
   {
     flowId: 'flow1',
@@ -781,13 +654,11 @@ const auditFlowList = [
   }
 ]
 
-// 打开审核弹窗
 const openAuditDialog = (row: PerformanceApi.TrainingPerformanceVO) => {
   currentAuditRow.value = row
   auditDialogVisible.value = true
 }
 
-// 确认审核（接收来自 AuditFlowDialog 组件的数据）
 const handleAuditSubmit = async (submitData: {
   id: string
   flowId: string
@@ -797,7 +668,6 @@ const handleAuditSubmit = async (submitData: {
   auditLoading.value = true
   try {
     logger.debug('提交审核参数:', submitData)
-    // 转换为符合 API 类型的数据
     const apiData = {
       ...submitData,
       id: submitData.id
@@ -805,7 +675,7 @@ const handleAuditSubmit = async (submitData: {
     const result = await PerformanceApi.submitAudit(apiData)
     logger.debug('提交审核结果:', result)
 
-    // 处理响应 - 兼容两种格式
+    // 兼容两种响应格式
     if (isObject(result) && !isNil(result)) {
       const res = result as { code?: number; msg?: string }
       if (res.code === 200 || res.code === 0) {
@@ -816,7 +686,6 @@ const handleAuditSubmit = async (submitData: {
         ElMessage.error(res.msg || '提交审核失败')
       }
     } else {
-      // 直接成功
       ElMessage.success('提交审核成功')
       auditDialogVisible.value = false
       getList()
@@ -829,13 +698,11 @@ const handleAuditSubmit = async (submitData: {
   }
 }
 
-// 发布弹窗相关
 const publishDialogVisible = ref(false)
 const publishLoading = ref(false)
 const currentPublishRow = ref<PerformanceApi.TrainingPerformanceVO>()
 const publishDialogRef = ref()
 
-// 打开发布弹窗
 const openPublishDialog = (row: PerformanceApi.TrainingPerformanceVO) => {
   currentPublishRow.value = row
   publishDialogVisible.value = true
@@ -844,7 +711,6 @@ const openPublishDialog = (row: PerformanceApi.TrainingPerformanceVO) => {
   })
 }
 
-// 确认发布（来自 PublishDialog 组件）
 const handlePublishDialogSubmit = async (visibleScope: string[]) => {
   if (isNil(currentPublishRow.value?.id)) return
   logger.debug('发布参数:', currentPublishRow.value.id, visibleScope)
@@ -856,7 +722,7 @@ const handlePublishDialogSubmit = async (visibleScope: string[]) => {
     })
     logger.debug('发布结果:', result)
 
-    // 处理响应 - 兼容两种格式
+    // 兼容两种响应格式
     if (isObject(result) && !isNil(result)) {
       const res = result as { code?: number; msg?: string }
       if (res.code === 200 || res.code === 0) {
@@ -867,7 +733,6 @@ const handlePublishDialogSubmit = async (visibleScope: string[]) => {
         ElMessage.error(res.msg || '发布失败')
       }
     } else {
-      // 直接成功
       ElMessage.success('发布成功')
       publishDialogVisible.value = false
       getList()
@@ -880,12 +745,10 @@ const handlePublishDialogSubmit = async (visibleScope: string[]) => {
   }
 }
 
-// 预览弹窗相关
 const previewDialogVisible = ref(false)
 const previewContent = ref('')
 const previewTitle = ref('')
 
-// 预览功能
 const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
   if (!row.id) {
     ElMessage.warning('文档ID不存在')
@@ -894,67 +757,6 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
 
   const loadingInstance = ElLoading.service({
     text: '加载文档中...',
-    background: 'rgba(255, 255, 255, 0.7)'
-  })
-
-  try {
-    const blob = await PerformanceApi.getFileStream(row.id)
-    if (!blob) {
-      ElMessage.warning('文档内容为空')
-      return
-    }
-
-    // 尝试判断是否为 Word 文档（docx/doc）
-    const mimeType = blob.type || ''
-    let isWordDoc =
-      mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
-
-    if (!isWordDoc) {
-      // 通过文件头判断是否为 docx（ZIP: PK）
-      const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
-      isWordDoc = header[0] === 0x50 && header[1] === 0x4b
-    }
-
-    if (isWordDoc) {
-      // Word 文档：直接转 ArrayBuffer 解析为 HTML
-      const arrayBuffer = await blob.arrayBuffer()
-      const htmlContent = await parseFileContent(arrayBuffer)
-      if (htmlContent) {
-        previewContent.value = htmlContent
-        previewTitle.value = row.planName || '文档预览'
-        previewDialogVisible.value = true
-        return
-      }
-      // 解析失败时回退为文本
-      logger.warn('Word 解析失败，回退为文本预览')
-    }
-
-    // 读取 Blob 内容为文本
-    const text = await blobToText(blob)
-
-    // 使用 markdown-it 解析 Markdown 为 HTML
-    const md = new MarkdownIt()
-    const htmlContent = md.render(text)
-    previewContent.value = htmlContent
-    previewTitle.value = row.planName || '文档预览'
-    previewDialogVisible.value = true
-  } catch (error) {
-    logger.error('预览失败:', error)
-    ElMessage.error('预览失败，请稍后重试')
-  } finally {
-    loadingInstance.close()
-  }
-}
-
-// 导出功能（导出为 docx 格式）
-const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
-  if (!row.id) {
-    ElMessage.warning('文档ID不存在')
-    return
-  }
-
-  const loadingInstance = ElLoading.service({
-    text: '导出文档中...',
     background: 'rgba(255, 255, 255, 0.7)'
   })
 
@@ -976,6 +778,61 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
       isWordDoc = header[0] === 0x50 && header[1] === 0x4b
     }
 
+    if (isWordDoc) {
+      // Word 文档：直接转 ArrayBuffer 解析为 HTML
+      const arrayBuffer = await blob.arrayBuffer()
+      const htmlContent = await parseFileContent(arrayBuffer)
+      if (htmlContent) {
+        previewContent.value = htmlContent
+        previewTitle.value = row.planName || '文档预览'
+        previewDialogVisible.value = true
+        return
+      }
+      logger.warn('Word 解析失败，回退为文本预览')
+    }
+
+    const text = await blobToText(blob)
+    const md = new MarkdownIt()
+    const htmlContent = md.render(text)
+    previewContent.value = htmlContent
+    previewTitle.value = row.planName || '文档预览'
+    previewDialogVisible.value = true
+  } catch (error) {
+    logger.error('预览失败:', error)
+    ElMessage.error('预览失败，请稍后重试')
+  } finally {
+    loadingInstance.close()
+  }
+}
+
+const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
+  if (!row.id) {
+    ElMessage.warning('文档ID不存在')
+    return
+  }
+
+  const loadingInstance = ElLoading.service({
+    text: '导出文档中...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  })
+
+  try {
+    const blob = await PerformanceApi.getFileStream(row.id)
+    if (!blob) {
+      ElMessage.warning('文档内容为空')
+      return
+    }
+
+    const mimeType = blob.type || ''
+    let isWordDoc =
+      mimeType.includes('application/vnd.openxmlformats') || mimeType.includes('application/msword')
+
+    if (!isWordDoc) {
+      // 通过文件头判断是否为 docx（ZIP: PK）
+      const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+      isWordDoc = header[0] === 0x50 && header[1] === 0x4b
+    }
+
     let downloadBlob = blob
     let filename = `${row.planName || '文档'}.docx`
 
@@ -987,7 +844,6 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
       downloadBlob = await htmlToDocx(htmlContent, row.planName || '文档')
     }
 
-    // 创建下载链接
     const url = window.URL.createObjectURL(downloadBlob)
     const link = document.createElement('a')
     link.href = url
@@ -1006,12 +862,10 @@ const handleExport = async (row: PerformanceApi.TrainingPerformanceVO) => {
   }
 }
 
-// 审核记录弹窗相关
 const examRecordDialogVisible = ref(false)
 const examRecordLoading = ref(false)
 const examRecordList = ref<PerformanceApi.ExamRecordVO[]>([])
 
-// 打开审核记录弹窗
 const openExamRecordDialog = async (row: PerformanceApi.TrainingPerformanceVO) => {
   if (!row.id) return
   examRecordDialogVisible.value = true
@@ -1030,13 +884,11 @@ const openExamRecordDialog = async (row: PerformanceApi.TrainingPerformanceVO) =
   }
 }
 
-// 驳回弹窗相关
 const rejectDialogVisible = ref(false)
 const rejectLoading = ref(false)
 const currentRejectRow = ref<PerformanceApi.TrainingPerformanceVO>()
 const rejectDialogRef = ref()
 
-// 提交驳回（来自 RejectDialog 组件）
 const handleRejectDialogSubmit = async (reason: string) => {
   if (isEmpty(reason.trim())) {
     ElMessage.warning('请输入驳回原因')
@@ -1047,7 +899,6 @@ const handleRejectDialogSubmit = async (reason: string) => {
 
   rejectLoading.value = true
   try {
-    // 获取当前用户ID
     const collaborationUser = collaborationUserStore.getOrCreateUser()
     const userId = collaborationUser.id || 'admin'
 
@@ -1069,11 +920,9 @@ const handleRejectDialogSubmit = async (reason: string) => {
   }
 }
 
-// 审核 - 跳转到编辑器（只读模式）
 const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) => {
   logger.debug('审核:', row)
 
-  // 创建 loading 实例
   const loadingInstance = ElLoading.service({
     lock: true,
     text: '正在加载文档...',
@@ -1081,11 +930,9 @@ const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) =>
   })
 
   try {
-    // 获取文件流
     loadingInstance.setText('正在加载文档内容...')
     const streamResult = await PerformanceApi.getFileStream(row.id!)
 
-    // 处理文件流数据 - 存入 Pinia 内存 Store
     let hasContent = false
     if (streamResult && streamResult.size > 0) {
       const docBufferStore = useDocBufferStore()
@@ -1094,7 +941,6 @@ const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) =>
       hasContent = true
     }
 
-    // 准备文档信息
     const documentInfo = {
       id: String(row.id),
       title: row.planName,
@@ -1108,15 +954,14 @@ const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) =>
     }
     sessionStorage.setItem(`doc_info_${row.id}`, JSON.stringify(documentInfo))
 
-    // 跳转编辑器（只读审核模式）
     router.push({
       name: 'DocumentEdit',
       params: { id: row.id },
       query: {
         title: row.planName,
         hasContent: hasContent ? 'true' : 'false',
-        readonly: 'true', // 只读模式
-        reviewMode: 'true' // 审核模式
+        readonly: 'true',
+        reviewMode: 'true'
       }
     })
   } catch (error) {
@@ -1127,7 +972,6 @@ const handleReviewExecute = async (row: PerformanceApi.TrainingPerformanceVO) =>
   }
 }
 
-// 删除（单个）
 const handleDelete = async (row: PerformanceApi.TrainingPerformanceVO) => {
   if (isNil(row.id)) {
     ElMessage.error('无效的数据ID')
@@ -1151,14 +995,13 @@ const handleDelete = async (row: PerformanceApi.TrainingPerformanceVO) => {
   }
 }
 
-// 批量删除
 const handleBatchDelete = async () => {
   if (isEmpty(selectedRows.value)) {
     ElMessage.warning('请先选择要删除的数据')
     return
   }
 
-  // 检查是否所有选中的数据都是"编辑中"(1)或"驳回"(5)状态
+  // 只能删除"编辑中"(1)或"驳回"(5)状态的数据
   const notEditingRows = filter(
     selectedRows.value,
     (row) => row.applyNode !== '1' && row.applyNode !== '5'
@@ -1195,7 +1038,6 @@ const handleBatchDelete = async () => {
   }
 }
 
-// 标签转换函数
 const getCollegeLabel = (code?: string) => {
   if (!code) return ''
   const option = collegeOptions.find((item) => item.value === code)
@@ -1215,12 +1057,6 @@ const getLevelLabel = (level?: string) => {
   const option = levelOptions.find((item) => item.value === level)
   return option?.label || level
 }
-
-// const getExerciseThemeLabel = (theme?: string) => {
-//   if (!theme) return ''
-//   const option = exerciseThemeOptions.find((item) => item.value === theme)
-//   return option?.label || theme
-// }
 
 const getExerciseTypeLabel = (type?: string) => {
   if (!type) return ''
@@ -1242,7 +1078,7 @@ const getApplyNodeLabel = (applyNode?: string) => {
   return applyNodeTextMap[applyNode] || applyNode
 }
 
-// 状态样式（编辑中:1、审核中:2、审核通过:3、发布:4、驳回:5）
+// 状态样式映射（编辑中:1、审核中:2、审核通过:3、发布:4、驳回:5）
 const getStatusClass = (status?: string) => {
   switch (status) {
     case '1': // 编辑中
@@ -1260,18 +1096,15 @@ const getStatusClass = (status?: string) => {
   }
 }
 
-// 页面初始化
 onMounted(() => {
-  getCategories() // 获取文档分类
-  getList() // 获取表格数据
+  getCategories()
+  getList()
 })
 
-// 页面重新激活时刷新数据（从编辑器返回时触发）
 onActivated(() => {
   getList()
 })
 
-// 页面销毁时清理
 onUnmounted(() => {
   // 清理选中状态，避免内存泄漏
   selectedRows.value = []
@@ -1289,21 +1122,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-// 分类相关样式 - 已注释：改为下拉框方式，如需恢复请取消下方注释
-/*
-.category-wrap {
-  height: 100%;
-  :deep(.el-card__body) {
-    height: 100%;
-    padding: 0;
-  }
-}
-
-.category-menu {
-  border-right: none !important;
-}
-*/
-
 .table-container-wrap {
   margin: 0;
   :deep(.el-card__body) {
@@ -1313,22 +1131,4 @@ onUnmounted(() => {
     padding: 0;
   }
 }
-
-// 菜单项样式 - 已注释：改为下拉框方式，如需恢复请取消下方注释
-/*
-:deep(.el-menu-item) {
-  height: 40px;
-  line-height: 40px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-}
-*/
-
-// 菜单项激活样式 - 已注释：改为下拉框方式，如需恢复请取消下方注释
-/*
-:deep(.el-menu-item.is-active) {
-  background-color: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-}
-*/
 </style>

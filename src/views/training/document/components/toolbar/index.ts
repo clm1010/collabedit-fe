@@ -1,6 +1,3 @@
-/**
- * 工具栏组件导出
- */
 export { default as EditorToolbar } from './EditorToolbar.vue'
 export { default as StartToolbar } from './StartToolbar.vue'
 export { default as InsertToolbar } from './InsertToolbar.vue'

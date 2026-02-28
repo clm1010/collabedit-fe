@@ -4,9 +4,7 @@
     :class="{ 'is-selected': selected, 'is-editable': editor?.isEditable }"
     data-type="ai-block-node"
   >
-    <!-- 可编辑内容区域 -->
     <node-view-content class="ai-block-content" />
-    <!-- 右下角操作按钮 -->
     <div class="ai-block-footer" v-if="editor?.isEditable">
       <button class="ai-cancel-btn" @click="handleCancel" title="取消 AI 模块（保留内容）">
         <Icon icon="mdi:close" />
@@ -22,17 +20,11 @@ import { computed } from 'vue'
 
 const props = defineProps(nodeViewProps)
 
-// 是否选中
 const selected = computed(() => props.selected)
-
-// 编辑器实例
 const editor = computed(() => props.editor)
 
-// 取消 AI 模块（保留内容）
 const handleCancel = () => {
   if (!props.editor) return
-
-  // 使用命令移除 AI 模块
   props.editor.commands.unsetAIBlock()
 }
 </script>
@@ -44,7 +36,7 @@ const handleCancel = () => {
   width: 100%;
   margin: 8px 0;
   padding: 0;
-  border: 1px solid #e8a849; // 金色边框
+  border: 1px solid #e8a849;
   border-radius: 4px;
   background-color: #fff;
   transition: all 0.2s ease;
@@ -90,11 +82,10 @@ const handleCancel = () => {
   padding: 12px 16px;
   min-height: 40px;
 
-  // 内容区域样式
   :deep(p) {
     margin: 0.5em 0;
     line-height: 1.75;
-    text-indent: 2em; // 首行缩进
+    text-indent: 2em;
 
     &:first-child {
       margin-top: 0;
@@ -119,10 +110,9 @@ const handleCancel = () => {
 
   :deep(li) {
     margin: 0.25em 0;
-    text-indent: 0; // 列表项不缩进
+    text-indent: 0;
   }
 
-  // 嵌套内容样式
   :deep(blockquote) {
     margin: 0.5em 0;
     padding-left: 1em;

@@ -28,8 +28,6 @@ const getJavaBaseUrl = (): string => {
     return '/api'
   }
 
-  // 直接请求后端（需后端配置 CORS）— Java 后端无 /api 前缀，直连裸路径
-  //return import.meta.env.VITE_JAVA_API_URL || 'http://192.168.20.199:8081'
   // 直接请求后端（需后端配置 CORS）— Java 后端统一 /api 前缀
   return (import.meta.env.VITE_JAVA_API_URL || 'http://192.168.20.199:8081') + '/api'
 }
@@ -42,19 +40,6 @@ const javaConfig = {
   request_timeout: 30000,
   // 文件上传超时时间
   upload_timeout: 60000
-}
-
-// 打印配置信息（帮助调试）
-if (import.meta.env.DEV) {
-  const useProxy = import.meta.env.VITE_USE_PROXY !== 'false'
-  console.log(
-    `%c[Java Service] baseURL: ${javaConfig.base_url}`,
-    'color: #E6A23C; font-weight: bold;'
-  )
-  console.log(
-    `%c[Java Service] 模式: ${useProxy ? '代理模式 (Vite/Nginx)' : '直连模式 (需CORS)'}`,
-    'color: #67C23A;'
-  )
 }
 
 /**

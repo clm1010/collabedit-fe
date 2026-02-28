@@ -4,7 +4,6 @@
     layout="vertical"
     class="collaboration-panel w-full h-full bg-white flex flex-col text-sm"
   >
-    <!-- 在线协作者 -->
     <el-splitter-panel size="40%" collapsible class="section p-4 border-b border-gray-100">
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-bold text-gray-800">在线协作者</h3>
@@ -59,13 +58,11 @@
       </div>
     </el-splitter-panel>
 
-    <!-- 第二面板：根据 mode 显示不同内容 -->
     <el-splitter-panel
       size="60%"
       collapsible
       class="section p-4 flex-1 overflow-hidden flex flex-col"
     >
-      <!-- 参考素材模式 -->
       <template v-if="mode === 'materials'">
         <h3 class="font-bold text-gray-800 mb-3">参考素材</h3>
         <div class="overflow-y-auto flex-1 custom-scrollbar -mx-2 px-2">
@@ -87,7 +84,6 @@
         </div>
       </template>
 
-      <!-- 自定义要素模式 -->
       <template v-else-if="mode === 'elements'">
         <h3 class="font-bold text-gray-800 mb-3">自定义要素</h3>
         <div class="overflow-y-auto flex-1 custom-scrollbar -mx-2 px-2">
@@ -103,7 +99,6 @@
                   {{ getTypeLabel(item.item_type) }}
                 </el-tag>
               </div>
-              <!-- 如果有选项，显示选项列表 -->
               <div
                 v-if="item.item_options && item.item_options.length > 0"
                 class="text-xs text-gray-400 mt-1"
@@ -123,7 +118,6 @@
 import { ELEMENT_TYPE_LABELS, type ElementItemType } from '@/utils/tmmConstants'
 import type { ElementItem } from '@/types/management'
 
-// Props 定义
 interface Props {
   /** 协作者列表 */
   collaborators: any[]
@@ -146,12 +140,10 @@ const props = withDefaults(defineProps<Props>(), {
   defaultRole: '查看者'
 })
 
-// Emits 定义
 defineEmits<{
   (e: 'click-material', item: any): void
 }>()
 
-// 获取要素类型标签
 const getTypeLabel = (type: ElementItemType): string => {
   return ELEMENT_TYPE_LABELS[type] || type
 }

@@ -18,7 +18,6 @@
     </template>
     <div class="color-picker-content">
       <div class="color-main">
-        <!-- 默认颜色区域 -->
         <div class="color-section">
           <div class="section-title">默认颜色</div>
           <div class="color-grid default-colors">
@@ -37,7 +36,6 @@
           </div>
         </div>
 
-        <!-- 标准色区域 -->
         <div class="color-section">
           <div class="section-title">标准色</div>
           <div class="color-grid standard-colors">
@@ -55,28 +53,24 @@
           </div>
         </div>
 
-        <!-- 更多颜色 -->
         <div class="more-colors" @click="toggleAdvanced">
           <Icon icon="mdi:palette" class="palette-icon" />
           <span>更多颜色</span>
           <Icon :icon="showAdvanced ? 'ep:arrow-left' : 'ep:arrow-right'" class="arrow-icon" />
         </div>
 
-        <!-- 清除颜色 -->
         <div v-if="showClear" class="clear-color" @click="handleColorSelect('')">
           <Icon icon="mdi:format-color-marker-cancel" />
           <span>清除颜色</span>
         </div>
       </div>
 
-      <!-- 高级颜色选择器 -->
       <transition name="slide-right">
         <div v-if="showAdvanced" class="color-advanced">
           <div class="advanced-header">
             <span>自定义颜色</span>
           </div>
 
-          <!-- 色相/饱和度选择器 -->
           <div class="color-picker-area">
             <div
               ref="saturationArea"
@@ -92,13 +86,11 @@
               ></div>
             </div>
 
-            <!-- 色相条 -->
             <div ref="hueBar" class="hue-bar" @mousedown="startHueDrag">
               <div class="hue-cursor" :style="{ left: (hue / 360) * 100 + '%' }"></div>
             </div>
           </div>
 
-          <!-- 预览和输入 -->
           <div class="color-preview-row">
             <div class="preview-box">
               <div class="preview-new" :style="{ backgroundColor: customColor }"></div>
@@ -114,13 +106,11 @@
                   <el-option label="CMYK" value="cmyk" />
                 </el-select>
               </div>
-              <!-- HEX 模式 -->
               <template v-if="colorMode === 'hex'">
                 <div class="input-group hex-input">
                   <el-input v-model="hexInput" size="small" @change="updateFromHex" />
                 </div>
               </template>
-              <!-- RGB 模式 -->
               <template v-else-if="colorMode === 'rgb'">
                 <div class="input-group num-input">
                   <el-input-number
@@ -153,7 +143,6 @@
                   />
                 </div>
               </template>
-              <!-- HSL 模式 -->
               <template v-else-if="colorMode === 'hsl'">
                 <div class="input-group num-input">
                   <el-input-number
@@ -186,7 +175,6 @@
                   />
                 </div>
               </template>
-              <!-- HSV 模式 -->
               <template v-else-if="colorMode === 'hsv'">
                 <div class="input-group num-input">
                   <el-input-number
@@ -219,7 +207,6 @@
                   />
                 </div>
               </template>
-              <!-- CMYK 模式 -->
               <template v-else-if="colorMode === 'cmyk'">
                 <div class="input-group num-input">
                   <el-input-number
@@ -265,7 +252,6 @@
             </div>
           </div>
 
-          <!-- 确定按钮 -->
           <div class="advanced-footer">
             <el-button size="small" @click="showAdvanced = false">取消</el-button>
             <el-button type="primary" size="small" @click="applyCustomColor">确定</el-button>
@@ -298,7 +284,6 @@ const emit = defineEmits<{
   change: [color: string]
 }>()
 
-// 默认颜色网格 (10x7)
 const defaultColors = [
   // 第一行 - 灰度
   '#000000',
@@ -379,7 +364,6 @@ const defaultColors = [
   '#741b47'
 ]
 
-// 标准色
 const standardColors = [
   '#c00000',
   '#ff0000',
@@ -393,7 +377,6 @@ const standardColors = [
   '#7030a0'
 ]
 
-// 状态
 const showAdvanced = ref(false)
 const colorMode = ref<'hex' | 'rgb' | 'hsl' | 'hsv' | 'cmyk'>('rgb')
 const hue = ref(0)
@@ -405,18 +388,15 @@ const hsl = reactive({ h: 0, s: 100, l: 50 })
 const hsv = reactive({ h: 0, s: 100, v: 100 })
 const cmyk = reactive({ c: 0, m: 0, y: 0, k: 0 })
 
-// 拖动状态
 const saturationArea = ref<HTMLElement | null>(null)
 const hueBar = ref<HTMLElement | null>(null)
 let isDraggingSaturation = false
 let isDraggingHue = false
 
-// 计算自定义颜色
 const customColor = computed(() => {
   return hslToHex(hue.value, saturation.value, lightness.value)
 })
 
-// 工具函数
 function hslToHex(h: number, s: number, l: number): string {
   s /= 100
   l /= 100
@@ -475,7 +455,6 @@ function rgbToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')
 }
 
-// HSV 转换函数
 function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
   r /= 255
   g /= 255
@@ -553,7 +532,6 @@ function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: n
   return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) }
 }
 
-// CMYK 转换函数
 function rgbToCmyk(
   r: number,
   g: number,
@@ -593,7 +571,6 @@ function cmykToRgb(
   return { r: Math.round(r), g: Math.round(g), b: Math.round(b) }
 }
 
-// HSL 转 RGB
 function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
   s /= 100
   l /= 100
@@ -609,17 +586,13 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
   }
 }
 
-// 同步所有颜色模式的值
 function syncAllColorModes(r: number, g: number, b: number) {
-  // 更新 RGB
   rgb.r = r
   rgb.g = g
   rgb.b = b
 
-  // 更新 HEX
   hexInput.value = rgbToHex(r, g, b)
 
-  // 更新 HSL
   const hslVal = rgbToHsl(r, g, b)
   hsl.h = hslVal.h
   hsl.s = hslVal.s
@@ -628,13 +601,11 @@ function syncAllColorModes(r: number, g: number, b: number) {
   saturation.value = hslVal.s
   lightness.value = hslVal.l
 
-  // 更新 HSV
   const hsvVal = rgbToHsv(r, g, b)
   hsv.h = hsvVal.h
   hsv.s = hsvVal.s
   hsv.v = hsvVal.v
 
-  // 更新 CMYK
   const cmykVal = rgbToCmyk(r, g, b)
   cmyk.c = cmykVal.c
   cmyk.m = cmykVal.m
@@ -642,7 +613,6 @@ function syncAllColorModes(r: number, g: number, b: number) {
   cmyk.k = cmykVal.k
 }
 
-// 更新函数
 function updateFromRgb() {
   syncAllColorModes(rgb.r, rgb.g, rgb.b)
 }
@@ -677,7 +647,6 @@ function updateRgbFromHsl() {
   }
 }
 
-// 饱和度/明度拖动
 function startSaturationDrag(e: MouseEvent) {
   isDraggingSaturation = true
   updateSaturation(e)
@@ -709,7 +678,6 @@ function stopSaturationDrag() {
   document.removeEventListener('mouseup', stopSaturationDrag)
 }
 
-// 色相拖动
 function startHueDrag(e: MouseEvent) {
   isDraggingHue = true
   updateHue(e)
@@ -738,9 +706,7 @@ function stopHueDrag() {
   document.removeEventListener('mouseup', stopHueDrag)
 }
 
-// 事件处理
 function handlePopoverShow() {
-  // 初始化当前颜色，同步所有颜色模式
   if (props.modelValue) {
     const rgbVal = hexToRgb(props.modelValue)
     if (rgbVal) {

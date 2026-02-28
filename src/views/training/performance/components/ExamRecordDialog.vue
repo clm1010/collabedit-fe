@@ -44,7 +44,6 @@
 import { computed } from 'vue'
 import type { ExamRecordVO } from '@/api/training'
 
-// Props
 interface Props {
   visible: boolean
   loading: boolean
@@ -53,12 +52,10 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
 }>()
 
-// 双向绑定 visible
 const dialogVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)

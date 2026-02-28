@@ -1,20 +1,7 @@
-/**
- * Word 文档解析器类型定义
- */
-
-/**
- * 文件格式类型
- */
 export type WordFileFormat = 'doc' | 'docx' | 'unknown'
 
-/**
- * 文件类型选择
- */
 export type WordFileType = 'normal' | 'redhead'
 
-/**
- * Docx 文件验证结果
- */
 export interface DocxValidationResult {
   valid: boolean
   error?: string
@@ -27,14 +14,8 @@ export interface DocxValidationResult {
   }
 }
 
-/**
- * 解析进度回调函数类型
- */
 export type ParseProgressCallback = (progress: number, text: string) => void
 
-/**
- * 解析选项
- */
 export interface ParseOptions {
   /** 是否启用高保真解析 */
   highFidelity?: boolean
@@ -44,9 +25,6 @@ export interface ParseOptions {
   onProgress?: ParseProgressCallback
 }
 
-/**
- * 解析结果
- */
 export interface ParseResult {
   /** 解析后的 HTML 内容 */
   html: string

@@ -1,6 +1,5 @@
 <template>
   <div class="markdown-collaborative-editor flex flex-col h-screen overflow-hidden bg-gray-100">
-    <!-- 顶部状态栏 -->
     <EditorStatusBar
       :title="documentTitle"
       :create-time="docProperties.createTime"
@@ -21,9 +20,7 @@
       @diagnostics-export-images="handleDiagnosticsExportImages"
     />
 
-    <!-- 主内容区域 -->
     <div class="flex-1 flex overflow-hidden relative">
-      <!-- 编辑器容器 -->
       <div class="flex-1 flex flex-col overflow-hidden bg-gray-100 p-4">
         <div class="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
           <!-- 协同编辑器：等待 ydoc、fragment 和 provider 都就绪后再渲染，避免 Yjs sync-plugin 初始化错误 -->
@@ -47,7 +44,6 @@
         </div>
       </div>
 
-      <!-- 右侧协同面板 (固定) -->
       <div class="w-[300px] flex-shrink-0 border-l border-gray-200 bg-white h-full z-10 shadow-sm">
         <CollaborationPanel
           mode="elements"
@@ -58,7 +54,6 @@
         />
       </div>
 
-      <!-- 驳回原因弹窗（审核模式） -->
       <el-dialog
         v-model="reviewRejectDialogVisible"
         title="驳回原因"
@@ -87,7 +82,6 @@
       </el-dialog>
     </div>
 
-    <!-- 审核流配置弹窗 -->
     <AuditFlowDialog
       v-model="auditDialogVisible"
       :document-id="documentId"
@@ -131,7 +125,6 @@ import {
   printDocStreamCompareResult
 } from '@/views/utils/fileUtils'
 
-// Props
 interface Props {
   docId?: string
 }
@@ -162,19 +155,16 @@ const currentUser = reactive({
   joinTime: Date.now()
 })
 
-// 文档信息
 const documentInfo = ref<MarkdownDocumentInfo | null>(null)
 const documentTitle = computed(() => {
   return (route.query.title as string) || documentInfo.value?.title || '模板文档'
 })
 
-// Emits
 const emit = defineEmits<{
   connectionChange: [status: string]
   collaboratorsChange: [users: any[]]
 }>()
 
-// 使用协同编辑 Hook
 const {
   ydoc,
   fragment,
@@ -198,7 +188,6 @@ const {
   }
 })
 
-// 状态
 const isSaving = ref(false)
 const markdownEditorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
 const editorInstance = ref<any>(null)
@@ -218,7 +207,6 @@ const docProperties = computed(() => ({
   tags: documentInfo.value?.tags || []
 }))
 
-// 审核弹窗
 const auditDialogVisible = ref(false)
 const auditLoading = ref(false)
 
@@ -251,7 +239,6 @@ const auditFlowList = [
   }
 ]
 
-// 用户选项列表
 const userOptions = [
   { label: 'user1', value: 'user1' },
   { label: 'user2', value: 'user2' },
@@ -260,7 +247,6 @@ const userOptions = [
   { label: 'user5', value: 'user5' }
 ]
 
-// 返回
 const goBack = () => {
   router.back()
 }
@@ -546,7 +532,6 @@ const htmlToMarkdownBlob = (htmlContent: string): Blob => {
   })
 }
 
-// 保存文档
 const handleSave = async () => {
   if (isNil(editorInstance.value)) {
     ElMessage.warning('编辑器未就绪')
@@ -584,12 +569,10 @@ const handleSave = async () => {
   }
 }
 
-// 打开提交审核弹窗
 const handleSubmitAudit = () => {
   auditDialogVisible.value = true
 }
 
-// 提交审核
 const handleAuditSubmit = async (data: SubmitAuditReqVO) => {
   auditLoading.value = true
   try {
@@ -610,7 +593,6 @@ const handleAuditSubmit = async (data: SubmitAuditReqVO) => {
   }
 }
 
-// 审核通过（审核模式下）
 const handleReviewApprove = async () => {
   try {
     await ElMessageBox.confirm('确认审核通过该模板吗？', '审核确认', {
@@ -644,13 +626,11 @@ const handleReviewApprove = async () => {
   }
 }
 
-// 打开驳回弹窗（审核模式下）
 const openReviewRejectDialog = () => {
   reviewRejectDialogVisible.value = true
   reviewRejectReason.value = ''
 }
 
-// 提交驳回（审核模式下）
 const handleReviewRejectSubmit = async () => {
   if (isEmpty(reviewRejectReason.value.trim())) {
     ElMessage.warning('请输入驳回原因')
@@ -857,7 +837,6 @@ const loadDocument = async () => {
   }
 }
 
-// 监听文档ID变化
 watch(
   () => documentId.value,
   (newDocId) => {
@@ -892,7 +871,6 @@ watch(
   }
 )
 
-// 组件挂载
 onMounted(async () => {
   docStreamDebugEnabled.value = isDocStreamDebugEnabled()
   loadDocument()

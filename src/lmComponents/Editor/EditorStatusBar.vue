@@ -6,9 +6,7 @@
       <el-button link @click="$emit('back')">
         <Icon icon="ep:arrow-left" class="mr-1" /> 返回
       </el-button>
-      <!-- 文档标题 -->
       <div class="text-lg font-bold text-gray-800">{{ title }}</div>
-      <!-- 文档时间信息 -->
       <div class="flex items-center gap-4 text-xs text-gray-500">
         <div class="flex items-center">
           <span class="text-gray-400">创建时间:</span>
@@ -21,7 +19,6 @@
       </div>
     </div>
     <div class="flex items-center gap-3">
-      <!-- 保存状态 -->
       <div class="mr-2 flex items-center text-xs text-gray-500">
         <span
           class="w-2 h-2 rounded-full mr-1.5 transition-colors duration-300"
@@ -29,7 +26,6 @@
         ></span>
         {{ hasUnsavedChanges ? '文档未保存' : '文档已保存' }}
       </div>
-      <!-- 连接状态 -->
       <div class="mr-4 flex items-center text-xs text-gray-500">
         <span
           class="w-2 h-2 rounded-full mr-1.5 transition-colors duration-300"
@@ -37,7 +33,6 @@
         ></span>
         {{ connectionStatus }}
       </div>
-      <!-- 诊断工具 -->
       <template v-if="showDiagnostics">
         <el-button size="default" @click="$emit('diagnostics-compare')">诊断对比</el-button>
         <el-button size="default" @click="$emit('diagnostics-export')">诊断导出</el-button>
@@ -54,7 +49,6 @@
           >异常图片文件导出</el-button
         >
       </template>
-      <!-- 审核模式：显示审核和驳回按钮 -->
       <template v-if="isReviewMode">
         <el-button type="success" size="default" @click="$emit('review-approve')">
           <Icon icon="ep:check" class="mr-1" />
@@ -65,7 +59,6 @@
           驳回
         </el-button>
       </template>
-      <!-- 非审核模式：显示提交审核和保存按钮 -->
       <template v-else>
         <el-button type="primary" plain size="default" @click="$emit('submit-audit')"
           >提交审核</el-button
@@ -82,7 +75,6 @@
 import { computed } from 'vue'
 import { Icon } from '@/components/Icon'
 
-// Props 定义
 interface Props {
   /** 文档标题 */
   title: string
@@ -112,7 +104,6 @@ const props = withDefaults(defineProps<Props>(), {
   showDiagnostics: false
 })
 
-// Emits 定义
 defineEmits<{
   (e: 'back'): void
   (e: 'save'): void
@@ -127,7 +118,6 @@ defineEmits<{
   (e: 'diagnostics-export-anomaly-images'): void
 }>()
 
-// 连接状态样式
 const connectionStatusClass = computed(() => {
   switch (props.connectionStatus) {
     case '已连接':

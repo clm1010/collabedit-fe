@@ -1,6 +1,5 @@
 <template>
   <div class="editor-toolbar">
-    <!-- 标签栏 -->
     <div class="toolbar-tabs">
       <button
         v-for="tab in tabs"
@@ -22,14 +21,12 @@
       </button>
     </div>
 
-    <!-- 工具栏内容 -->
     <transition name="slide">
       <div v-show="!collapsed" class="toolbar-content">
         <StartToolbar v-show="activeTab === 'start'" />
         <InsertToolbar v-show="activeTab === 'insert'" />
         <TableToolbar v-show="activeTab === 'table'" />
         <ToolsToolbar v-show="activeTab === 'tools'" />
-        <!-- 可扩展：页面、导出标签 -->
         <PageToolbar v-if="activeTab === 'page'" />
         <ExportToolbar v-if="activeTab === 'export'" />
       </div>
@@ -50,17 +47,14 @@ import { EditorKey } from './types'
 import PageToolbar from './PageToolbar.vue'
 import ExportToolbar from './ExportToolbar.vue'
 
-// Props
 interface Props {
   editor?: Editor
 }
 
 const props = defineProps<Props>()
 
-// 使用 ref 包装编辑器，使其响应式
 const editorRef = ref(props.editor)
 
-// 监听 props.editor 变化
 watch(
   () => props.editor,
   (newEditor) => {
@@ -69,10 +63,8 @@ watch(
   { immediate: true }
 )
 
-// 提供编辑器实例给子组件
 provide(EditorKey, editorRef)
 
-// 标签配置
 const tabs = [
   { key: 'start', label: '开始' },
   { key: 'insert', label: '插入' },
@@ -82,11 +74,9 @@ const tabs = [
   { key: 'export', label: '导出' }
 ]
 
-// 状态
 const activeTab = ref('start')
 const collapsed = ref(false)
 
-// 切换工具栏
 const toggleToolbar = () => {
   collapsed.value = !collapsed.value
 }

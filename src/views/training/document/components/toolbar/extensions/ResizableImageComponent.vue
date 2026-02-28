@@ -24,14 +24,12 @@
         @error="handleImageError"
       />
 
-      <!-- 图片加载失败占位 -->
       <div v-if="imageError" class="image-error">
         <span class="error-icon">🖼️</span>
         <span class="error-text">图片加载失败</span>
         <button class="retry-btn" @click.stop="retryLoadImage">重新加载</button>
       </div>
 
-      <!-- 调整大小的控制点 -->
       <template v-if="selected && editor?.isEditable && !imageError">
         <div
           class="resize-handle resize-handle-nw"
@@ -67,12 +65,10 @@
         ></div>
       </template>
 
-      <!-- 尺寸提示 -->
       <div v-if="isResizing" class="size-tooltip">
         {{ Math.round(currentWidth) }} × {{ Math.round(currentHeight) }}
       </div>
 
-      <!-- 图片工具栏 -->
       <div v-if="selected && editor?.isEditable && !imageError" class="image-toolbar">
         <button
           class="toolbar-btn"
@@ -129,7 +125,6 @@
       </div>
     </div>
 
-    <!-- 图片预览弹窗 -->
     <Teleport to="body">
       <div v-if="showPreview" class="image-preview-overlay" @click="closePreview">
         <div class="preview-toolbar" @click.stop>
@@ -202,7 +197,6 @@ const naturalWidth = ref(0)
 const naturalHeight = ref(0)
 const aspectRatio = ref(1)
 
-// 预览相关状态
 const showPreview = ref(false)
 const previewScale = ref(1)
 const previewX = ref(0)
@@ -213,10 +207,8 @@ let dragStartY = 0
 let dragStartPreviewX = 0
 let dragStartPreviewY = 0
 
-// 当前对齐方式
 const currentAlign = computed(() => props.node.attrs.align || 'center')
 
-// wrapper 样式（用于对齐）- 强制覆盖 ProseMirror 可能的默认样式
 const wrapperStyle = computed(() => {
   const align = props.node.attrs.align || 'center'
   let justifyContent = 'center'
@@ -241,7 +233,6 @@ const wrapperStyle = computed(() => {
 const MAX_IMAGE_WIDTH = 540
 const editorMaxWidth = ref(MAX_IMAGE_WIDTH)
 
-// 调整大小的状态
 let startX = 0
 let startY = 0
 let startWidth = 0
@@ -368,22 +359,18 @@ const retryLoadImage = () => {
 }
 
 const handleClick = () => {
-  // 点击时选中图片
 }
 
 const handleDoubleClick = () => {
-  // 双击查看原图
   if (props.node.attrs.src) {
     window.open(props.node.attrs.src, '_blank')
   }
 }
 
-// 对齐图片
 const alignImage = (align: string) => {
   props.updateAttributes({ align })
 }
 
-// 重置大小
 const resetSize = () => {
   if (naturalWidth.value && naturalHeight.value) {
     const newWidth = Math.min(naturalWidth.value, MAX_IMAGE_WIDTH)
@@ -397,28 +384,23 @@ const resetSize = () => {
   }
 }
 
-// 删除图片
 const deleteImage = () => {
   props.deleteNode()
 }
 
-// 预览图片
 const previewImage = () => {
   showPreview.value = true
   previewScale.value = 1
   previewX.value = 0
   previewY.value = 0
-  // 添加键盘事件监听
   document.addEventListener('keydown', handlePreviewKeydown)
 }
 
-// 关闭预览
 const closePreview = () => {
   showPreview.value = false
   document.removeEventListener('keydown', handlePreviewKeydown)
 }
 
-// 处理预览键盘事件
 const handlePreviewKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     closePreview()
@@ -429,24 +411,20 @@ const handlePreviewKeydown = (e: KeyboardEvent) => {
   }
 }
 
-// 放大
 const zoomIn = () => {
   previewScale.value = Math.min(previewScale.value * 1.2, 5)
 }
 
-// 缩小
 const zoomOut = () => {
   previewScale.value = Math.max(previewScale.value / 1.2, 0.1)
 }
 
-// 重置缩放
 const resetZoom = () => {
   previewScale.value = 1
   previewX.value = 0
   previewY.value = 0
 }
 
-// 滚轮缩放
 const handleWheel = (e: WheelEvent) => {
   if (e.deltaY < 0) {
     zoomIn()
@@ -455,7 +433,6 @@ const handleWheel = (e: WheelEvent) => {
   }
 }
 
-// 开始拖动
 const startDrag = (e: MouseEvent) => {
   isDragging.value = true
   dragStartX = e.clientX
@@ -466,7 +443,6 @@ const startDrag = (e: MouseEvent) => {
   document.addEventListener('mouseup', stopDrag)
 }
 
-// 处理拖动
 const handleDrag = (e: MouseEvent) => {
   if (!isDragging.value) return
   const deltaX = (e.clientX - dragStartX) / previewScale.value
@@ -475,26 +451,21 @@ const handleDrag = (e: MouseEvent) => {
   previewY.value = dragStartPreviewY + deltaY
 }
 
-// 停止拖动
 const stopDrag = () => {
   isDragging.value = false
   document.removeEventListener('mousemove', handleDrag)
   document.removeEventListener('mouseup', stopDrag)
 }
 
-// 下载图片
 const downloadImage = async () => {
   const src = props.node.attrs.src
   const filename = props.node.attrs.alt || 'image'
 
   try {
-    // 检查是否是 base64 数据 URL
     if (src.startsWith('data:')) {
-      // 将 base64 转换为 Blob
       const response = await fetch(src)
       const blob = await response.blob()
 
-      // 创建下载链接
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -503,10 +474,8 @@ const downloadImage = async () => {
       link.click()
       document.body.removeChild(link)
 
-      // 清理 URL
       URL.revokeObjectURL(url)
     } else {
-      // 普通 URL，尝试通过 fetch 下载以支持跨域
       try {
         const response = await fetch(src, { mode: 'cors' })
         const blob = await response.blob()
@@ -519,13 +488,11 @@ const downloadImage = async () => {
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
       } catch {
-        // 如果 fetch 失败（跨域问题），则在新窗口打开
         window.open(src, '_blank')
       }
     }
   } catch (error) {
     logger.error('下载图片失败:', error)
-    // 失败时在新窗口打开图片
     window.open(src, '_blank')
   }
 }
@@ -553,7 +520,6 @@ const handleResize = (event: MouseEvent) => {
   let newWidth = startWidth
   let newHeight = startHeight
 
-  // 根据方向计算新的尺寸
   switch (resizeDirection) {
     case 'e':
       newWidth = startWidth + deltaX
@@ -573,7 +539,6 @@ const handleResize = (event: MouseEvent) => {
       break
     case 'se':
       if (event.shiftKey) {
-        // 按住 Shift 键保持比例
         newWidth = startWidth + deltaX
         newHeight = newWidth / aspectRatio.value
       } else {
@@ -610,11 +575,9 @@ const handleResize = (event: MouseEvent) => {
       break
   }
 
-  // 限制最小尺寸
   newWidth = Math.max(50, newWidth)
   newHeight = Math.max(50, newHeight)
 
-  // 限制最大尺寸（不超过编辑器可用宽度）
   newWidth = Math.min(newWidth, MAX_IMAGE_WIDTH)
   newHeight = Math.min(newHeight, 900)
 
@@ -627,7 +590,6 @@ const stopResize = () => {
 
   isResizing.value = false
 
-  // 更新节点属性
   props.updateAttributes({
     width: Math.round(currentWidth.value),
     height: Math.round(currentHeight.value)
@@ -638,7 +600,6 @@ const stopResize = () => {
 }
 
 onMounted(() => {
-  // 初始化尺寸
   if (props.node.attrs.width) {
     let parsedWidth = parseFloat(props.node.attrs.width)
     // 限制宽度不超过编辑器可用宽度

@@ -1,18 +1,10 @@
-/**
- * Markdown 协同编辑器配置文件
- */
-
 export interface MarkdownCollaborationConfig {
-  // WebSocket 服务器地址 (使用独立的 /markdown 路径)
   wsUrl: string
-  // 是否启用协同编辑
   enabled: boolean
-  // 重连配置
   reconnect: {
     maxAttempts: number
     interval: number
   }
-  // 用户配置
   user: {
     defaultName: string
     defaultColor: string
@@ -46,9 +38,7 @@ const getWsBaseUrl = (): string => {
   return envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl
 }
 
-// 默认配置
 export const defaultMarkdownConfig: MarkdownCollaborationConfig = {
-  // 使用独立的 /markdown WebSocket 路径
   wsUrl: `${getWsBaseUrl()}/markdown`,
   enabled: true,
   reconnect: {
@@ -61,7 +51,6 @@ export const defaultMarkdownConfig: MarkdownCollaborationConfig = {
   }
 }
 
-// 获取随机用户颜色
 export const getRandomUserColor = (): string => {
   const colors = [
     '#409EFF', // 蓝色
@@ -78,7 +67,6 @@ export const getRandomUserColor = (): string => {
   return colors[Math.floor(Math.random() * colors.length)]
 }
 
-// 生成随机用户名
 export const generateRandomUsername = (): string => {
   const adjectives = ['张', '王', '李', '赵', '陈', '诸葛', '司马', '杨', '刘', '曹', '孙']
   const nouns = ['懿', '亮', '修', '穆', '宫', '云', '典', '越', '羲之', '多余', '阳明', '子轩']
@@ -87,14 +75,11 @@ export const generateRandomUsername = (): string => {
   return `${adj}${noun}${Math.floor(Math.random() * 100)}`
 }
 
-// Markdown 编辑器默认配置
 export const defaultEditorOptions = {
-  // 文档配置
   document: {
     placeholder: '开始编写模板内容...',
     enableSpellcheck: false
   },
-  // 工具栏配置
   toolbar: {
     defaultMode: 'classic'
   }

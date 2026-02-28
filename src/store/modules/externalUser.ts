@@ -13,14 +13,10 @@ import { store } from '@/store'
 import { defineStore } from 'pinia'
 import request from '@/config/axios'
 
-// sessionStorage 存储键
 const STORAGE_KEY = 'external_user'
 
-// ========== 后端类型适配 ==========
-// 后端类型：java | node
 const backendType = import.meta.env.VITE_BACKEND_TYPE || 'node'
 
-// 接口路径映射（Java 使用真实权限接口，Node 保持原有接口）
 const USER_INFO_API: Record<string, string> = {
   java: '/sjrh/permission/getPermission',
   node: '/system/auth/get-permission-info'
@@ -67,14 +63,13 @@ const adaptUserInfo = (res: any): ExternalUserVO => {
 
 /**
  * 从 sessionStorage 读取用户信息
- * 增加格式校验：旧格式数据（有 level 无 roles）视为无效，触发重新 fetchUserInfo
+ * 旧格式数据（有 level 无 roles）视为无效，触发重新 fetchUserInfo
  */
 const loadFromStorage = (): ExternalUserVO | null => {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY)
     if (!stored) return null
     const parsed = JSON.parse(stored)
-    // 校验新格式必要字段（旧格式缺少 roles 数组）
     if (!parsed.id || !parsed.username || !Array.isArray(parsed.roles)) {
       sessionStorage.removeItem(STORAGE_KEY)
       return null

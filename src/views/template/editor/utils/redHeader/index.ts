@@ -1,7 +1,3 @@
-/**
- * 红头文件模块导出
- */
-
 export type {
   RedHeaderType,
   RedHeader,

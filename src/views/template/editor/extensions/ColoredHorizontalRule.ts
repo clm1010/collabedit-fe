@@ -12,10 +12,7 @@ declare module '@tiptap/core' {
   }
 }
 
-/**
- * 自定义水平线扩展，支持颜色属性
- * 用于红头文件的红色横线
- */
+// 用于红头文件的红色横线
 export const ColoredHorizontalRule = Node.create<ColoredHorizontalRuleOptions>({
   name: 'horizontalRule',
 

@@ -1,6 +1,5 @@
 <template>
   <div class="insert-toolbar">
-    <!-- 链接 -->
     <div class="toolbar-group">
       <el-tooltip content="链接" placement="bottom" :show-after="500">
         <button ref="linkBtnRef" class="toolbar-btn-large" @click="insertLink">
@@ -10,7 +9,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 媒体 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="180" trigger="click" :show-arrow="false">
         <template #reference>
@@ -56,7 +54,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 特殊字符 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="400" trigger="click">
         <template #reference>
@@ -93,7 +90,6 @@
       </el-popover>
     </div>
 
-    <!-- 日期 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="320" trigger="click">
         <template #reference>
@@ -129,7 +125,6 @@
       </el-popover>
     </div>
 
-    <!-- 表情 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="360" trigger="click">
         <template #reference>
@@ -166,7 +161,6 @@
       </el-popover>
     </div>
 
-    <!-- 数学公式 -->
     <div class="toolbar-group">
       <el-tooltip content="数学公式" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertMath">
@@ -178,7 +172,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 标签 -->
     <div class="toolbar-group">
       <el-tooltip content="标签" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertTag">
@@ -188,7 +181,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 分栏 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="200" trigger="click">
         <template #reference>
@@ -219,7 +211,6 @@
       </el-popover>
     </div>
 
-    <!-- 高亮块 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="240" trigger="click">
         <template #reference>
@@ -249,7 +240,6 @@
       </el-popover>
     </div>
 
-    <!-- 提及某人 -->
     <div class="toolbar-group">
       <el-tooltip content="提及某人" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertMention">
@@ -259,7 +249,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 书签 -->
     <div class="toolbar-group">
       <el-tooltip content="书签" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertBookmark">
@@ -271,7 +260,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 换行符 -->
     <div class="toolbar-group">
       <el-tooltip content="换行符" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertLineBreak">
@@ -281,7 +269,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 分隔线 -->
     <div class="toolbar-group">
       <el-tooltip content="分隔线" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertDivider">
@@ -291,7 +278,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 页面大小 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="200" trigger="click">
         <template #reference>
@@ -315,7 +301,6 @@
       </el-popover>
     </div>
 
-    <!-- 文本框 -->
     <div class="toolbar-group">
       <el-tooltip content="文本框" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertTextBox">
@@ -327,7 +312,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 模板 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="280" trigger="click">
         <template #reference>
@@ -354,7 +338,6 @@
       </el-popover>
     </div>
 
-    <!-- 网页 -->
     <div class="toolbar-group">
       <el-tooltip content="嵌入网页" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="insertWebpage">
@@ -364,7 +347,6 @@
       </el-tooltip>
     </div>
 
-    <!-- Link Popover 组件 -->
     <LinkPopover
       v-if="editor"
       :editor="editor"
@@ -375,7 +357,6 @@
       @remove="handleLinkRemove"
     />
 
-    <!-- 图片文件选择 -->
     <input
       ref="imageInput"
       type="file"
@@ -384,7 +365,6 @@
       @change="handleImageSelect"
     />
 
-    <!-- 视频对话框 -->
     <el-dialog v-model="videoDialogVisible" title="插入视频" width="480px">
       <el-form :model="videoForm" label-width="80px">
         <el-form-item label="视频地址">
@@ -403,7 +383,6 @@
       </template>
     </el-dialog>
 
-    <!-- 数学公式对话框 -->
     <el-dialog v-model="mathDialogVisible" title="插入数学公式" width="560px">
       <div class="math-editor">
         <el-input
@@ -433,7 +412,6 @@
       </template>
     </el-dialog>
 
-    <!-- 嵌入网页对话框 -->
     <el-dialog v-model="webpageDialogVisible" title="嵌入网页" width="480px">
       <el-form :model="webpageForm" label-width="80px">
         <el-form-item label="网页地址">
@@ -452,7 +430,6 @@
       </template>
     </el-dialog>
 
-    <!-- 文件上传 -->
     <input ref="fileInput" type="file" style="display: none" @change="handleFileUpload" />
   </div>
 </template>
@@ -467,21 +444,16 @@ import { specialCharacters, emojiCategories, templateList } from './types'
 import { useEditor } from './useEditor'
 import LinkPopover from './LinkPopover.vue'
 
-// 获取编辑器实例
 const editor = useEditor()
 
-// 特殊字符和表情标签
 const activeCharTab = ref('标点符号')
 const activeEmojiTab = ref('常用')
 
-// 日期相关
 const selectedDate = ref(new Date())
 const dateFormat = ref('YYYY-MM-DD')
 
-// 页面大小
 const pageSize = ref('A4')
 
-// 高亮块类型
 const calloutTypes = [
   {
     type: 'info',
@@ -517,17 +489,14 @@ const calloutTypes = [
   }
 ]
 
-// LinkPopover 相关状态
 const linkPopoverVisible = ref(false)
 const linkPopoverUrl = ref('')
 const linkPopoverTriggerRect = ref<DOMRect | null>(null)
 const linkBtnRef = ref<HTMLElement | null>(null)
 
-// 图片选择
 const imageInput = ref<HTMLInputElement | null>(null)
 const isInlineImage = ref(false)
 
-// 视频对话框
 const videoDialogVisible = ref(false)
 const videoForm = reactive({
   url: '',
@@ -535,11 +504,9 @@ const videoForm = reactive({
   height: 360
 })
 
-// 数学公式对话框
 const mathDialogVisible = ref(false)
 const mathFormula = ref('')
 
-// 网页对话框
 const webpageDialogVisible = ref(false)
 const webpageForm = reactive({
   url: '',
@@ -547,15 +514,12 @@ const webpageForm = reactive({
   height: 450
 })
 
-// 文件输入
 const fileInput = ref<HTMLInputElement | null>(null)
 
-// 格式化日期
 const formatDate = (format: string) => {
   return dayjs(selectedDate.value).format(format)
 }
 
-// 插入链接 - 使用 LinkPopover 组件
 const insertLink = () => {
   if (!editor.value) return
 
@@ -574,7 +538,6 @@ const insertLink = () => {
   linkPopoverVisible.value = true
 }
 
-// 应用链接
 const handleLinkApply = (url: string) => {
   if (!editor.value || !url) return
 
@@ -591,26 +554,22 @@ const handleLinkApply = (url: string) => {
   }
 }
 
-// 删除链接
 const handleLinkRemove = () => {
   if (!editor.value) return
 
   editor.value.chain().focus().unsetLink().run()
 }
 
-// 插入块级图片
 const insertBlockImage = () => {
   isInlineImage.value = false
   imageInput.value?.click()
 }
 
-// 插入行内图片
 const insertInlineImage = () => {
   isInlineImage.value = true
   imageInput.value?.click()
 }
 
-// 处理图片选择
 const handleImageSelect = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file || !editor.value) return
@@ -619,10 +578,8 @@ const handleImageSelect = (event: Event) => {
   reader.onload = (e) => {
     const src = e.target?.result as string
     if (isInlineImage.value) {
-      // 插入行内图片
       editor.value?.chain().focus().setImage({ src }).run()
     } else {
-      // 插入块级图片
       editor.value?.chain().focus().setImage({ src }).run()
     }
   }
@@ -631,7 +588,6 @@ const handleImageSelect = (event: Event) => {
   ;(event.target as HTMLInputElement).value = ''
 }
 
-// 插入视频
 const insertVideo = () => {
   videoDialogVisible.value = true
 }
@@ -650,13 +606,11 @@ const confirmInsertVideo = () => {
   videoForm.url = ''
 }
 
-// 插入代码块
 const insertCodeBlock = () => {
   if (!editor.value) return
   editor.value.chain().focus().toggleCodeBlock().run()
 }
 
-// 插入文件
 const insertFile = () => {
   fileInput.value?.click()
 }
@@ -676,26 +630,22 @@ const handleFileUpload = (event: Event) => {
   ;(event.target as HTMLInputElement).value = ''
 }
 
-// 插入特殊字符
 const insertSpecialChar = (char: string) => {
   if (!editor.value) return
   editor.value.chain().focus().insertContent(char).run()
 }
 
-// 插入日期
 const insertDate = () => {
   if (!editor.value) return
   const formattedDate = formatDate(dateFormat.value)
   editor.value.chain().focus().insertContent(formattedDate).run()
 }
 
-// 插入表情
 const insertEmoji = (emoji: string) => {
   if (!editor.value) return
   editor.value.chain().focus().insertContent(emoji).run()
 }
 
-// 插入数学公式
 const insertMath = () => {
   mathDialogVisible.value = true
 }
@@ -714,7 +664,6 @@ const confirmInsertMath = () => {
   mathFormula.value = ''
 }
 
-// 插入标签
 const insertTag = () => {
   if (!editor.value) return
   const tag = prompt('请输入标签内容')
@@ -723,7 +672,6 @@ const insertTag = () => {
   }
 }
 
-// 插入分栏
 const insertColumns = (cols: number) => {
   if (!editor.value) return
   const columnWidth = Math.floor(100 / cols)
@@ -735,7 +683,6 @@ const insertColumns = (cols: number) => {
   editor.value.chain().focus().insertContent(columnsHtml).run()
 }
 
-// 插入高亮块
 const insertCallout = (callout: any) => {
   if (!editor.value) return
   const html = `<div class="callout callout-${callout.type}" style="background: ${callout.bgColor}; border-left: 4px solid ${callout.borderColor}; padding: 12px 16px; margin: 8px 0; border-radius: 4px;">
@@ -744,7 +691,6 @@ const insertCallout = (callout: any) => {
   editor.value.chain().focus().insertContent(html).run()
 }
 
-// 插入提及
 const insertMention = () => {
   if (!editor.value) return
   const name = prompt('请输入要提及的人名')
@@ -757,7 +703,6 @@ const insertMention = () => {
   }
 }
 
-// 插入书签
 const insertBookmark = () => {
   if (!editor.value) return
   const id = prompt('请输入书签 ID')
@@ -771,19 +716,16 @@ const insertBookmark = () => {
   }
 }
 
-// 插入换行符
 const insertLineBreak = () => {
   if (!editor.value) return
   editor.value.chain().focus().setHardBreak().run()
 }
 
-// 插入分隔线
 const insertDivider = () => {
   if (!editor.value) return
   editor.value.chain().focus().setHorizontalRule().run()
 }
 
-// 插入文本框
 const insertTextBox = () => {
   if (!editor.value) return
   const html = `<div class="text-box" style="border: 2px solid #e0e0e0; padding: 16px; margin: 8px 0; border-radius: 8px; background: #fafafa;">
@@ -792,7 +734,6 @@ const insertTextBox = () => {
   editor.value.chain().focus().insertContent(html).run()
 }
 
-// 应用模板
 const applyTemplate = (template: any) => {
   if (!editor.value) return
 
@@ -884,7 +825,6 @@ const applyTemplate = (template: any) => {
   ElMessage.success('模板已应用')
 }
 
-// 嵌入网页
 const insertWebpage = () => {
   webpageDialogVisible.value = true
 }

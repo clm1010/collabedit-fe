@@ -19,19 +19,16 @@ export const useDocBufferStore = defineStore('doc-buffer', {
     buffer: null
   }),
   actions: {
-    /** 存入文档的 ArrayBuffer */
     setBuffer(docId: string, buffer: ArrayBuffer) {
       this.docId = docId
       this.buffer = buffer
     },
-    /** 按文档 ID 取出 ArrayBuffer（不匹配则返回 null） */
     getBuffer(docId: string): ArrayBuffer | null {
       if (this.docId === docId && this.buffer) {
         return this.buffer
       }
       return null
     },
-    /** 清空缓存，释放内存 */
     clearBuffer() {
       this.docId = null
       this.buffer = null

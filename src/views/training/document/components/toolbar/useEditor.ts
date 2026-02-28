@@ -1,6 +1,3 @@
-/**
- * 编辑器注入 composable
- */
 import { inject, computed, type Ref, type ComputedRef } from 'vue'
 import type { Editor } from '@tiptap/vue-3'
 import { EditorKey } from './types'

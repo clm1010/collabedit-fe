@@ -64,52 +64,43 @@ import { Icon } from '@/components/Icon'
 
 defineOptions({ name: 'DocumentPreviewDialog' })
 
-// Props
 const props = defineProps<{
   visible: boolean
   content: string
   title?: string
 }>()
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
 }>()
 
-// 缩放比例
 const zoom = ref(100)
 
-// 控制对话框显示
 const dialogVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
 
-// 关闭对话框
 const handleClose = () => {
   dialogVisible.value = false
 }
 
-// 缩小
 const zoomOut = () => {
   if (zoom.value > 50) {
     zoom.value -= 10
   }
 }
 
-// 放大
 const zoomIn = () => {
   if (zoom.value < 200) {
     zoom.value += 10
   }
 }
 
-// 适应宽度
 const fitToWidth = () => {
   zoom.value = 100
 }
 
-// 全屏切换
 const toggleFullscreen = () => {
   if (document.fullscreenElement) {
     document.exitFullscreen()
@@ -118,7 +109,6 @@ const toggleFullscreen = () => {
   }
 }
 
-// 重置缩放（当对话框关闭时）
 watch(
   () => props.visible,
   (val) => {
@@ -130,7 +120,6 @@ watch(
 </script>
 
 <style scoped lang="scss">
-// 文档预览对话框样式
 :global(.document-preview-dialog) {
   .el-dialog__header {
     padding: 0;
@@ -221,7 +210,6 @@ watch(
   transform-origin: top center;
   position: relative;
 
-  // 页面边角装饰
   &::before {
     content: '';
     position: absolute;
@@ -311,7 +299,6 @@ watch(
     border-radius: 8px;
     overflow-x: auto;
 
-    // 代码块内的 code 标签样式
     code {
       background: transparent;
       padding: 0;
@@ -349,7 +336,6 @@ watch(
     text-decoration: underline;
   }
 
-  // 水平线样式
   :deep(hr) {
     border: none;
     border-top: 2px solid #e5e7eb;
@@ -361,7 +347,6 @@ watch(
     }
   }
 
-  // AI 模块块级样式
   :deep(.ai-block-node),
   :deep(div[data-type='ai-block-node']) {
     display: block;
@@ -396,7 +381,6 @@ watch(
     }
   }
 
-  // AI 模块行内样式
   :deep(.ai-block),
   :deep(span[data-type='ai-block']) {
     background-color: #e3f2fd;
@@ -405,7 +389,6 @@ watch(
     padding: 2px 6px;
   }
 
-  // 红头文件表格样式
   :deep(table.red-header-table),
   :deep(table.editor-table) {
     border: none !important;
@@ -421,14 +404,12 @@ watch(
     }
   }
 
-  // 高亮标记样式
   :deep(mark) {
     background-color: #ffff00;
     color: inherit;
     padding: 0 2px;
   }
 
-  // 字体颜色样式
   :deep(span[style*='color']) {
     color: inherit;
   }

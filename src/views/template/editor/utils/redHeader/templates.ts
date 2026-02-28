@@ -1,24 +1,9 @@
-/**
- * 红头文件模板
- * 提供各类红头文件的 HTML 模板
- */
-
 import type { RedHeaderType, RedHeaderTemplateParams } from './types'
 
-/**
- * 生成红色横线 HTML
- * @param width 宽度百分比
- * @returns 红色横线 HTML
- */
 export const createRedLine = (width = 100): string => {
   return `<hr style="border: none; border-top: 2px solid #ff0000; width: ${width}%; margin: 10px auto;" data-line-color="red" class="red-line" />`
 }
 
-/**
- * 简易红头文件模板
- * @param params 模板参数
- * @returns 红头文件 HTML
- */
 export const createSimpleRedHeader = (params: RedHeaderTemplateParams): string => {
   const { organization, title, documentNumber, date } = params
 
@@ -41,11 +26,6 @@ ${createRedLine()}
 `.trim()
 }
 
-/**
- * 标准政府公文红头文件模板
- * @param params 模板参数
- * @returns 红头文件 HTML
- */
 export const createGovernmentRedHeader = (params: RedHeaderTemplateParams): string => {
   const {
     organization,
@@ -98,11 +78,6 @@ ${recipient ? `<p style="font-family: 仿宋, FangSong, serif; font-size: 16pt;"
 `.trim()
 }
 
-/**
- * 党组织公文红头文件模板
- * @param params 模板参数
- * @returns 红头文件 HTML
- */
 export const createPartyRedHeader = (params: RedHeaderTemplateParams): string => {
   const { organization, title, documentNumber, date, recipient = '' } = params
 
@@ -129,12 +104,6 @@ ${recipient ? `<p style="font-family: 仿宋, FangSong, serif; font-size: 16pt;"
 `.trim()
 }
 
-/**
- * 根据类型创建红头文件
- * @param type 红头文件类型
- * @param params 模板参数
- * @returns 红头文件 HTML
- */
 export const createRedHeader = (
   type: RedHeaderType,
   params: RedHeaderTemplateParams

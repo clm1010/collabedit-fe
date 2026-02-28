@@ -1,9 +1,7 @@
 <template>
   <div class="markdown-editor-wrapper">
-    <!-- 工具栏 - 只读模式下隐藏 -->
     <div v-if="editor && editable" class="editor-toolbar">
       <div class="toolbar-group">
-        <!-- 导入 Word -->
         <button
           class="toolbar-btn toolbar-btn-text"
           @click="handleImportWord"
@@ -12,7 +10,6 @@
           <Icon icon="mdi:file-word" />
           <span class="btn-text">导入Word</span>
         </button>
-        <!-- 导入 Markdown -->
         <button
           class="toolbar-btn toolbar-btn-text"
           @click="handleImportMarkdown"
@@ -21,7 +18,6 @@
           <Icon icon="mdi:language-markdown" />
           <span class="btn-text">导入MD</span>
         </button>
-        <!-- 导出 Markdown -->
         <button
           class="toolbar-btn toolbar-btn-text"
           @click="handleExportMarkdown"
@@ -30,7 +26,6 @@
           <Icon icon="mdi:file-export" />
           <span class="btn-text">导出MD</span>
         </button>
-        <!-- 预览 - 参考训练文档工具栏样式 -->
         <el-tooltip content="文档预览" placement="bottom" :show-after="500">
           <button class="toolbar-btn toolbar-btn-text" @click="handlePreview">
             <Icon icon="mdi:file-eye-outline" />
@@ -41,7 +36,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 撤销/重做 -->
         <button
           class="toolbar-btn"
           @click="editor?.chain().focus().undo().run()"
@@ -62,7 +56,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 标题 -->
         <el-dropdown trigger="click" @command="handleHeading">
           <button class="toolbar-btn" title="标题">
             <Icon icon="mdi:format-header-pound" />
@@ -81,7 +74,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 格式化 -->
         <button
           class="toolbar-btn"
           :class="{ active: editor?.isActive('bold') }"
@@ -122,7 +114,6 @@
         >
           <Icon icon="mdi:code-tags" />
         </button>
-        <!-- 清除格式 -->
         <button class="toolbar-btn" @click="clearFormat" title="清除格式">
           <Icon icon="mdi:format-clear" />
         </button>
@@ -130,7 +121,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 颜色 -->
         <ColorPicker
           v-model="textColor"
           icon="mdi:format-color-text"
@@ -147,7 +137,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 列表 -->
         <button
           class="toolbar-btn"
           :class="{ active: editor?.isActive('bulletList') }"
@@ -176,7 +165,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 引用/代码块 -->
         <button
           class="toolbar-btn"
           :class="{ active: editor?.isActive('blockquote') }"
@@ -193,7 +181,6 @@
         >
           <Icon icon="mdi:code-braces" />
         </button>
-        <!-- AI 模块（块级） -->
         <button
           class="toolbar-btn"
           :class="{ active: editor?.isActive('aiBlockNode') }"
@@ -213,7 +200,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 表格 -->
         <el-popover
           placement="bottom"
           :width="220"
@@ -249,7 +235,6 @@
             </div>
           </div>
         </el-popover>
-        <!-- 表格操作按钮（仅在表格中显示） -->
         <template v-if="editor?.isActive('table')">
           <button
             class="toolbar-btn"
@@ -326,7 +311,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 对齐 -->
         <button
           class="toolbar-btn"
           :class="{ active: editor?.isActive({ textAlign: 'left' }) }"
@@ -355,7 +339,6 @@
       </div>
 
       <div class="toolbar-group">
-        <!-- 红头文件 -->
         <el-popover
           ref="redHeaderPopoverRef"
           placement="bottom"
@@ -380,7 +363,6 @@
       </div>
     </div>
 
-    <!-- 隐藏的文件输入框 -->
     <input
       ref="wordFileInputRef"
       type="file"
@@ -396,7 +378,6 @@
       @change="handleMarkdownFileChange"
     />
 
-    <!-- 预览对话框（全屏样式） -->
     <el-dialog
       v-model="previewDialogVisible"
       :fullscreen="true"
@@ -463,9 +444,7 @@
       </template>
     </el-dialog>
 
-    <!-- 编辑器内容区域 -->
     <div class="editor-content-wrapper" ref="contentWrapperRef" @scroll="handleScroll">
-      <!-- 内容加载骨架覆盖层 -->
       <Transition name="skeleton-fade">
         <div v-if="contentLoading || !editor" class="content-skeleton-overlay">
           <div class="a4-skeleton-box">
@@ -473,7 +452,6 @@
           </div>
         </div>
       </Transition>
-      <!-- 编辑器内容 -->
       <template v-if="editor">
         <div class="page-container">
           <div class="page-content">
@@ -495,8 +473,6 @@
             </DragHandle>
             <editor-content :editor="editor" class="markdown-content" />
 
-            <!-- 气泡菜单 - 参考 https://tiptap.dev/docs/editor/extensions/functionality/bubble-menu -->
-            <!-- 只读模式下隐藏气泡菜单 -->
             <div ref="bubbleMenuRef" class="bubble-menu" v-show="editor && editable">
               <div class="bubble-menu-container">
                 <button
@@ -532,7 +508,6 @@
                   <Icon icon="mdi:format-strikethrough" />
                 </button>
                 <div class="bubble-menu-divider"></div>
-                <!-- 字体颜色 -->
                 <ColorPicker
                   v-model="textColor"
                   icon="mdi:format-color-text"
@@ -540,7 +515,6 @@
                   :show-clear="true"
                   @change="handleTextColor"
                 />
-                <!-- 字体背景颜色 -->
                 <ColorPicker
                   v-model="highlightColor"
                   icon="mdi:format-color-highlight"
@@ -601,7 +575,6 @@
               </div>
             </div>
 
-            <!-- Link Popover 组件 -->
             <LinkPopover
               v-if="editor && editable"
               :editor="editor"
@@ -616,7 +589,6 @@
       </template>
     </div>
 
-    <!-- 回到顶部按钮 -->
     <transition name="fade">
       <button
         v-show="showBackToTop && !contentLoading"
@@ -677,7 +649,6 @@ import { ColoredHorizontalRule } from '../extensions/ColoredHorizontalRule'
 import { AIBlockNode } from '../extensions/AIBlockNode'
 import { generateExportHtml } from '@/views/utils/documentExport'
 
-// Props
 interface Props {
   ydoc: Y.Doc
   fragment: Y.XmlFragment
@@ -705,7 +676,6 @@ const props = withDefaults(defineProps<Props>(), {
 // 解构 props 以便在模板中使用
 const { editable } = toRefs(props)
 
-// Emits
 const emit = defineEmits<{
   (e: 'update', content: string): void
   (e: 'ready', editor: any): void
@@ -942,27 +912,18 @@ const editor = useEditor({
   editable: props.editable, // 根据 props 控制是否可编辑
   extensions: [
     StarterKit.configure({
-      // Tiptap v3: history 重命名为 undoRedo
-      undoRedo: false, // 禁用 undoRedo，Collaboration 会处理
-      // 禁用 StarterKit 自带的 Link，使用自定义配置
+      undoRedo: false,
       link: false,
-      // 禁用默认的 horizontalRule，使用自定义的 ColoredHorizontalRule
       horizontalRule: false
     }),
-    // 自定义水平线扩展（支持红色横线）
     ColoredHorizontalRule,
-    // 文本样式（用于颜色）
     TextStyle,
-    // 文字颜色 - 支持 textStyle 和 heading
     Color.configure({
       types: ['textStyle', 'heading']
     }),
-    // 协同编辑 - 使用预初始化的 fragment 而不是 document
-    // 这可以避免 y-prosemirror 在空 Y.Doc 上初始化时的 "Unexpected case" 错误
     Collaboration.configure({
       fragment: props.fragment
     }),
-    // Tiptap v3: 协同光标扩展重命名为 CollaborationCaret
     CollaborationCaret.configure({
       provider: props.provider,
       user: {
@@ -971,32 +932,25 @@ const editor = useEditor({
         color: props.user.color
       }
     }),
-    // 占位符
     Placeholder.configure({
       placeholder: props.placeholder
     }),
-    // 文本对齐
     TextAlign.configure({
       types: ['heading', 'paragraph']
     }),
-    // Tiptap v3: Underline 已包含在 StarterKit 中，无需单独添加
-    // 高亮
     Highlight.configure({
       multicolor: true
     }),
-    // Tiptap v3: Link 已包含在 StarterKit 中，此处覆盖配置
     Link.configure({
       openOnClick: false,
       HTMLAttributes: {
         class: 'text-blue-500 underline cursor-pointer'
       }
     }),
-    // 任务列表
     TaskList,
     TaskItem.configure({
       nested: true
     }),
-    // 表格扩展（使用自定义扩展支持内联样式）
     CustomTable.configure({
       resizable: true,
       HTMLAttributes: {
@@ -1006,10 +960,7 @@ const editor = useEditor({
     CustomTableRow,
     CustomTableCell,
     TableHeader,
-    // Markdown 扩展 - 支持 Markdown 内容的解析和序列化
-    // 参考: https://tiptap.dev/docs/editor/markdown
     Markdown,
-    // AI 模块块级扩展 - 支持内部编辑的金色边框区块
     AIBlockNode.configure({
       HTMLAttributes: {
         class: 'ai-block-node'
@@ -1034,16 +985,12 @@ const editor = useEditor({
   }
 })
 
-// ==================== DragHandle 相关 ====================
-// 当前悬停的节点信息
 const currentDragNode = ref<{ node: any; editor: any; pos: number } | null>(null)
 
-// 处理节点变化
 const handleDragNodeChange = (data: { node: any; editor: any; pos: number } | null) => {
   currentDragNode.value = data
 }
 
-// 在当前节点后添加新段落
 const addParagraphAfter = () => {
   if (isNil(editor.value) || isNil(currentDragNode.value)) return
 
@@ -1059,10 +1006,7 @@ const addParagraphAfter = () => {
   editor.value.chain().focus().insertContentAt(endPos, { type: 'paragraph' }).run()
 }
 
-// ==================== BubbleMenu 相关 ====================
-// 在 onMounted 中注册 BubbleMenu 插件
 onMounted(() => {
-  // 只读模式也需要注册，shouldShow 会控制显示
   if (!isNil(editor.value) && !isNil(bubbleMenuRef.value)) {
     registerBubbleMenu()
   }
@@ -1164,7 +1108,6 @@ watch(
   { immediate: true }
 )
 
-// 注册 BubbleMenu 插件 - 参考 https://github.com/ueberdosis/tiptap/tree/main/packages/extension-bubble-menu
 const registerBubbleMenu = () => {
   if (isNil(editor.value) || isNil(bubbleMenuRef.value)) return
 
@@ -1202,7 +1145,6 @@ const registerBubbleMenu = () => {
   editor.value.registerPlugin(plugin)
 }
 
-// 气泡菜单中切换链接 - 使用 LinkPopover 组件
 const toggleBubbleLink = () => {
   if (isNil(editor.value)) return
 
@@ -1221,21 +1163,18 @@ const toggleBubbleLink = () => {
   linkPopoverVisible.value = true
 }
 
-// 应用链接
 const handleLinkApply = (url: string) => {
   if (isNil(editor.value) || isEmpty(url)) return
 
   editor.value.chain().focus().setLink({ href: url }).run()
 }
 
-// 删除链接
 const handleLinkRemove = () => {
   if (isNil(editor.value)) return
 
   editor.value.chain().focus().unsetLink().run()
 }
 
-// 处理标题选择
 const handleHeading = (level: string) => {
   if (isNil(editor.value)) return
   const levelNum = parseInt(level)
@@ -1250,18 +1189,14 @@ const handleHeading = (level: string) => {
   }
 }
 
-// ==================== 导入功能 ====================
-// 导入 Word 按钮点击
 const handleImportWord = () => {
   wordFileInputRef.value?.click()
 }
 
-// 导入 Markdown 按钮点击
 const handleImportMarkdown = () => {
   markdownFileInputRef.value?.click()
 }
 
-// 处理 Word 文件选择
 const handleWordFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
@@ -1288,7 +1223,6 @@ const handleWordFileChange = async (event: Event) => {
   target.value = ''
 }
 
-// 处理 Markdown 文件选择
 const handleMarkdownFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
@@ -1315,8 +1249,6 @@ const handleMarkdownFileChange = async (event: Event) => {
   target.value = ''
 }
 
-// ==================== 导出功能 ====================
-// 导出 Markdown 文件
 const handleExportMarkdown = () => {
   if (isNil(editor.value)) return
 
@@ -1335,8 +1267,6 @@ const handleExportMarkdown = () => {
   }
 }
 
-// ==================== 预览功能 ====================
-// 预览当前文档
 const handlePreview = () => {
   if (isNil(editor.value)) {
     ElMessage.warning('编辑器未就绪')
@@ -1350,7 +1280,6 @@ const handlePreview = () => {
   previewDialogVisible.value = true
 }
 
-// 复制 HTML
 const copyHtml = async () => {
   try {
     const html = await generateFullHtml()
@@ -1361,7 +1290,6 @@ const copyHtml = async () => {
   }
 }
 
-// 下载 HTML
 const downloadHtml = async () => {
   const html = await generateFullHtml()
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
@@ -1376,7 +1304,6 @@ const downloadHtml = async () => {
   ElMessage.success('HTML 已下载')
 }
 
-// 预览控制
 const togglePreviewSidebar = () => {
   previewSidebarVisible.value = !previewSidebarVisible.value
 }
@@ -1405,20 +1332,16 @@ const fitToWidth = () => {
   previewZoom.value = 100
 }
 
-// ==================== 表格功能 ====================
-// 选择表格大小
 const selectTableSize = (rows: number, cols: number) => {
   selectedRows.value = rows
   selectedCols.value = cols
 }
 
-// 重置表格选择
 const resetTableSelection = () => {
   selectedRows.value = 0
   selectedCols.value = 0
 }
 
-// 插入表格
 const insertTable = (rows: number, cols: number) => {
   if (isNil(editor.value)) return
 
@@ -1428,16 +1351,12 @@ const insertTable = (rows: number, cols: number) => {
   resetTableSelection()
 }
 
-// ==================== 格式功能 ====================
-// 清除格式
 const clearFormat = () => {
   if (isNil(editor.value)) return
 
   editor.value.chain().focus().unsetAllMarks().clearNodes().run()
 }
 
-// ==================== 颜色处理 ====================
-// 字体颜色处理
 const handleTextColor = (color: string) => {
   if (isNil(editor.value)) return
   if (color) {
@@ -1447,7 +1366,6 @@ const handleTextColor = (color: string) => {
   }
 }
 
-// 字体背景颜色处理
 const handleHighlightColor = (color: string) => {
   if (isNil(editor.value)) return
   if (color) {
@@ -1457,7 +1375,6 @@ const handleHighlightColor = (color: string) => {
   }
 }
 
-// 更新选中文本的颜色到工具栏（颜色联动）
 const updateColorFromSelection = () => {
   if (isNil(editor.value)) return
 
@@ -1478,8 +1395,6 @@ const updateColorFromSelection = () => {
   }
 }
 
-// ==================== 红头文件 ====================
-// 处理插入红头文件（包含关闭弹窗）
 const handleInsertRedHeader = (type: 'standard' | 'simple') => {
   // 关闭弹窗
   if (redHeaderPopoverRef.value) {
@@ -1489,7 +1404,6 @@ const handleInsertRedHeader = (type: 'standard' | 'simple') => {
   insertRedHeader(type)
 }
 
-// 插入红头文件
 const insertRedHeader = (type: 'standard' | 'simple') => {
   if (isNil(editor.value)) return
 
@@ -1592,7 +1506,6 @@ const generateFullHtml = async (): Promise<string> => {
   return generateExportHtml(editor.value.getHTML(), props.title || '模板文档')
 }
 
-// 监听用户信息变化
 watch(
   () => props.user,
   (newUser) => {
@@ -1660,15 +1573,12 @@ onBeforeUnmount(() => {
   currentDragNode.value = null
 })
 
-// 获取 Markdown 内容
-// 使用 htmlToMarkdown 函数将 HTML 转换为 Markdown
 const getMarkdown = () => {
   if (isNil(editor.value)) return ''
   const html = editor.value.getHTML()
   return htmlToMarkdown(html)
 }
 
-// 暴露编辑器实例和方法
 defineExpose({
   editor,
   getHTML: () => editor.value?.getHTML() || '',
@@ -2127,8 +2037,6 @@ defineExpose({
   }
 }
 
-// 协同光标样式 - 参考 https://tiptap.dev/docs/editor/extensions/functionality/collaboration-caret
-// Tiptap v3 使用 collaboration-carets__* 类名
 :deep(.collaboration-carets__caret),
 :deep(.collaboration-cursor__caret) {
   position: relative;
@@ -2158,13 +2066,10 @@ defineExpose({
   pointer-events: none;
 }
 
-// 选中文本的协同高亮
 :deep(.ProseMirror-yjs-selection) {
   background-color: var(--selection-color, rgba(37, 99, 235, 0.2));
 }
 
-// ==================== 官方 DragHandle 样式 ====================
-// DragHandle 容器
 .drag-handle-container {
   display: flex;
   align-items: center;
@@ -2176,7 +2081,6 @@ defineExpose({
   border: 1px solid #e5e7eb;
 }
 
-// 添加段落按钮
 .drag-handle-plus {
   width: 24px;
   height: 24px;
@@ -2201,7 +2105,6 @@ defineExpose({
   }
 }
 
-// 拖动手柄
 .drag-handle-grip {
   width: 24px;
   height: 24px;
@@ -2229,15 +2132,12 @@ defineExpose({
   }
 }
 
-// 拖动中的元素样式
 :deep(.ProseMirror-selectednode) {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-// ==================== BubbleMenu 气泡菜单样式 ====================
-// 参考 https://tiptap.dev/docs/editor/extensions/functionality/bubble-menu
 .bubble-menu {
   display: flex;
   background: #fff;
@@ -2290,7 +2190,6 @@ defineExpose({
   margin: 0 4px;
 }
 
-// ==================== 表格网格选择器样式 ====================
 .table-grid-selector {
   padding: 8px;
 }
@@ -2344,7 +2243,6 @@ defineExpose({
   min-height: 18px;
 }
 
-// ==================== 预览对话框样式 ====================
 .preview-tabs {
   margin-bottom: 16px;
 }
@@ -2377,7 +2275,6 @@ defineExpose({
     gap: 12px;
   }
 }
-// ==================== 文档预览样式（对齐训练文档预览） ====================
 ::global(.document-preview-dialog) {
   .el-dialog__header {
     padding: 0;
@@ -2782,7 +2679,6 @@ defineExpose({
   }
 }
 
-// ==================== 红头文件菜单样式 ====================
 .red-header-menu {
   .red-header-menu-item {
     padding: 8px 16px;

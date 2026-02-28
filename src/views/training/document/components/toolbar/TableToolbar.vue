@@ -1,6 +1,5 @@
 <template>
   <div class="table-toolbar">
-    <!-- 插入表格 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="280" trigger="click">
         <template #reference>
@@ -32,7 +31,6 @@
       </el-popover>
     </div>
 
-    <!-- 修复表格 -->
     <div class="toolbar-group">
       <el-tooltip content="修复表格" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" :disabled="!isInTable" @click="fixTable">
@@ -44,7 +42,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 对齐方式 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="160" trigger="click">
         <template #reference>
@@ -71,7 +68,6 @@
       </el-popover>
     </div>
 
-    <!-- 背景颜色 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="280" trigger="click">
         <template #reference>
@@ -105,7 +101,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 行操作 -->
     <div class="toolbar-group">
       <el-tooltip content="插入行(前)" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" :disabled="!isInTable" @click="addRowBefore">
@@ -129,7 +124,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 列操作 -->
     <div class="toolbar-group">
       <el-tooltip content="插入列(左)" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" :disabled="!isInTable" @click="addColumnBefore">
@@ -153,7 +147,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 合并/拆分单元格 -->
     <div class="toolbar-group">
       <el-tooltip content="合并单元格" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" :disabled="!canMerge" @click="mergeCells">
@@ -171,7 +164,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 表头操作 -->
     <div class="toolbar-group">
       <el-tooltip content="切换表头行" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" :disabled="!isInTable" @click="toggleHeaderRow">
@@ -195,7 +187,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 单元格导航 -->
     <div class="toolbar-group">
       <el-tooltip content="下一个单元格" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" :disabled="!isInTable" @click="goToNextCell">
@@ -213,7 +204,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 删除表格 -->
     <div class="toolbar-group">
       <el-tooltip content="删除表格" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large danger" :disabled="!isInTable" @click="deleteTable">
@@ -231,24 +221,19 @@ import { ref, computed } from 'vue'
 import { Icon } from '@/components/Icon'
 import { useEditor } from './useEditor'
 
-// 获取编辑器实例
 const editor = useEditor()
 
-// 表格选择器状态
 const hoverRows = ref(3)
 const hoverCols = ref(3)
 
-// 单元格背景色
 const currentCellBg = ref('')
 
-// 对齐选项
 const alignOptions = [
   { label: '左对齐', value: 'left', icon: 'mdi:format-align-left' },
   { label: '居中', value: 'center', icon: 'mdi:format-align-center' },
   { label: '右对齐', value: 'right', icon: 'mdi:format-align-right' }
 ]
 
-// 单元格颜色
 const cellColors = [
   '#FFFFFF',
   '#F5F5F5',
@@ -292,7 +277,6 @@ const cellColors = [
   '#5C6BC0'
 ]
 
-// 计算属性
 const isInTable = computed(() => {
   return editor.value?.isActive('table') || false
 })
@@ -305,7 +289,6 @@ const canSplit = computed(() => {
   return isInTable.value && editor.value?.can().splitCell()
 })
 
-// 方法
 const setTableSize = (rows: number, cols: number) => {
   hoverRows.value = rows
   hoverCols.value = cols

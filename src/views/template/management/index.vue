@@ -1,8 +1,6 @@
 <template>
   <div class="template-management">
-    <!-- 工具栏和搜索栏 -->
     <ContentWrap class="flex-shrink-0">
-      <!-- 搜索栏 -->
       <el-form
         class="-mb-15px"
         :model="queryParams"
@@ -50,13 +48,6 @@
             clearable
             class="!w-150px"
           >
-            <!-- @change="handleQuery" 已注释：统一改为点击查询按钮触发，与演训管理保持一致 -->
-            <!-- <el-option
-              v-for="item in subClassOptions"
-              :key="item.template_id"
-              :label="item.template_name"
-              :value="item.template_id"
-            /> -->
             <el-option
               v-for="item in subClassOptions"
               :key="item.category_id"
@@ -78,7 +69,6 @@
       </el-form>
     </ContentWrap>
 
-    <!-- 标签页和表格 -->
     <ContentWrap class="flex-1 overflow-hidden mt-4 table-container-wrap">
       <div class="h-full flex flex-col p-4">
         <div class="mb-4 flex-shrink-0">
@@ -92,14 +82,12 @@
           </el-button>
         </div>
 
-        <!-- 标签页 -->
         <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="flex-shrink-0">
           <el-tab-pane label="最近文档" name="recent" />
           <el-tab-pane label="审核列表" name="review" />
           <el-tab-pane label="文档发布" name="publish" />
         </el-tabs>
 
-        <!-- 表格 -->
         <div class="flex-1 overflow-hidden">
           <el-table
             ref="tableRef"
@@ -239,7 +227,6 @@
           </el-table>
         </div>
 
-        <!-- 分页 -->
         <div class="mt-4 flex justify-between items-center flex-shrink-0">
           <div class="text-gray-500">共 {{ total }} 条</div>
           <Pagination
@@ -252,7 +239,6 @@
       </div>
     </ContentWrap>
 
-    <!-- 新建/编辑模板弹窗 -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
@@ -276,12 +262,6 @@
         </el-form-item>
         <el-form-item label="模板子类" prop="temSubclass">
           <el-select v-model="formData.temSubclass" placeholder="请选择" clearable class="w-full">
-            <!-- <el-option
-              v-for="item in subClassOptions"
-              :key="item.template_id"
-              :label="item.template_name"
-              :value="item.template_id"
-            /> -->
             <el-option
               v-for="item in subClassOptions"
               :key="item.category_id"
@@ -298,7 +278,6 @@
             placeholder="请输入描述"
           />
         </el-form-item>
-        <!-- 自定义要素 -->
         <el-form-item label="自定义要素">
           <div class="flex items-center gap-2">
             <el-button type="primary" link @click="elementsEditorVisible = true">
@@ -317,7 +296,6 @@
             <el-radio value="1">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
-        <!-- 创建方式（仅新建时显示） -->
         <el-form-item v-if="!isEditMode" label="创建方式" prop="creationMethod">
           <el-radio-group v-model="formData.creationMethod">
             <el-radio label="new">新建文档</el-radio>
@@ -325,7 +303,6 @@
           </el-radio-group>
         </el-form-item>
 
-        <!-- 创建方式：上传文档 (显示上传组件，仅新建时显示) -->
         <div v-if="!isEditMode && formData.creationMethod === 'upload'" class="pl-[100px] mt-4">
           <div class="flex items-start">
             <el-upload
@@ -353,7 +330,6 @@
       </template>
     </el-dialog>
 
-    <!-- 审核流配置弹窗 -->
     <AuditFlowDialog
       v-model="auditDialogVisible"
       :document-id="currentAuditId"
@@ -363,7 +339,6 @@
       @submit="handleAuditSubmit"
     />
 
-    <!-- 驳回原因弹窗 -->
     <el-dialog
       v-model="rejectDialogVisible"
       title="驳回原因"
@@ -391,7 +366,6 @@
       </template>
     </el-dialog>
 
-    <!-- 审核记录弹窗 -->
     <el-dialog
       v-model="examRecordDialogVisible"
       title="审核记录"
@@ -432,7 +406,6 @@
       </template>
     </el-dialog>
 
-    <!-- 发布配置弹窗 -->
     <el-dialog
       v-model="publishDialogVisible"
       title="发布配置"
@@ -460,14 +433,12 @@
       </template>
     </el-dialog>
 
-    <!-- 自定义要素编辑器弹窗 -->
     <ElementsEditor
       v-model="elementsEditorVisible"
       :elements="formData.elements_items"
       @confirm="handleElementsConfirm"
     />
 
-    <!-- 文档预览弹窗 -->
     <DocumentPreviewDialog
       v-model:visible="previewDialogVisible"
       :content="previewContent"
@@ -502,16 +473,13 @@ defineOptions({ name: 'TemplateManagement' })
 const router = useRouter()
 const collaborationUserStore = useCollaborationUserStore()
 
-// 加载状态
 const loading = ref(false)
 const submitLoading = ref(false)
 const auditLoading = ref(false)
 
-// 列表数据
 const list = ref<TemplateApi.TemplateVO[]>([])
 const total = ref(0)
 
-// 表格引用和选中数据
 const tableRef = ref()
 const selectedIds = ref<(string | undefined)[]>([])
 const selectedRows = ref<TemplateApi.TemplateVO[]>([])
@@ -526,13 +494,10 @@ const canBatchDelete = computed(() => {
   )
 })
 
-// 当前标签页
 const activeTab = ref('recent')
 
-// 日期范围（用于日期选择器，数组格式）
 const createTimeRange = ref<string[]>([])
 
-// 查询参数
 const queryParams = reactive<TemplateApi.TemplatePageReqVO>({
   pageNo: 1,
   pageSize: 10,
@@ -550,7 +515,6 @@ const categoryOptions = ref(templateCategories.value)
 // 模板子类选项（从接口获取）
 const subClassOptions = ref<TemplateSubclassVO[]>([])
 
-// 新建/编辑弹窗
 const dialogVisible = ref(false)
 const dialogTitle = ref('新建模板')
 const isEditMode = ref(false) // 是否为编辑模式（编辑模式隐藏创建方式）
@@ -566,7 +530,6 @@ const formData = reactive({
   elements_items: [] as ElementItem[]
 })
 
-// 自定义要素编辑器弹窗
 const elementsEditorVisible = ref(false)
 
 const formRules = {
@@ -575,11 +538,9 @@ const formRules = {
   temSubclass: [{ required: true, message: '请选择模板子类', trigger: 'change' }]
 }
 
-// 上传文件
 const uploadFileList = ref<any[]>([])
 const uploadFile = ref<File | null>(null)
 
-// 审核弹窗
 const auditDialogVisible = ref(false)
 const currentAuditId = ref<number | string>(0)
 
@@ -604,7 +565,6 @@ const auditFlowList = [
   }
 ]
 
-// 用户选项（用于审核人选择）
 const userOptions = [
   { label: 'user1', value: 'user1' },
   { label: 'user2', value: 'user2' },
@@ -634,13 +594,11 @@ const applyNodeTextMap: Record<string, string> = {
   '5': '驳回'
 }
 
-// 获取审核状态文本
 const getApplyNodeText = (status?: string) => {
   if (!status) return '编辑中'
   return applyNodeTextMap[status] || status
 }
 
-// 获取审核状态样式
 const getApplyNodeClass = (status?: string) => {
   switch (status) {
     case '1': // 编辑中
@@ -658,7 +616,6 @@ const getApplyNodeClass = (status?: string) => {
   }
 }
 
-// 获取列表数据
 const getList = async () => {
   loading.value = true
   try {
@@ -716,13 +673,11 @@ const getSelectedSubClassName = (): string => {
   return getSubCategoryNameById(formData.temSubclass)
 }
 
-// 查询
 const handleQuery = () => {
   queryParams.pageNo = 1
   getList()
 }
 
-// 重置
 const resetQuery = () => {
   queryFormRef.value?.resetFields()
   queryParams.templateName = undefined
@@ -757,7 +712,6 @@ const getBase64BodyLength = (dataUrl: string) => {
   return index === -1 ? dataUrl.length : dataUrl.length - index - 1
 }
 
-// 新建
 const handleAdd = () => {
   dialogTitle.value = '新建模板'
   isEditMode.value = false // 新建模式
@@ -882,7 +836,6 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
   }
 }
 
-// 保存
 const handleSave = async () => {
   try {
     await formRef.value?.validate()
@@ -976,7 +929,6 @@ const handleSave = async () => {
   }
 }
 
-// 删除
 const handleDelete = async (row: TemplateApi.TemplateVO) => {
   try {
     await ElMessageBox.confirm('确认要删除该模板吗？', '提示', {
@@ -995,7 +947,6 @@ const handleDelete = async (row: TemplateApi.TemplateVO) => {
   }
 }
 
-// 批量删除
 const handleBatchDelete = async () => {
   if (isEmpty(selectedIds.value)) {
     ElMessage.warning('请先选择要删除的模板')
@@ -1037,7 +988,6 @@ const handleBatchDelete = async () => {
   }
 }
 
-// 编辑数据
 const handleEditData = (row: TemplateApi.TemplateVO) => {
   dialogTitle.value = '编辑模板'
   isEditMode.value = true // 编辑模式（隐藏创建方式）
@@ -1057,28 +1007,23 @@ const handleEditData = (row: TemplateApi.TemplateVO) => {
   dialogVisible.value = true
 }
 
-// 文件选择
 const handleFileChange = (file: any) => {
   uploadFile.value = file.raw
 }
 
-// 文件移除
 const handleFileRemove = () => {
   uploadFile.value = null
 }
 
-// 自定义要素确认
 const handleElementsConfirm = (elements: ElementItem[]) => {
   formData.elements_items = elements
 }
 
-// 提交审核（打开审核流配置弹窗）
 const handleSubmitAudit = (row: TemplateApi.TemplateVO) => {
   currentAuditId.value = row.id || 0
   auditDialogVisible.value = true
 }
 
-// 审核提交（接收来自 AuditFlowDialog 组件的数据）
 const handleAuditSubmit = async (submitData: {
   id: string
   flowId: string
@@ -1113,19 +1058,10 @@ const handleAuditSubmit = async (submitData: {
   }
 }
 
-// 驳回弹窗相关
 const rejectDialogVisible = ref(false)
 const rejectLoading = ref(false)
 const rejectReason = ref('')
 const currentRejectRow = ref<TemplateApi.TemplateVO>()
-
-// 打开驳回弹窗
-// const openRejectDialog = (row: TemplateApi.TemplateVO) => {
-//   if (!row.id) return
-//   currentRejectRow.value = row
-//   rejectDialogVisible.value = true
-//   rejectReason.value = ''
-// }
 
 // 提交驳回 - POST /examRecord/examTem
 const handleRejectSubmit = async () => {
@@ -1143,7 +1079,7 @@ const handleRejectSubmit = async () => {
     const userId = collaborationUser.id || 'admin'
 
     await TemplateApi.examApply({
-      applyId: currentRejectRow.value.id,
+      applyId: currentRejectRow.value?.id || '',
       examResult: '2', // 驳回
       examOpinion: rejectReason.value,
       examUserId: userId
@@ -1159,43 +1095,10 @@ const handleRejectSubmit = async () => {
   }
 }
 
-// 审核通过 - POST /examRecord/examTem
-// const handleApprove = async (row: TemplateApi.TemplateVO) => {
-//   if (!row.id) return
-
-//   try {
-//     await ElMessageBox.confirm('确认审核通过该模板吗？', '审核确认', {
-//       confirmButtonText: '确认提交',
-//       cancelButtonText: '取消',
-//       type: 'info'
-//     })
-
-//     // 获取当前用户ID
-//     const collaborationUser = collaborationUserStore.getOrCreateUser()
-//     const userId = collaborationUser.id || 'admin'
-
-//     await TemplateApi.examApply({
-//       applyId: row.id,
-//       examResult: '1', // 通过
-//       examOpinion: '',
-//       examUserId: userId
-//     })
-//     ElMessage.success('审核通过')
-//     getList()
-//   } catch (error: any) {
-//     if (error !== 'cancel') {
-//       console.error('审核失败:', error)
-//       ElMessage.error('审核失败')
-//     }
-//   }
-// }
-
-// 预览弹窗相关
 const previewDialogVisible = ref(false)
 const previewContent = ref('')
 const previewTitle = ref('')
 
-// 预览功能
 const handlePreview = async (row: TemplateApi.TemplateVO) => {
   if (!row.id) {
     ElMessage.warning('文档ID不存在')
@@ -1230,7 +1133,6 @@ const handlePreview = async (row: TemplateApi.TemplateVO) => {
   }
 }
 
-// 导出功能
 const handleExport = async (row: TemplateApi.TemplateVO) => {
   if (!row.id) {
     ElMessage.warning('文档ID不存在')
@@ -1275,12 +1177,10 @@ const handleExport = async (row: TemplateApi.TemplateVO) => {
   }
 }
 
-// 审核记录弹窗相关
 const examRecordDialogVisible = ref(false)
 const examRecordLoading = ref(false)
 const examRecordList = ref<TemplateApi.ExamRecordVO[]>([])
 
-// 发布弹窗相关
 const publishDialogVisible = ref(false)
 const publishLoading = ref(false)
 const currentPublishRow = ref<TemplateApi.TemplateVO>()
@@ -1288,20 +1188,18 @@ const publishFormData = reactive({
   visibleScope: [] as string[]
 })
 
-// 打开发布弹窗
 const openPublishDialog = (row: TemplateApi.TemplateVO) => {
   currentPublishRow.value = row
   publishDialogVisible.value = true
   publishFormData.visibleScope = ['user1', 'user2', 'user3'] // 默认回显
 }
 
-// 确认发布
 const handlePublishSubmit = async () => {
   if (isNil(currentPublishRow.value?.id)) return
   publishLoading.value = true
   try {
     const result = await TemplateApi.publishDocument({
-      id: currentPublishRow.value.id,
+      id: currentPublishRow.value?.id || '',
       visibleScope: publishFormData.visibleScope
     })
 
@@ -1329,7 +1227,6 @@ const handlePublishSubmit = async () => {
   }
 }
 
-// 审核执行 - 跳转到编辑器（只读模式）
 const handleReviewExecute = async (row: TemplateApi.TemplateVO) => {
   // 创建 loading 实例
   const loadingInstance = ElLoading.service({

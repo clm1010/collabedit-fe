@@ -7,7 +7,6 @@
     destroy-on-close
     class="custom-dialog-header"
   >
-    <!-- 添加要素按钮 -->
     <div class="flex justify-center mb-4">
       <el-button type="primary" link @click="handleAddElement">
         <Icon icon="ep:plus" class="mr-1" />
@@ -15,19 +14,15 @@
       </el-button>
     </div>
 
-    <!-- 要素列表表格 -->
     <div class="elements-table">
-      <!-- 表头 -->
       <div class="table-header">
         <div class="col-type">类型</div>
         <div class="col-label">要素</div>
         <div class="col-action">操作</div>
       </div>
 
-      <!-- 要素行 -->
       <div v-if="elementsList.length > 0" class="table-body">
         <div v-for="(item, index) in elementsList" :key="index" class="table-row">
-          <!-- 类型选择 -->
           <div class="col-type">
             <el-select
               v-model="item.item_type"
@@ -44,10 +39,8 @@
             </el-select>
           </div>
 
-          <!-- 要素名称 -->
           <div class="col-label">
             <el-input v-model="item.item_label" placeholder="请输入文本" clearable />
-            <!-- 单选/多选时显示选项配置 -->
             <el-input
               v-if="needOptions(item.item_type)"
               v-model="item._optionsStr"
@@ -58,7 +51,6 @@
             />
           </div>
 
-          <!-- 操作 -->
           <div class="col-action">
             <el-button type="danger" link @click="handleDeleteElement(index)">
               <Icon icon="ep:delete" />
@@ -67,7 +59,6 @@
         </div>
       </div>
 
-      <!-- 空状态 -->
       <div v-else class="empty-state">
         <span class="text-gray-400">暂无要素，请点击上方按钮添加</span>
       </div>
@@ -83,12 +74,9 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { Icon } from '@/components/Icon'
-// 使用统一的 utils 常量文件
 import { ELEMENT_TYPE_OPTIONS, needOptions } from '@/utils/tmmConstants'
-// 业务类型从统一的 types 文件夹导入
 import type { ElementItem } from '@/types/management'
 
-// Props
 interface Props {
   modelValue: boolean
   elements?: ElementItem[]
@@ -99,26 +87,22 @@ const props = withDefaults(defineProps<Props>(), {
   elements: () => []
 })
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'confirm', elements: ElementItem[]): void
 }>()
 
-// 内部要素列表（带临时字段）
 interface InternalElementItem extends ElementItem {
-  _optionsStr?: string // 用于输入框绑定的选项字符串
+  _optionsStr?: string
 }
 
 const elementsList = ref<InternalElementItem[]>([])
 
-// 弹窗显示状态
 const dialogVisible = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
 })
 
-// 监听 props.elements 变化，初始化内部列表
 watch(
   () => props.elements,
   (newVal) => {
@@ -134,7 +118,6 @@ watch(
   { immediate: true, deep: true }
 )
 
-// 添加要素
 const handleAddElement = () => {
   elementsList.value.push({
     item_type: 'text',
@@ -144,12 +127,10 @@ const handleAddElement = () => {
   })
 }
 
-// 删除要素
 const handleDeleteElement = (index: number) => {
   elementsList.value.splice(index, 1)
 }
 
-// 类型变化时清空选项
 const handleTypeChange = (item: InternalElementItem) => {
   if (!needOptions(item.item_type)) {
     item.item_options = []
@@ -157,7 +138,6 @@ const handleTypeChange = (item: InternalElementItem) => {
   }
 }
 
-// 选项输入框失焦时，解析选项
 const handleOptionsBlur = (item: InternalElementItem) => {
   if (item._optionsStr) {
     item.item_options = item._optionsStr
@@ -169,14 +149,11 @@ const handleOptionsBlur = (item: InternalElementItem) => {
   }
 }
 
-// 取消
 const handleCancel = () => {
   dialogVisible.value = false
 }
 
-// 确定
 const handleConfirm = () => {
-  // 转换为标准格式
   const result: ElementItem[] = elementsList.value.map((item) => {
     const element: ElementItem = {
       item_type: item.item_type,
@@ -251,7 +228,6 @@ const handleConfirm = () => {
 </style>
 
 <style lang="scss">
-// 统一弹窗样式 - 全局样式
 .el-dialog.custom-dialog-header {
   padding: 0;
 

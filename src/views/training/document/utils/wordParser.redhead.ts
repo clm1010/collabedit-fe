@@ -17,7 +17,6 @@ export async function isRedHeadDocument(arrayBuffer: ArrayBuffer): Promise<boole
       zip.file(/word\/afchunk/i).length > 0
 
     if (hasAfchunk) {
-      console.log('检测到红头文件特征：存在 altChunk 文件')
       return true
     }
 
@@ -25,7 +24,6 @@ export async function isRedHeadDocument(arrayBuffer: ArrayBuffer): Promise<boole
     if (relsFile) {
       const relsContent = await relsFile.async('string')
       if (relsContent.includes('aFChunk') || relsContent.includes('afChunk')) {
-        console.log('检测到红头文件特征：存在 aFChunk 关系')
         return true
       }
     }

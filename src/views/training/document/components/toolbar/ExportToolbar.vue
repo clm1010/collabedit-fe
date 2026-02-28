@@ -1,6 +1,5 @@
 <template>
   <div class="export-toolbar">
-    <!-- 预览 HTML -->
     <div class="toolbar-group">
       <el-tooltip content="HTML 预览" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="previewHtml">
@@ -10,7 +9,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 导出 HTML -->
     <div class="toolbar-group">
       <el-tooltip content="导出 HTML" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="exportHtml">
@@ -20,7 +18,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 导出 Word -->
     <div class="toolbar-group">
       <el-tooltip content="导出 Word" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="exportWord">
@@ -32,7 +29,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 导出 PDF -->
     <div class="toolbar-group">
       <el-tooltip content="导出 PDF" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="exportPdf">
@@ -42,7 +38,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 导出纯文本 -->
     <div class="toolbar-group">
       <el-tooltip content="导出纯文本" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="exportText">
@@ -54,7 +49,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 打印 -->
     <div class="toolbar-group">
       <el-tooltip content="打印" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="printDocument">
@@ -64,7 +58,6 @@
       </el-tooltip>
     </div>
 
-    <!-- 打印预览 -->
     <div class="toolbar-group">
       <el-tooltip content="打印预览" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large" @click="printPreview">
@@ -76,7 +69,6 @@
 
     <div class="toolbar-divider"></div>
 
-    <!-- 分享 -->
     <div class="toolbar-group">
       <el-popover placement="bottom" :width="200" trigger="click">
         <template #reference>
@@ -106,7 +98,6 @@
       </el-popover>
     </div>
 
-    <!-- HTML 预览对话框 -->
     <el-dialog
       v-model="htmlPreviewVisible"
       title="HTML 预览"
@@ -152,15 +143,12 @@ import { docModelToDocx, normalizeHtmlThroughDocModel, parseHtmlToDocModel } fro
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 
-// 获取编辑器实例
 const editor = useEditor()
 
-// 对话框状态
 const htmlPreviewVisible = ref(false)
 const previewMode = ref<'preview' | 'source'>('preview')
 const previewContent = ref('')
 
-// 格式化 HTML
 const formattedHtml = computed(() => {
   if (!previewContent.value) return ''
   return previewContent.value
@@ -171,7 +159,6 @@ const formattedHtml = computed(() => {
     .join('\n')
 })
 
-// 生成完整 HTML（异步：还原 blob 图片 + DocModel 归一化）
 const generateFullHtml = async (): Promise<string> => {
   if (!editor.value) return ''
 
@@ -184,7 +171,6 @@ const generateFullHtml = async (): Promise<string> => {
   return wrapInExportHtml(content, '文档')
 }
 
-// HTML 预览
 const previewHtml = async () => {
   if (!editor.value) {
     ElMessage.warning('编辑器未就绪')
@@ -200,14 +186,12 @@ const previewHtml = async () => {
   htmlPreviewVisible.value = true
 }
 
-// 导出 HTML
 const exportHtml = async () => {
   const html = await generateFullHtml()
   downloadFile(html, '文档.html', 'text/html')
   ElMessage.success('HTML 已导出')
 }
 
-// 导出 Word (使用 HTML 格式)
 const exportWord = async () => {
   if (!editor.value) return
 
@@ -231,7 +215,6 @@ const exportWord = async () => {
   }
 }
 
-// 导出 PDF
 const exportPdf = async () => {
   if (!editor.value) return
 
@@ -256,7 +239,6 @@ const exportPdf = async () => {
   ElMessage.success('请在打印对话框中选择"另存为 PDF"')
 }
 
-// 导出纯文本
 const exportText = () => {
   if (!editor.value) return
 
@@ -265,7 +247,6 @@ const exportText = () => {
   ElMessage.success('纯文本已导出')
 }
 
-// 复制 HTML
 const copyHtml = async () => {
   try {
     const html = await generateFullHtml()
@@ -276,14 +257,12 @@ const copyHtml = async () => {
   }
 }
 
-// 下载 HTML
 const downloadHtml = async () => {
   const html = await generateFullHtml()
   downloadFile(html, '文档.html', 'text/html')
   ElMessage.success('HTML 已下载')
 }
 
-// 打印文档
 const printDocument = async () => {
   if (!editor.value) return
 
@@ -303,7 +282,6 @@ const printDocument = async () => {
   }
 }
 
-// 打印预览
 const printPreview = async () => {
   if (!editor.value) return
 
@@ -319,7 +297,6 @@ const printPreview = async () => {
   previewWindow.document.close()
 }
 
-// 复制分享链接
 const copyShareLink = async () => {
   try {
     await navigator.clipboard.writeText(window.location.href)
@@ -329,19 +306,16 @@ const copyShareLink = async () => {
   }
 }
 
-// 发送邮件
 const shareToEmail = () => {
   const subject = encodeURIComponent('文档分享')
   const body = encodeURIComponent(`请查看文档：${window.location.href}`)
   window.open(`mailto:?subject=${subject}&body=${body}`)
 }
 
-// 生成二维码（简单提示）
 const generateQrCode = () => {
   ElMessage.info('二维码功能开发中')
 }
 
-// 下载文件工具函数
 const downloadFile = (content: string, filename: string, mimeType: string) => {
   const blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
   const url = URL.createObjectURL(blob)

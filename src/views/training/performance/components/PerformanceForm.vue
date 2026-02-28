@@ -26,16 +26,6 @@
       <el-form-item label="筹划方案名称" prop="planName">
         <el-input v-model="formData.planName" placeholder="请输入" clearable />
       </el-form-item>
-      <!-- <el-form-item label="演训主题" prop="exerciseTheme">
-        <el-select v-model="formData.exerciseTheme" placeholder="请选择" clearable class="w-full">
-          <el-option
-            v-for="item in exerciseThemeOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-      </el-form-item> -->
       <el-form-item v-show="false" label="演训类型" prop="exerciseType">
         <el-select
           v-model="formData.exerciseType"
@@ -117,7 +107,6 @@
         </el-select>
       </el-form-item>
 
-      <!-- 创建方式（仅新建时显示） -->
       <el-form-item v-if="!isEditMode" label="创建方式" prop="creationMethod">
         <el-radio-group v-model="formData.creationMethod">
           <el-radio label="new">新建文档</el-radio>
@@ -125,7 +114,6 @@
         </el-radio-group>
       </el-form-item>
 
-      <!-- 创建方式：上传文档 (显示上传组件，仅新建时显示) -->
       <div v-if="!isEditMode && formData.creationMethod === 'upload'" class="pl-[120px] mt-4">
         <div class="flex items-start">
           <span class="text-red-500 mr-1">*</span>
@@ -162,7 +150,6 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { isEmpty } from 'lodash-es'
 import { Icon } from '@/components/Icon'
 
-// Props
 interface Props {
   visible: boolean
   isEditMode: boolean
@@ -172,23 +159,19 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'save', data: FormData, uploadFile: File | null): void
   (e: 'open-drill-selector'): void
 }>()
 
-// 双向绑定 visible
 const dialogVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
 
-// 弹窗标题
 const dialogTitle = computed(() => (props.isEditMode ? '编辑筹划方案' : '新建筹划方案'))
 
-// 表单数据
 export interface FormData {
   id: string
   planId: string
@@ -219,28 +202,21 @@ const formData = reactive<FormData>({
   creationMethod: 'new'
 })
 
-// 上传文件
 const uploadFileList = ref<any[]>([])
 const uploadFile = ref<File | null>(null)
-
-// 表单引用
 const formRef = ref()
 
-// 表单验证规则
 const formRules = {
   planName: [{ required: true, message: '请输入筹划方案名称', trigger: 'blur' }],
-  // exerciseTheme: [{ required: true, message: '请输入演训主题', trigger: 'blur' }],
   fileType: [{ required: true, message: '请选择文档分类', trigger: 'change' }],
   activeUser: [{ required: true, message: '请选择可编辑用户', trigger: 'change' }],
   creationMethod: [{ required: true, message: '请选择创建方式', trigger: 'change' }]
 }
 
-// 控制演训相关字段是否禁用
 const isExerciseFieldDisabled = computed(() => {
   return !isEmpty(formData.planId) && !isEmpty(formData.exerciseName)
 })
 
-// 选项数据
 const exerciseThemeOptions = [
   { label: '联合作战训练', value: 'LHZZYX' },
   { label: '作战训练', value: 'ZUOZL' },
@@ -290,28 +266,23 @@ const activeUserOptions = [
   { label: '参谋人员B', value: 'staff_b' }
 ]
 
-// 清空演训数据
 const handleClearExerciseData = () => {
   formData.planId = ''
   formData.exerciseName = ''
 }
 
-// 文件选择变化
 const handleFileChange = (file: any) => {
   uploadFile.value = file.raw
 }
 
-// 文件移除
 const handleFileRemove = () => {
   uploadFile.value = null
 }
 
-// 取消
 const handleCancel = () => {
   dialogVisible.value = false
 }
 
-// 保存
 const handleSave = async () => {
   try {
     await formRef.value?.validate()
@@ -321,7 +292,6 @@ const handleSave = async () => {
   }
 }
 
-// 重置表单
 const resetForm = () => {
   Object.assign(formData, {
     id: '',
@@ -344,7 +314,6 @@ const resetForm = () => {
   })
 }
 
-// 设置表单数据（编辑时使用）
 const setFormData = (data: Partial<FormData>) => {
   Object.assign(formData, data)
   uploadFileList.value = []
@@ -354,7 +323,6 @@ const setFormData = (data: Partial<FormData>) => {
   })
 }
 
-// 设置演训数据（从演训选择器回填）
 const setDrillData = (drillData: any) => {
   formData.planId = drillData.id || ''
   formData.exerciseName = drillData.exerciseName || ''
@@ -365,7 +333,6 @@ const setDrillData = (drillData: any) => {
   formRef.value?.validateField('planId')
 }
 
-// 暴露方法
 defineExpose({
   resetForm,
   setFormData,

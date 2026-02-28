@@ -1,7 +1,6 @@
 <template>
   <node-view-wrapper class="page-break-wrapper" :class="{ 'is-selected': selected }">
     <div class="page-break-container" contenteditable="false">
-      <!-- 分页线 - 简洁设计参考 Umo Editor -->
       <div class="page-break-line">
         <div class="page-break-label">
           <span class="label-text">分页符</span>

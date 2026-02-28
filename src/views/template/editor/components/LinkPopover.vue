@@ -8,12 +8,10 @@
       @mousedown.stop
     >
       <div class="link-popover-content">
-        <!-- 链接图标 -->
         <div class="link-icon">
           <Icon icon="mdi:link" />
         </div>
 
-        <!-- URL 输入框 -->
         <input
           ref="inputRef"
           v-model="inputUrl"
@@ -24,7 +22,6 @@
           @keydown.escape="handleClose"
         />
 
-        <!-- 应用按钮 -->
         <button
           class="link-btn link-btn-apply"
           @click="handleApply"
@@ -34,10 +31,8 @@
           <Icon icon="mdi:keyboard-return" />
         </button>
 
-        <!-- 分隔线 -->
         <div class="link-divider" v-if="hasExistingLink"></div>
 
-        <!-- 打开链接按钮 -->
         <button
           v-if="hasExistingLink"
           class="link-btn"
@@ -47,12 +42,10 @@
           <Icon icon="mdi:open-in-new" />
         </button>
 
-        <!-- 复制链接按钮 -->
         <button v-if="hasExistingLink" class="link-btn" @click="handleCopyLink" title="复制链接">
           <Icon icon="mdi:content-copy" />
         </button>
 
-        <!-- 删除链接按钮 -->
         <button
           v-if="hasExistingLink"
           class="link-btn link-btn-delete"
@@ -71,12 +64,10 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { Icon } from '@/components/Icon'
 import { ElMessage } from 'element-plus'
 
-// Props
 interface Props {
   editor: any
   visible: boolean
   initialUrl?: string
-  // 触发元素的位置信息
   triggerRect?: DOMRect | null
 }
 
@@ -86,26 +77,21 @@ const props = withDefaults(defineProps<Props>(), {
   triggerRect: null
 })
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'apply', url: string): void
   (e: 'remove'): void
 }>()
 
-// Refs
 const popoverRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-// 输入的 URL
 const inputUrl = ref('')
 
-// 是否有现有链接
 const hasExistingLink = computed(() => {
   return props.initialUrl && props.initialUrl.trim() !== ''
 })
 
-// Popover 位置样式
 const popoverStyle = computed(() => {
   if (!props.triggerRect) {
     return {
@@ -115,7 +101,6 @@ const popoverStyle = computed(() => {
     }
   }
 
-  // 计算 popover 位置，显示在触发元素下方
   const top = props.triggerRect.bottom + window.scrollY + 8
   const left = props.triggerRect.left + window.scrollX
 
@@ -126,14 +111,12 @@ const popoverStyle = computed(() => {
   }
 })
 
-// 监听 visible 变化，初始化数据
 watch(
   () => props.visible,
   async (newVisible) => {
     if (newVisible) {
       inputUrl.value = props.initialUrl || ''
       await nextTick()
-      // 聚焦输入框并选中文本
       if (inputRef.value) {
         inputRef.value.focus()
         inputRef.value.select()
@@ -143,7 +126,6 @@ watch(
   { immediate: true }
 )
 
-// 监听 initialUrl 变化
 watch(
   () => props.initialUrl,
   (newUrl) => {
@@ -153,7 +135,6 @@ watch(
   }
 )
 
-// 应用链接
 const handleApply = () => {
   const url = inputUrl.value.trim()
   if (!url) return
@@ -168,7 +149,6 @@ const handleApply = () => {
   handleClose()
 }
 
-// 打开链接
 const handleOpenLink = () => {
   const url = inputUrl.value.trim() || props.initialUrl
   if (url) {
@@ -176,7 +156,6 @@ const handleOpenLink = () => {
   }
 }
 
-// 复制链接
 const handleCopyLink = async () => {
   const url = inputUrl.value.trim() || props.initialUrl
   if (!url) return
@@ -210,30 +189,25 @@ const handleCopyLink = async () => {
   }
 }
 
-// 删除链接
 const handleRemoveLink = () => {
   emit('remove')
   handleClose()
 }
 
-// 关闭 popover
 const handleClose = () => {
   emit('update:visible', false)
 }
 
-// 点击外部关闭
 const handleClickOutside = (event: MouseEvent) => {
   if (props.visible && popoverRef.value && !popoverRef.value.contains(event.target as Node)) {
     handleClose()
   }
 }
 
-// 挂载时添加点击事件监听
 onMounted(() => {
   document.addEventListener('mousedown', handleClickOutside)
 })
 
-// 卸载时移除点击事件监听
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleClickOutside)
 })

@@ -7,7 +7,6 @@
     class="custom-dialog-header"
     :close-on-click-modal="false"
   >
-    <!-- 筛选栏 -->
     <el-form ref="filterFormRef" :model="filterParams" :inline="true" class="mb-4">
       <el-row :gutter="24" justify="center">
         <el-col :span="8">
@@ -83,7 +82,6 @@
       </el-row>
     </el-form>
 
-    <!-- 列表 -->
     <el-table
       v-loading="loading"
       :data="dataList"
@@ -135,7 +133,6 @@ import { isEmpty, isNil, isArray, pickBy } from 'lodash-es'
 import { Icon } from '@/components/Icon'
 import * as PerformanceApi from '@/api/training'
 
-// 演训类型选项
 const exerciseTypeOptions = [
   { label: '大学年度演训', value: 'DXNDYX' },
   { label: '联合类', value: 'LHL' },
@@ -151,7 +148,6 @@ const exerciseTypeOptions = [
   { label: '太空类', value: 'TKL' }
 ]
 
-// 所属学院选项
 const collegeOptions = [
   { label: '国防大学', value: 'GFDX' },
   { label: '联合作战学院', value: 'LHZZXY' },
@@ -164,31 +160,26 @@ const collegeOptions = [
   { label: '研究生院', value: 'YJSY' }
 ]
 
-// Props
 interface Props {
   visible: boolean
 }
 
 const props = defineProps<Props>()
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'select', row: any): void
 }>()
 
-// 双向绑定 visible
 const dialogVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
 
-// 状态
 const loading = ref(false)
 const dataList = ref<any[]>([])
 const total = ref(0)
 
-// 筛选参数
 const filterFormRef = ref()
 const filterParams = reactive({
   exerciseName: '',
@@ -198,17 +189,14 @@ const filterParams = reactive({
   city: ''
 })
 
-// 分页参数
 const pageParams = reactive({
   pageNo: 1,
   pageSize: 10
 })
 
-// 加载数据
 const loadData = async () => {
   try {
     loading.value = true
-    // 使用 lodash pickBy 过滤空值
     const params = pickBy(filterParams, (value) => {
       if (isArray(value)) return !isEmpty(value)
       return !isNil(value) && value !== ''
@@ -228,26 +216,22 @@ const loadData = async () => {
   }
 }
 
-// 查询
 const handleSearch = () => {
   pageParams.pageNo = 1
   loadData()
 }
 
-// 重置
 const handleReset = () => {
   filterFormRef.value?.resetFields()
   pageParams.pageNo = 1
   loadData()
 }
 
-// 选择行
 const handleSelect = (row: any) => {
   if (!row) return
   emit('select', row)
 }
 
-// 监听弹窗打开
 watch(
   () => props.visible,
   (val) => {

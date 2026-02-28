@@ -1,7 +1,3 @@
-/**
- * 转换器模块导出
- */
-
 export { htmlToMarkdown } from './htmlToMarkdown'
 export { markdownToHtml } from './markdownToHtml'
 export {

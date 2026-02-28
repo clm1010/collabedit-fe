@@ -13,11 +13,9 @@ import {
   type DocCategoryVO
 } from '@/views/training/performance/config/categories'
 
-// 导出类型定义（从统一的 types 文件夹导出）
 export * from '@/types/performance'
 export type { DocCategoryVO }
 
-// 导入类型
 import type {
   TrainingPerformanceVO,
   TrainingPerformancePageReqVO,
@@ -31,8 +29,6 @@ import type {
   ExamRecordVO,
   ExamApplyReqVO
 } from '@/types/performance'
-
-// ==================== Java 后端 API 实现 ====================
 
 const javaApi = {
   /**
@@ -50,16 +46,13 @@ const javaApi = {
   getDocCategories: async (): Promise<{ data: DocCategoryVO[]; withAll: DocCategoryVO[] }> => {
     try {
       const res = await javaRequest.get('/dict/list', { dictType: 'FILE_TYPE' })
-      // Java 后端返回的数据格式: { code: 200, data: [...] }
       const data: DocCategoryVO[] = res || []
-      // 返回原始数据和带"全部"的数据
       return {
         data,
         withAll: [ALL_CATEGORY, ...data]
       }
     } catch (error) {
       console.error('获取文档分类失败:', error)
-      // 降级使用本地配置
       return {
         data: performanceCategories,
         withAll: [ALL_CATEGORY, ...performanceCategories]
@@ -207,15 +200,10 @@ const javaApi = {
   }
 }
 
-// ==================== Mock API 实现 ====================
-// Mock API 返回格式与 Java 后端响应拦截器处理后的格式保持一致
-
 const mockApi = {
   getPageList: async (params: TrainingPerformancePageReqVO) => {
     const { getPageList } = await import('@/mock/training/performance')
     const res = await getPageList(params)
-    // 返回 data 部分，与 javaRequest 响应拦截器处理后格式一致
-
     return res.data
   },
 
@@ -227,7 +215,7 @@ const mockApi = {
   createNewData: async (data: TrainingPerformanceVO) => {
     const { createNewData } = await import('@/mock/training/performance')
     const res = await createNewData(data)
-    return res // 返回完整响应，包含 code, data, msg
+    return res
   },
 
   updatePerformanceData: async (data: any) => {
@@ -311,9 +299,6 @@ const mockApi = {
   }
 }
 
-// ==================== 统一导出 API (自动切换) ====================
-
-// 选择使用的 API 实现
 const api = USE_MOCK ? mockApi : javaApi
 
 /**
@@ -404,5 +389,4 @@ export const getExamRecordList = api.getExamRecordList
  */
 export const examApply = api.examApply
 
-// 重新导出分类配置
 export { performanceCategories } from '@/views/training/performance/config/categories'

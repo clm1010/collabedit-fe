@@ -1,9 +1,3 @@
-/**
- * 模板编辑器工具模块
- * 统一导出入口
- */
-
-// 转换器
 export { htmlToMarkdown, markdownToHtml } from './converters'
 export {
   protectStyledTags,
@@ -14,7 +8,6 @@ export {
 } from './converters'
 export type { StyledTagsProtection, PlaceholderItem } from './converters'
 
-// 解析器
 export {
   parseWordDocument,
   cleanWordHtml,
@@ -26,7 +19,6 @@ export {
   markdownToHtmlMd
 } from './parsers'
 
-// 红头文件
 export {
   extractRedHeader,
   detectRedHeaderType,
@@ -45,7 +37,6 @@ export type {
   RedHeaderDetectResult
 } from './redHeader'
 
-// 编码工具
 export {
   encodeToBase64,
   decodeFromBase64,
@@ -55,14 +46,12 @@ export {
   base64ToBlob
 } from './encoding'
 
-// 预览工具
 export {
   generatePreviewHtml,
   openPreviewWindow,
   getPreviewStyles
 } from './preview'
 
-// 导出工具
 export {
   exportMarkdown,
   exportHtml,

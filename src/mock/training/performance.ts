@@ -1,7 +1,3 @@
-/**
- * 演训方案 Mock 数据和 API
- * 用于开发调试，可通过配置切换到 Java 后端
- */
 import type {
   TrainingPerformanceVO,
   TrainingPerformancePageReqVO,
@@ -21,34 +17,20 @@ import {
   type DocCategoryVO
 } from '@/views/training/performance/config/categories'
 
-// ==================== Mock 数据 ====================
-
-/**
- * 模拟延迟（模拟网络请求）
- */
 const mockDelay = (ms: number = 300): Promise<unknown> =>
   new Promise((resolve) => setTimeout(resolve, ms))
 
-/**
- * 生成模拟 ID
- */
 let mockIdCounter: number = 100
 const generateMockId = (): number => ++mockIdCounter
 
-/**
- * 审核状态枚举（编辑中:1、审核中:2、审核通过:3、发布:4、驳回:5）
- */
 const ApplyNode: Record<string, string> = {
-  EDITING: '1', // 编辑中
-  REVIEWING: '2', // 审核中
-  APPROVED: '3', // 审核通过
-  PUBLISHED: '4', // 发布
-  REJECTED: '5' // 驳回
+  EDITING: '1',
+  REVIEWING: '2',
+  APPROVED: '3',
+  PUBLISHED: '4',
+  REJECTED: '5'
 }
 
-/**
- * 模拟演训方案数据列表
- */
 const mockDataList: TrainingPerformanceVO[] = [
   {
     id: '1',
@@ -61,10 +43,9 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '本方案用于指导2024年度联合作战演练的组织实施',
     level: 'ZLJ',
     exerciseType: 'LHL',
-    // exerciseTheme: '联合作战',
     docType: 'docx',
     createBy: 'admin',
-    applyNode: ApplyNode.EDITING, // 编辑中
+    applyNode: ApplyNode.EDITING,
     createTime: '2024-12-10 09:30:00',
     updateTime: '2024-12-12 14:20:00',
     delFlg: '0'
@@ -80,10 +61,9 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '战略级综合演练的总体方案设计',
     level: 'ZLJ',
     exerciseType: 'ZUOZL',
-    // exerciseTheme: '战略演练',
     docType: 'docx',
     createBy: 'staff_b',
-    applyNode: ApplyNode.REVIEWING, // 审核中
+    applyNode: ApplyNode.REVIEWING,
     createTime: '2024-12-08 10:00:00',
     updateTime: '2024-12-11 16:45:00',
     delFlg: '0'
@@ -99,10 +79,9 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '网络空间安全攻防演练方案',
     level: 'YXJ',
     exerciseType: 'WLL',
-    // exerciseTheme: '网络安全',
     docType: 'docx',
     createBy: 'admin',
-    applyNode: ApplyNode.APPROVED, // 审核通过
+    applyNode: ApplyNode.APPROVED,
     createTime: '2024-12-05 08:30:00',
     updateTime: '2024-12-10 11:20:00',
     delFlg: '0'
@@ -118,10 +97,9 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '后勤保障体系综合演练方案',
     level: 'ZSJ',
     exerciseType: 'HZL',
-    // exerciseTheme: '后勤保障',
     docType: 'docx',
     createBy: 'staff_a',
-    applyNode: ApplyNode.PUBLISHED, // 发布
+    applyNode: ApplyNode.PUBLISHED,
     createTime: '2024-12-01 14:00:00',
     updateTime: '2024-12-09 09:15:00',
     delFlg: '0'
@@ -137,10 +115,9 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '复杂电磁环境下的频谱管控方案',
     level: 'YXJ',
     exerciseType: 'DCL',
-    // exerciseTheme: '电磁管控',
     docType: 'docx',
     createBy: 'admin',
-    applyNode: ApplyNode.REJECTED, // 驳回
+    applyNode: ApplyNode.REJECTED,
     createTime: '2024-11-28 11:30:00',
     updateTime: '2024-12-08 15:40:00',
     delFlg: '0'
@@ -156,10 +133,9 @@ const mockDataList: TrainingPerformanceVO[] = [
     description: '后勤保障体系综合演练方案',
     level: 'YXJ',
     exerciseType: 'HZL',
-    // exerciseTheme: '后勤保障',
     docType: 'docx',
     createBy: 'staff_a',
-    applyNode: ApplyNode.REVIEWING, // 审核中
+    applyNode: ApplyNode.REVIEWING,
     createTime: '2024-11-28 11:30:00',
     updateTime: '2024-12-08 15:40:00',
     delFlg: '0'
@@ -173,21 +149,17 @@ const mockDataList: TrainingPerformanceVO[] = [
     fileType: '企图立案',
     activeUser: 'staff_a',
     description: '太空作战演练方案',
-    level: 'YXJ', // 演训等级
-    exerciseType: 'KZL', // 演训类型
-    // exerciseTheme: '太空作战',
-    docType: 'docx', // 文档类型
-    createBy: 'staff_a', // 创建人
-    applyNode: ApplyNode.REJECTED, // 驳回
+    level: 'YXJ',
+    exerciseType: 'KZL',
+    docType: 'docx',
+    createBy: 'staff_a',
+    applyNode: ApplyNode.REJECTED,
     createTime: '2024-11-28 11:30:00',
     updateTime: '2024-12-08 15:40:00',
     delFlg: '0'
   }
 ]
 
-/**
- * 模拟驳回历史记录
- */
 const mockRejectHistory: Record<string, RejectRecordVO[]> = {
   5: [
     {
@@ -198,10 +170,6 @@ const mockRejectHistory: Record<string, RejectRecordVO[]> = {
   ]
 }
 
-/**
- * 模拟审核记录数据
- * 审核结果: 1通过 2驳回
- */
 const mockExamRecordList: Record<string | string, ExamRecordVO[]> = {
   '2': [
     {
@@ -297,51 +265,33 @@ const mockExamRecordList: Record<string | string, ExamRecordVO[]> = {
   ]
 }
 
-// ==================== Mock API 实现 ====================
-
-/**
- * 获取分页列表数据
- */
 export const getPageList = async (params: TrainingPerformancePageReqVO) => {
   await mockDelay()
 
   let filteredList = [...mockDataList]
 
-  // 按状态筛选
   if (params.applyNode) {
     filteredList = filteredList.filter((item) => item.applyNode === params.applyNode)
   }
 
-  // 按方案名称筛选
   if (params.planName) {
     filteredList = filteredList.filter((item) =>
       item.planName.toLowerCase().includes(params.planName!.toLowerCase())
     )
   }
 
-  // 按文档分类筛选
   if (params.fileType) {
     filteredList = filteredList.filter((item) => item.fileType === params.fileType)
   }
 
-  // 按演训主题筛选
-  // if (params.exerciseTheme) {
-  //   filteredList = filteredList.filter((item) =>
-  //     item.exerciseTheme?.toLowerCase().includes(params.exerciseTheme!.toLowerCase())
-  //   )
-  // }
-
-  // 按演训类型筛选
   if (params.exerciseType) {
     filteredList = filteredList.filter((item) => item.exerciseType === params.exerciseType)
   }
 
-  // 按演训等级筛选
   if (params.level) {
     filteredList = filteredList.filter((item) => item.level === params.level)
   }
 
-  // 按标签页类型筛选
   // tabType=recent: 显示全部数据
   // tabType=review: 只显示审核中(2)和审核通过(3)
   // tabType=publish: 只显示发布(4)
@@ -353,7 +303,6 @@ export const getPageList = async (params: TrainingPerformancePageReqVO) => {
     filteredList = filteredList.filter((item) => item.applyNode === ApplyNode.PUBLISHED)
   }
 
-  // 分页
   const pageNo = params.pageNo || 1
   const pageSize = params.pageSize || 10
   const startIndex = (pageNo - 1) * pageSize
@@ -370,10 +319,6 @@ export const getPageList = async (params: TrainingPerformancePageReqVO) => {
   }
 }
 
-/**
- * 获取文档分类列表
- * 返回 data（原始数据）和 withAll（带"全部"选项的数据）
- */
 export const getDocCategories = async (): Promise<{ data: DocCategoryVO[]; withAll: DocCategoryVO[] }> => {
   await mockDelay(100)
   return {
@@ -382,16 +327,13 @@ export const getDocCategories = async (): Promise<{ data: DocCategoryVO[]; withA
   }
 }
 
-/**
- * 新建筹划方案
- */
 export const createNewData = async (data: TrainingPerformanceVO) => {
   await mockDelay()
 
   const newItem: TrainingPerformanceVO = {
     ...data,
     id: String(generateMockId()),
-    applyNode: ApplyNode.EDITING, // 编辑中
+    applyNode: ApplyNode.EDITING,
     createTime: new Date().toLocaleString('zh-CN'),
     updateTime: new Date().toLocaleString('zh-CN'),
     delFlg: '0'
@@ -406,9 +348,6 @@ export const createNewData = async (data: TrainingPerformanceVO) => {
   }
 }
 
-/**
- * 编辑演训方案数据
- */
 export const updatePerformanceData = async (data: any) => {
   await mockDelay()
 
@@ -434,9 +373,6 @@ export const updatePerformanceData = async (data: any) => {
   }
 }
 
-/**
- * 删除演训方案
- */
 export const deleteTrainingPerformance = async (ids: string | string[]) => {
   await mockDelay()
 
@@ -455,16 +391,12 @@ export const deleteTrainingPerformance = async (ids: string | string[]) => {
   }
 }
 
-/**
- * 提交审核
- * @param data { id: number, flowId: string, auditors: Record<string, string[]>, comment?: string }
- */
 export const submitAudit = async (data: SubmitAuditReqVO) => {
   await mockDelay()
 
   const index = mockDataList.findIndex((item) => item.id === data.id)
   if (index !== -1) {
-    mockDataList[index].applyNode = ApplyNode.REVIEWING // 审核中
+    mockDataList[index].applyNode = ApplyNode.REVIEWING
     mockDataList[index].flowId = data.flowId
     mockDataList[index].updateTime = new Date().toLocaleString('zh-CN')
 
@@ -482,15 +414,12 @@ export const submitAudit = async (data: SubmitAuditReqVO) => {
   }
 }
 
-/**
- * 发布文档
- */
 export const publishDocument = async (data: PublishDocReqVO) => {
   await mockDelay()
 
   const index = mockDataList.findIndex((item) => item.id === data.id)
   if (index !== -1) {
-    mockDataList[index].applyNode = ApplyNode.PUBLISHED // 发布
+    mockDataList[index].applyNode = ApplyNode.PUBLISHED
     mockDataList[index].updateTime = new Date().toLocaleString('zh-CN')
 
     return {
@@ -507,15 +436,11 @@ export const publishDocument = async (data: PublishDocReqVO) => {
   }
 }
 
-/**
- * 写作权限校验
- */
 export const checkWritePermission = async (
   data: checkWriteData
 ): Promise<PermissionCheckResponse> => {
   await mockDelay(100)
 
-  // 模拟权限校验：admin 用户始终有权限
   const hasPermission = data.userId === 'admin' || Math.random() > 0.3
 
   return {
@@ -526,20 +451,13 @@ export const checkWritePermission = async (
   }
 }
 
-/**
- * 获取文档文件流
- */
 export const getFileStream = async (_id: string): Promise<Blob | null> => {
   await mockDelay()
 
-  // 模拟返回一个简单的文本文件
   const content = '这是模拟的文档内容\n\n用于开发测试。'
   return new Blob([content], { type: 'text/plain' })
 }
 
-/**
- * 上传文档文件
- */
 export const uploadDocument = async (_data: UploadDocumentData) => {
   await mockDelay(500)
 
@@ -552,26 +470,19 @@ export const uploadDocument = async (_data: UploadDocumentData) => {
   }
 }
 
-/**
- * 获取驳回历史
- */
 export const getRejectHistory = async (id: string): Promise<{ data: RejectRecordVO[] }> => {
   await mockDelay(100)
   return { data: mockRejectHistory[id] || [] }
 }
 
-/**
- * 驳回演训方案
- */
 export const rejectTrainingPerformance = async (data: RejectReqVO) => {
   await mockDelay()
 
   const index = mockDataList.findIndex((item) => item.id === data.id)
   if (index !== -1) {
-    mockDataList[index].applyNode = ApplyNode.REJECTED // 驳回
+    mockDataList[index].applyNode = ApplyNode.REJECTED
     mockDataList[index].updateTime = new Date().toLocaleString('zh-CN')
 
-    // 添加驳回记录
     if (!mockRejectHistory[data.id]) {
       mockRejectHistory[data.id] = []
     }
@@ -595,17 +506,11 @@ export const rejectTrainingPerformance = async (data: RejectReqVO) => {
   }
 }
 
-/**
- * 导出演训方案
- */
 export const exportTrainingPerformance = async (_params: TrainingPerformancePageReqVO) => {
   await mockDelay()
   return { data: mockDataList }
 }
 
-/**
- * 模拟演训数据列表（用于选择弹窗）
- */
 const mockExerciseDataList = [
   {
     id: 'drill-001',
@@ -628,8 +533,6 @@ const mockExerciseDataList = [
     updater: '张三',
     startTime: '2024-01-01',
     endTime: '2024-01-15'
-    // 用于表单回显
-    // exerciseTheme: '联合作战'
   },
   {
     id: 'drill-002',
@@ -652,7 +555,6 @@ const mockExerciseDataList = [
     updater: '李四',
     startTime: '2024-03-10',
     endTime: '2024-03-20'
-    // exerciseTheme: '战略演练'
   },
   {
     id: 'drill-003',
@@ -675,7 +577,6 @@ const mockExerciseDataList = [
     updater: '王五',
     startTime: '2024-04-05',
     endTime: '2024-04-12'
-    // exerciseTheme: '网络安全'
   },
   {
     id: 'drill-004',
@@ -698,7 +599,6 @@ const mockExerciseDataList = [
     updater: '赵六',
     startTime: '2024-05-20',
     endTime: '2024-05-25'
-    // exerciseTheme: '后勤保障'
   },
   {
     id: 'drill-005',
@@ -721,7 +621,6 @@ const mockExerciseDataList = [
     updater: '孙七',
     startTime: '2024-06-01',
     endTime: '2024-06-10'
-    // exerciseTheme: '电磁管控'
   },
   {
     id: 'drill-006',
@@ -744,7 +643,6 @@ const mockExerciseDataList = [
     updater: '周八',
     startTime: '2024-07-15',
     endTime: '2024-07-25'
-    // exerciseTheme: '太空作战'
   },
   {
     id: 'drill-007',
@@ -767,7 +665,6 @@ const mockExerciseDataList = [
     updater: '吴九',
     startTime: '2024-08-10',
     endTime: '2024-08-20'
-    // exerciseTheme: '海上作战'
   },
   {
     id: 'drill-008',
@@ -790,7 +687,6 @@ const mockExerciseDataList = [
     updater: '郑十',
     startTime: '2024-09-05',
     endTime: '2024-09-15'
-    // exerciseTheme: '机动作战'
   },
   {
     id: 'drill-009',
@@ -813,7 +709,6 @@ const mockExerciseDataList = [
     updater: '冯十一',
     startTime: '2024-10-01',
     endTime: '2024-10-10'
-    // exerciseTheme: '山地作战'
   },
   {
     id: 'drill-010',
@@ -836,15 +731,9 @@ const mockExerciseDataList = [
     updater: '陈十二',
     startTime: '2024-11-15',
     endTime: '2024-11-20'
-    // exerciseTheme: '反恐作战'
   }
 ]
 
-/**
- * 获取演训数据列表（带分页）- 用于演训数据选择弹窗
- * POST /getPlan/getExerciseData
- * @param params { pageNo: 1, pageSize: 10 }
- */
 export const getExerciseData = async (params: { pageNo?: number; pageSize?: number }) => {
   await mockDelay(200)
 
@@ -864,33 +753,19 @@ export const getExerciseData = async (params: { pageNo?: number; pageSize?: numb
   }
 }
 
-/**
- * 获取审核记录列表
- * GET /examRecord/examApply
- * @param id 当前表格数据id
- */
 export const getExamRecordList = async (id: string): Promise<{ data: ExamRecordVO[] }> => {
   await mockDelay(200)
   return { data: mockExamRecordList[id] || [] }
 }
 
-/**
- * 审核/驳回操作
- * POST /examRecord/examApply
- * @param data { apply, examResult, examOpinion, examuserId }
- */
 export const examApply = async (data: ExamApplyReqVO) => {
   await mockDelay(300)
 
-  // 查找对应数据
   const index = mockDataList.findIndex((item) => String(item.id) === String(data.applyId))
   if (index !== -1) {
-    // 更新审核状态
     if (data.examResult === '1') {
-      // 审核通过
       mockDataList[index].applyNode = ApplyNode.APPROVED
     } else if (data.examResult === '2') {
-      // 驳回
       mockDataList[index].applyNode = ApplyNode.REJECTED
     }
     mockDataList[index].updateTime = new Date().toLocaleString('zh-CN')
@@ -909,7 +784,6 @@ export const examApply = async (data: ExamApplyReqVO) => {
   }
 }
 
-// 导出所有 Mock API
 export default {
   getPageList,
   getDocCategories,

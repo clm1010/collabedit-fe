@@ -3,19 +3,13 @@ import { ElMessage } from 'element-plus'
 import { isEmpty, isArray, isNil, pickBy, filter, map } from 'lodash-es'
 import * as PerformanceApi from '@/api/training'
 
-/**
- * 列表管理 Hook
- * 抽离筹划方案列表的核心逻辑
- */
 export function usePerformanceList() {
-  // 状态
   const loading = ref(false)
   const total = ref(0)
   const list = ref<PerformanceApi.TrainingPerformanceVO[]>([])
   const categories = ref<PerformanceApi.DocCategoryVO[]>([])
   const selectedRows = ref<PerformanceApi.TrainingPerformanceVO[]>([])
 
-  // 查询参数
   const queryParams = reactive<PerformanceApi.TrainingPerformancePageReqVO>({
     pageNo: 1,
     pageSize: 10,
@@ -30,11 +24,9 @@ export function usePerformanceList() {
     docType: undefined
   })
 
-  // 标签页和分类
   const activeTab = ref('recent')
   const selectedCategory = ref('0')
 
-  // 文档分类选项
   const fileTypeOptions = computed(() => {
     const filtered = filter(categories.value, (item) => item.id !== '0')
     return map(filtered, (item) => ({
@@ -44,9 +36,6 @@ export function usePerformanceList() {
     }))
   })
 
-  /**
-   * 获取数据列表
-   */
   const getList = async () => {
     loading.value = true
     try {
@@ -55,12 +44,10 @@ export function usePerformanceList() {
         return !isNil(value) && value !== ''
       }) as Record<string, any>
 
-      // 将 createTime 数组转换为字符串格式
       if (isArray(params.createTime) && params.createTime.length === 2) {
         params.createTime = params.createTime.join(',')
       }
 
-      // 添加标签页类型参数
       params.tabType =
         activeTab.value === 'review'
           ? 'review'
@@ -79,9 +66,6 @@ export function usePerformanceList() {
     }
   }
 
-  /**
-   * 获取文档分类
-   */
   const getCategories = async () => {
     try {
       const res = await PerformanceApi.getDocCategories()
@@ -92,17 +76,11 @@ export function usePerformanceList() {
     }
   }
 
-  /**
-   * 查询
-   */
   const handleQuery = () => {
     queryParams.pageNo = 1
     getList()
   }
 
-  /**
-   * 重置查询
-   */
   const resetQuery = () => {
     Object.assign(queryParams, {
       pageNo: 1,
@@ -122,24 +100,15 @@ export function usePerformanceList() {
     handleQuery()
   }
 
-  /**
-   * 选择变化
-   */
   const handleSelectionChange = (val: PerformanceApi.TrainingPerformanceVO[]) => {
     selectedRows.value = val
   }
 
-  /**
-   * 标签页切换
-   */
   const handleTabChange = () => {
     queryParams.pageNo = 1
     getList()
   }
 
-  /**
-   * 分类选择
-   */
   const handleCategorySelect = (categoryId: string) => {
     selectedCategory.value = categoryId
     const category = categories.value.find((cat) => cat.id === categoryId)
@@ -153,7 +122,6 @@ export function usePerformanceList() {
     handleQuery()
   }
 
-  // 标签转换函数
   const collegeOptions = [
     { label: '国防大学', value: 'GFDX' },
     { label: '联合作战学院', value: 'LHZZXY' },
@@ -260,7 +228,6 @@ export function usePerformanceList() {
   }
 
   return {
-    // 状态
     loading,
     total,
     list,
@@ -271,7 +238,6 @@ export function usePerformanceList() {
     selectedCategory,
     fileTypeOptions,
 
-    // 方法
     getList,
     getCategories,
     handleQuery,
@@ -280,7 +246,6 @@ export function usePerformanceList() {
     handleTabChange,
     handleCategorySelect,
 
-    // 标签转换
     getCollegeLabel,
     getFileTypeLabel,
     getLevelLabel,
@@ -289,7 +254,6 @@ export function usePerformanceList() {
     getApplyNodeLabel,
     getStatusClass,
 
-    // 选项数据
     collegeOptions,
     exerciseThemeOptions,
     exerciseTypeOptions,

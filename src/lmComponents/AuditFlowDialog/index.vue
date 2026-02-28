@@ -73,7 +73,6 @@ import { ElMessage } from 'element-plus'
  * 通用组件，用于演训方案和模板管理的提交审核功能
  */
 
-// 审核流程节点接口
 interface AuditFlowNode {
   nodeId: string
   nodeName: string
@@ -86,7 +85,6 @@ interface AuditFlowItem {
   nodes: AuditFlowNode[]
 }
 
-// Props
 interface Props {
   modelValue: boolean // 弹窗可见性 (v-model)
   documentId: number | string // 文档/模板 ID
@@ -126,7 +124,6 @@ const props = withDefaults(defineProps<Props>(), {
   ]
 })
 
-// Emits
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   submit: [
@@ -140,73 +137,59 @@ const emit = defineEmits<{
   close: []
 }>()
 
-// 弹窗可见性（v-model 双向绑定）
 const dialogVisible = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value)
 })
 
-// 表单引用
 const formRef = ref()
 
-// 表单数据
 const formData = reactive({
   selectedFlowId: '', // 当前选中的流程ID
   comment: '',
   auditors: {} as Record<string, string[]> // 节点审核人 { node1: ['user1'], node2: ['user2'] }
 })
 
-// 当前选中流程的节点列表（计算属性）
 const currentFlowNodes = computed(() => {
   if (!formData.selectedFlowId) return []
   const flow = props.flowList.find((f) => f.flowId === formData.selectedFlowId)
   return flow?.nodes || []
 })
 
-// 流程切换处理
 const handleFlowChange = (flowId: string) => {
-  // 清空之前的审核人选择
   formData.auditors = {}
-  // 根据选中的流程初始化节点审核人
   const flow = props.flowList.find((f) => f.flowId === flowId)
   if (flow) {
     flow.nodes.forEach((node) => {
-      // 使用节点默认用户初始化
       formData.auditors[node.nodeId] = [...node.users]
     })
   }
 }
 
-// 重置表单
 const resetForm = () => {
   formData.selectedFlowId = ''
   formData.auditors = {}
   formData.comment = ''
 }
 
-// 关闭弹窗
 const handleClose = () => {
   resetForm()
   emit('update:modelValue', false)
   emit('close')
 }
 
-// 提交审核
 const handleSubmit = () => {
-  // 校验是否选择了流程
   if (!formData.selectedFlowId) {
     ElMessage.warning('请选择流程名称')
     return
   }
 
-  // 校验是否至少有一个节点选择了审核人
   const hasAuditors = Object.values(formData.auditors).some((users) => users && users.length > 0)
   if (!hasAuditors) {
     ElMessage.warning('请至少为一个节点选择审核人')
     return
   }
 
-  // 触发提交事件
   emit('submit', {
     id: props.documentId,
     flowId: formData.selectedFlowId,
@@ -215,7 +198,6 @@ const handleSubmit = () => {
   })
 }
 
-// 监听 modelValue 变化，打开时重置表单
 watch(
   () => props.modelValue,
   (newVal) => {
@@ -225,13 +207,11 @@ watch(
   }
 )
 
-// 暴露方法供父组件调用
 defineExpose({
   resetForm
 })
 </script>
 
 <style lang="scss">
-// 引入自定义弹窗样式
 @use '@/lmStyles/dialog.scss';
 </style>

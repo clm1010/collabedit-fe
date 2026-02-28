@@ -1,12 +1,5 @@
-/**
- * 页面配置文件
- * 包含页面大小、页边距等配置
- */
-
-// 页面大小类型
 export type PageSizeType = 'A4' | 'A3' | 'A5' | 'B5' | '5号信封' | '6号信封'
 
-// 页面大小配置 (单位: mm)
 export interface PageSizeConfig {
   name: PageSizeType
   width: number // 宽度 mm
@@ -15,10 +8,8 @@ export interface PageSizeConfig {
   heightPx: number // 高度 px (96dpi)
 }
 
-// mm 转换为 px (假设 96 DPI)
 const mmToPx = (mm: number): number => Math.round((mm * 96) / 25.4)
 
-// 页面大小配置表
 export const pageSizeConfig: Record<PageSizeType, PageSizeConfig> = {
   A4: {
     name: 'A4',
@@ -64,7 +55,6 @@ export const pageSizeConfig: Record<PageSizeType, PageSizeConfig> = {
   }
 }
 
-// 页边距配置 (单位: mm)
 export interface PageMarginConfig {
   top: number
   bottom: number
@@ -72,7 +62,6 @@ export interface PageMarginConfig {
   right: number
 }
 
-// 默认页边距预设
 export const marginPresets: Record<string, PageMarginConfig> = {
   普通: { top: 25.4, bottom: 25.4, left: 31.8, right: 31.8 },
   窄: { top: 12.7, bottom: 12.7, left: 12.7, right: 12.7 },
@@ -80,7 +69,6 @@ export const marginPresets: Record<string, PageMarginConfig> = {
   宽: { top: 25.4, bottom: 25.4, left: 50.8, right: 50.8 }
 }
 
-// 默认页面设置
 export const defaultPageSettings = {
   size: 'A4' as PageSizeType,
   orientation: 'portrait' as 'portrait' | 'landscape',
@@ -91,7 +79,6 @@ export const defaultPageSettings = {
   showLineNumber: false
 }
 
-// 获取页面尺寸 (考虑方向)
 export const getPageDimensions = (
   size: PageSizeType,
   orientation: 'portrait' | 'landscape'
@@ -103,8 +90,6 @@ export const getPageDimensions = (
   return { width: config.widthPx, height: config.heightPx }
 }
 
-// 将 mm 转换为 px
 export const convertMmToPx = mmToPx
 
-// 将 px 转换为 mm
 export const convertPxToMm = (px: number): number => Math.round((px * 25.4) / 96)

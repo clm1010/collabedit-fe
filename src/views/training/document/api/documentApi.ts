@@ -1,8 +1,3 @@
-/**
- * 文档 API 服务
- * 直接调用 Java 后端，导出功能使用前端工具
- * WebSocket 协同编辑仍然通过 collaborative-middleware
- */
 import { USE_MOCK } from '@/config/apiConfig'
 import { javaRequest } from '@/config/axios/javaService'
 import {
@@ -73,8 +68,6 @@ export interface DocConvertResponse {
   status: number
   msg?: string
 }
-
-// ==================== Java 后端 API 直接调用 ====================
 
 /**
  * 转换 .doc 文件为 HTML - 调用 Java 后端
@@ -151,8 +144,6 @@ export const saveDocumentFile = async (
   }
 }
 
-// ==================== 前端实现的功能 ====================
-
 /**
  * 导出文档为 HTML - 前端实现
  * @param title 文档标题
@@ -199,8 +190,6 @@ export const downloadDocumentJson = (doc: DocumentExportInfo): void => {
   const blob = exportToJson(doc)
   downloadBlob(blob, `${doc.title || '文档'}.json`)
 }
-
-// ==================== 本地文档管理（用于协同编辑场景） ====================
 
 // 本地文档缓存
 const documentCache = new Map<string, DocumentInfo>()
@@ -286,8 +275,6 @@ export const getDocumentList = async (): Promise<DocumentInfo[]> => {
   return Array.from(documentCache.values())
 }
 
-// ==================== 提交审核 API ====================
-
 /**
  * 提交审核 - Java 后端
  * POST /examRecord/submitReview
@@ -318,8 +305,6 @@ const submitAuditMock = async (data: SubmitAuditReqVO): Promise<SubmitAuditRespo
  * @param data 审核参数 { id, flowId, auditors, comment }
  */
 export const submitAudit = USE_MOCK ? submitAuditMock : submitAuditJava
-
-// ==================== 审核/驳回操作 API ====================
 
 // 审核/驳回请求参数接口
 export interface ExamApplyReqVO {

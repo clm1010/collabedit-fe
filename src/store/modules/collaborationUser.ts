@@ -35,11 +35,8 @@ const getColorByUserId = (userId: string): string => {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// sessionStorage 存储键（外部用户模式）
 const STORAGE_KEY = 'collaboration_user'
-// localStorage 存储键（开发模式，同一浏览器共享用户身份）
 const DEV_USER_STORAGE_KEY = 'collaboration_user_dev'
-// 设备ID 存储键（使用 localStorage 保持设备唯一性）
 const DEVICE_ID_KEY = 'collaboration_device_id'
 
 /**
@@ -168,17 +165,14 @@ export const useCollaborationUserStore = defineStore('collaboration-user', {
      * - 其他模式（本地开发 / 独立登录）：使用随机模拟用户
      */
     getOrCreateUser(): CollaborationUserVO {
-      // 模式2：嵌入式生产 - 使用真实用户
       if (!skipAuth && isExternalTokenMode()) {
         const externalUserStore = useExternalUserStore()
         const externalUser = externalUserStore.getUser
         if (externalUser && externalUser.id) {
-          // 已经是同一真实用户，刷新 tabId 后返回
           if (this.user && this.user.id === externalUser.id) {
             this.user.tabId = getOrCreateTabId()
             return this.user
           }
-          // 创建真实用户的协作身份
           const user: CollaborationUserVO = {
             id: externalUser.id,
             name: externalUser.nickname || externalUser.username,
@@ -193,14 +187,11 @@ export const useCollaborationUserStore = defineStore('collaboration-user', {
           return user
         }
       }
-      // 模式1、模式3：随机用户
       if (this.user) {
-        // 兼容旧数据：补充缺失的 deviceId
         if (!this.user.deviceId) {
           this.user.deviceId = getOrCreateDeviceId()
           saveUserToStorage(this.user)
         }
-        // 始终刷新 tabId 为当前页面的内存值（每个标签页独立）
         this.user.tabId = getOrCreateTabId()
         return this.user
       }

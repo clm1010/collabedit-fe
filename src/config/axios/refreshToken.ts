@@ -131,7 +131,6 @@ export const handleAuthorized = () => {
     externalUserStore.clearUser()
     const collaborationUserStore = useCollaborationUserStoreWithOut()
     collaborationUserStore.clearUser()
-    console.log('[Auth] Token过期，已清除外部用户和协作用户信息')
   }
 
   if (!isRelogin.show) {

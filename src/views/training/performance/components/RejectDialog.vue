@@ -28,7 +28,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
-// Props
 interface Props {
   visible: boolean
   loading: boolean
@@ -36,32 +35,26 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Emits
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'submit', reason: string): void
 }>()
 
-// 双向绑定 visible
 const dialogVisible = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
 
-// 驳回原因
 const reason = ref('')
 
-// 提交
 const handleSubmit = () => {
   emit('submit', reason.value)
 }
 
-// 重置
 const reset = () => {
   reason.value = ''
 }
 
-// 暴露方法
 defineExpose({
   reset
 })

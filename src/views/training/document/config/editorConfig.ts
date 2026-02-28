@@ -1,25 +1,16 @@
-/**
- * Umo Editor 协同编辑配置文件
- */
-
 export interface CollaborationConfig {
-  // WebSocket 服务器地址
   wsUrl: string
-  // 是否启用协同编辑
   enabled: boolean
-  // 重连配置
   reconnect: {
     maxAttempts: number
     interval: number
   }
-  // 用户配置
   user: {
     defaultName: string
     defaultColor: string
   }
 }
 
-// 默认配置
 // 规范化 ws 地址，强制追加协同网关前缀，避免与其他网关冲突
 // 支持三种格式:
 // 1. 相对路径 (如 /ws) - 使用当前页面 host
@@ -29,14 +20,12 @@ const resolveWsUrl = () => {
   const envUrl = import.meta.env.VITE_WS_URL as string | undefined
   const wsPort = (import.meta.env.VITE_WS_PORT as string | undefined) || '3001'
 
-  // 如果未配置或配置为 'auto'，自动使用当前主机名 + 中间件端口
   if (!envUrl || envUrl === 'auto') {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const hostname = window.location.hostname // 只取主机名，不含端口
     return `${protocol}//${hostname}:${wsPort}/collaboration`
   }
 
-  // 如果是相对路径，根据当前页面 host 动态构建完整 URL
   if (envUrl.startsWith('/') && !envUrl.startsWith('//')) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
@@ -44,7 +33,6 @@ const resolveWsUrl = () => {
     return `${protocol}//${host}${basePath}/collaboration`
   }
 
-  // 兼容完整 URL 格式
   const normalized = envUrl.replace(/\/+$/, '')
   return normalized.endsWith('/collaboration') ? normalized : `${normalized}/collaboration`
 }
@@ -62,7 +50,6 @@ export const defaultCollaborationConfig: CollaborationConfig = {
   }
 }
 
-// 获取随机用户颜色
 export const getRandomUserColor = (): string => {
   const colors = [
     '#409EFF', // 蓝色
@@ -79,7 +66,6 @@ export const getRandomUserColor = (): string => {
   return colors[Math.floor(Math.random() * colors.length)]
 }
 
-// 生成随机用户名
 export const generateRandomUsername = (): string => {
   const adjectives = ['张', '王', '李', '赵', '陈', '诸葛', '司马', '杨', '刘', '曹', '孙']
   const nouns = ['懿', '亮', '修', '穆', '宫', '云', '典', '越', '羲之', '多余', '阳明', '子轩']
@@ -88,17 +74,13 @@ export const generateRandomUsername = (): string => {
   return `${adj}${noun}${Math.floor(Math.random() * 100)}`
 }
 
-// Umo Editor 默认配置
 export const defaultEditorOptions = {
-  // 文档配置
   document: {
     placeholder: '开始输入内容...',
     enableSpellcheck: false
   },
-  // 工具栏配置
   toolbar: {
     defaultMode: 'classic'
   },
-  // CDN 配置 - 使用本地资源而不是 unpkg.com
   cdnUrl: '/editor-external'
 }

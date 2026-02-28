@@ -6,7 +6,6 @@
  * 因此 Worker 主要用于 OOXML 解析方案
  */
 
-// 列表编号定义类型
 interface NumberingLevel {
   level: string
   format: string
@@ -14,7 +13,6 @@ interface NumberingLevel {
   start: string
 }
 
-// 进度回调类型
 type ProgressCallback = (progress: number, text: string) => void
 
 /**
@@ -271,10 +269,8 @@ function convertParagraphToHtml(
   const styleArr: string[] = []
   let headingLevel = 0 // 标题级别
 
-  // 检测段落样式（标题）
   const pStyle = pPr['w:pStyle']?.['@_w:val']
   if (pStyle) {
-    // 识别标题样式
     const headingMatch = pStyle.match(/^(?:Heading|标题|heading)(\d)$/i)
     if (headingMatch) {
       headingLevel = parseInt(headingMatch[1])
@@ -282,7 +278,6 @@ function convertParagraphToHtml(
       const numMatch = pStyle.match(/\d/)
       headingLevel = numMatch ? parseInt(numMatch[0]) : 1
     } else if (_stylesMap[pStyle]) {
-      // 从样式定义中获取 outlineLevel
       const styleDef = _stylesMap[pStyle]
       const outlineLevel = styleDef.pPr?.['w:outlineLvl']?.['@_w:val']
       if (outlineLevel !== undefined) {
@@ -291,7 +286,6 @@ function convertParagraphToHtml(
     }
   }
 
-  // 文本对齐
   const jc = pPr['w:jc']?.['@_w:val']
   if (jc) {
     const alignMap: Record<string, string> = {
@@ -306,7 +300,6 @@ function convertParagraphToHtml(
     }
   }
 
-  // 首行缩进
   const ind = pPr['w:ind']
   if (ind) {
     const firstLine = ind['@_w:firstLine'] || ind['@_w:firstLineChars']
@@ -320,7 +313,6 @@ function convertParagraphToHtml(
     }
   }
 
-  // 行高
   const spacing = pPr['w:spacing']
   if (spacing) {
     const line = spacing['@_w:line']
@@ -335,7 +327,6 @@ function convertParagraphToHtml(
     }
   }
 
-  // 处理段落内容
   let content = ''
   if (runs) {
     const runsList = Array.isArray(runs) ? runs : [runs]
@@ -344,7 +335,6 @@ function convertParagraphToHtml(
     }
   }
 
-  // 处理超链接
   const hyperlink = para['w:hyperlink']
   if (hyperlink) {
     const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
@@ -369,7 +359,6 @@ function convertParagraphToHtml(
 
   const style = styleArr.length > 0 ? ` style="${styleArr.join('; ')}"` : ''
 
-  // 如果是标题，使用对应的标题标签
   if (headingLevel >= 1 && headingLevel <= 6) {
     return `<h${headingLevel}${style}>${content || ''}</h${headingLevel}>`
   }
@@ -389,24 +378,20 @@ function convertRunToHtml(
 
   const rPr = run['w:rPr'] || {}
 
-  // 处理换行
   if (run['w:br']) {
     return '<br>'
   }
 
-  // 处理制表符
   if (run['w:tab']) {
     return '&emsp;&emsp;'
   }
 
-  // 处理图片 (w:drawing)
   const drawing = run['w:drawing']
   if (drawing && imageMap) {
     const imgHtml = extractImageFromDrawing(drawing, imageMap)
     if (imgHtml) return imgHtml
   }
 
-  // 获取文本内容
   let text = ''
   const textNode = run['w:t']
   if (textNode) {
@@ -415,10 +400,8 @@ function convertRunToHtml(
 
   if (!text) return ''
 
-  // 提取样式
   const style: string[] = []
 
-  // 字体
   const rFonts = rPr['w:rFonts']
   if (rFonts) {
     const font = rFonts['@_w:eastAsia'] || rFonts['@_w:ascii'] || rFonts['@_w:hAnsi']
@@ -427,7 +410,6 @@ function convertRunToHtml(
     }
   }
 
-  // 字号
   const sz = rPr['w:sz'] || rPr['w:szCs']
   if (sz) {
     const size = parseInt(sz['@_w:val']) / 2
@@ -436,7 +418,6 @@ function convertRunToHtml(
     }
   }
 
-  // 颜色
   const color = rPr['w:color']
   if (color) {
     const colorVal = color['@_w:val']
@@ -445,7 +426,6 @@ function convertRunToHtml(
     }
   }
 
-  // 高亮
   const highlight = rPr['w:highlight']
   if (highlight) {
     const highlightColor = highlight['@_w:val']
@@ -471,7 +451,6 @@ function convertRunToHtml(
     }
   }
 
-  // 加粗
   const bold = rPr['w:b']
   if (bold !== undefined && bold !== null) {
     const isOff = bold['@_w:val'] === 'false' || bold['@_w:val'] === '0'
@@ -480,7 +459,6 @@ function convertRunToHtml(
     }
   }
 
-  // 斜体
   const italic = rPr['w:i']
   if (italic !== undefined && italic !== null) {
     const isOff = italic['@_w:val'] === 'false' || italic['@_w:val'] === '0'
@@ -489,7 +467,6 @@ function convertRunToHtml(
     }
   }
 
-  // 下划线
   const underline = rPr['w:u']
   if (underline !== undefined && underline !== null) {
     const val = underline['@_w:val']
@@ -498,7 +475,6 @@ function convertRunToHtml(
     }
   }
 
-  // 删除线
   const strike = rPr['w:strike']
   if (strike !== undefined && strike !== null) {
     const isOff = strike['@_w:val'] === 'false' || strike['@_w:val'] === '0'
@@ -594,7 +570,6 @@ function convertTableToHtml(
           'overflow-wrap: break-word'
         ]
 
-        // 处理单元格属性
         const tcPr = cell['w:tcPr']
         if (tcPr) {
           const vAlign = tcPr['w:vAlign']
@@ -614,7 +589,6 @@ function convertTableToHtml(
           }
         }
 
-        // 处理单元格内容
         let cellContent = ''
         const cellParas = cell['w:p']
         if (cellParas) {
@@ -714,7 +688,6 @@ async function parseOoxmlDocumentWorker(
 
   onProgress(70, '正在生成 HTML...')
 
-  // 获取文档体
   let body = docObj?.['w:document']?.['w:body']
   if (!body) {
     body = docObj?.['document']?.['body']
@@ -738,7 +711,6 @@ async function parseOoxmlDocumentWorker(
     throw new Error('文档结构错误')
   }
 
-  // 遍历所有元素
   const elements: string[] = []
 
   const processBodyElements = (bodyContent: any) => {
@@ -776,11 +748,9 @@ async function parseOoxmlDocumentWorker(
 
   let html = elements.join('\n')
 
-  // 清理空的 span
   html = html.replace(/<span>\s*<\/span>/g, '')
   html = html.replace(/<span style="">\s*<\/span>/g, '')
 
-  // 移除多余空段落
   html = html.replace(/(<p[^>]*>\s*<br>\s*<\/p>\s*){2,}/g, '<p><br></p>')
 
   onProgress(100, '解析完成')
@@ -788,12 +758,10 @@ async function parseOoxmlDocumentWorker(
   return html
 }
 
-// Web Worker 入口
 self.onmessage = async (e: MessageEvent) => {
   const { arrayBuffer, method } = e.data
 
   try {
-    // 发送进度更新
     const onProgress = (progress: number, text: string) => {
       self.postMessage({ type: 'progress', progress, text })
     }
@@ -815,5 +783,4 @@ self.onmessage = async (e: MessageEvent) => {
   }
 }
 
-// 标记为 Worker
 export {}

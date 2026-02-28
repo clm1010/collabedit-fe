@@ -58,40 +58,12 @@ export async function parseWithDocxPreview(
       }
     }
 
-    console.log('docx-preview 提取的原始 HTML 长度:', html.length)
-
     const tempDiv = document.createElement('div')
     tempDiv.innerHTML = html
-    const headings = tempDiv.querySelectorAll('h1, h2, h3, h4, h5, h6')
-    console.log(`docx-preview 找到 ${headings.length} 个标题元素`)
-    if (headings.length > 0) {
-      console.log('第一个标题:', headings[0].outerHTML.substring(0, 200))
-    }
-
-    const paragraphs = tempDiv.querySelectorAll('p')
-    const largeFontParagraphs: string[] = []
-    paragraphs.forEach((p) => {
-      const style = p.getAttribute('style') || ''
-      const fontSizeMatchPt = style.match(/font-size:\s*(\d+(?:\.\d+)?)\s*pt/i)
-      const fontSizeMatchPx = style.match(/font-size:\s*(\d+(?:\.\d+)?)\s*px/i)
-      let fontSize = 0
-      if (fontSizeMatchPt) {
-        fontSize = parseFloat(fontSizeMatchPt[1]) * 1.33
-      } else if (fontSizeMatchPx) {
-        fontSize = parseFloat(fontSizeMatchPx[1])
-      }
-      if (fontSize >= 19) {
-        largeFontParagraphs.push(p.textContent?.substring(0, 50) || '')
-      }
-    })
-    if (largeFontParagraphs.length > 0) {
-      console.log('发现大字体段落（可能是标题）:', largeFontParagraphs.slice(0, 3))
-    }
 
     onProgress?.(85, '正在优化格式...')
     html = postProcessDocxPreviewHtml(html)
 
-    console.log('docx-preview 处理后 HTML 长度:', html.length)
     if (html.length < 50) {
       console.warn('docx-preview 处理后内容过短，回退到简单清理')
       html = container.innerHTML
@@ -181,10 +153,6 @@ export function postProcessDocxPreviewHtml(html: string): string {
 
   html = html.replace(/\s*class="docx-wrapper[^"]*"/g, '')
   html = html.replace(/\s*class="docx[^"]*"/g, '')
-
-  if (html.trim().length < originalLength * 0.1 && originalLength > 100) {
-    console.warn('postProcessDocxPreviewHtml: 内容可能被过度清理')
-  }
 
   html = html.replace(/<table[^>]*>/g, (match) => {
     const cleanMatch = match.replace(/class="[^"]*"/g, '')

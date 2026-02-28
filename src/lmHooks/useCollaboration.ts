@@ -19,7 +19,6 @@ const registerYjsErrorHandler = () => {
   if (globalErrorHandlerRefCount === 0) {
     originalOnError = window.onerror
     window.onerror = (message, source, lineno, colno, error) => {
-      // 检查是否是 y-prosemirror 相关的已知错误
       const messageStr = String(message)
       const isYjsError =
         messageStr.includes('nodeSize') ||
@@ -28,14 +27,12 @@ const registerYjsErrorHandler = () => {
         messageStr.includes('Unexpected case')
 
       if (isYjsError) {
-        // 抑制这些错误，只在开发模式下打印警告
         if (import.meta.env.DEV) {
           console.warn('[协同编辑] 捕获到已知的 y-prosemirror 错误（已忽略）:', messageStr)
         }
-        return true // 阻止错误继续传播
+        return true
       }
 
-      // 其他错误交给原始处理器
       if (originalOnError) {
         return originalOnError(message, source, lineno, colno, error)
       }
@@ -49,7 +46,7 @@ const registerYjsErrorHandler = () => {
  * 注销全局错误处理器
  */
 const unregisterYjsErrorHandler = () => {
-  if (globalErrorHandlerRefCount <= 0) return // 防止多次注销导致计数变为负数
+  if (globalErrorHandlerRefCount <= 0) return
   globalErrorHandlerRefCount--
   if (globalErrorHandlerRefCount === 0 && originalOnError !== null) {
     window.onerror = originalOnError
@@ -213,11 +210,9 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     onSynced
   } = options
 
-  // 可变的配置（支持动态切换文档）
   let currentDocumentId = options.documentId
   let currentCreatorId = options.creatorId
 
-  // 响应式状态
   const ydoc = ref<Y.Doc | null>(null)
   const fragment = ref<Y.XmlFragment | null>(null)
   const provider = ref<WebsocketProvider | null>(null)
@@ -225,7 +220,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   const collaborators = ref<Collaborator[]>([])
   const isReady = ref(false)
 
-  // 内部状态（非响应式）
   let isComponentDestroyed = false
   let hasShownConnectedMessage = false
   let hasShownSyncedMessage = false
@@ -233,7 +227,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   let updateCollaboratorsTimer: ReturnType<typeof setTimeout> | null = null
   let connectedAtTimestamp: number | undefined = undefined
 
-  // 连接历史记录（用于诊断）
   const connectionHistory: Array<{
     event: string
     timestamp: number
@@ -250,15 +243,12 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       details
     }
     connectionHistory.push(entry)
-    // 只保留最近 50 条记录
     if (connectionHistory.length > 50) {
       connectionHistory.shift()
     }
-    // 输出到控制台
     console.log(`[协同编辑] ${event}`, details ? `- ${details}` : '')
   }
 
-  // 事件处理函数引用（用于正确移除事件监听器）
   let handleProviderStatus: ((event: any) => void) | null = null
   let handleProviderSync: ((synced: boolean) => void) | null = null
   let handleAwarenessChange: (() => void) | null = null
@@ -269,7 +259,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   const updateCollaborators = () => {
     if (isComponentDestroyed || isNil(provider.value)) return
 
-    // 防抖：避免频繁更新
     if (!isNil(updateCollaboratorsTimer)) {
       clearTimeout(updateCollaboratorsTimer)
     }
@@ -278,16 +267,13 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       if (isComponentDestroyed || isNil(provider.value)) return
 
       const states = provider.value.awareness.getStates()
-      // 使用 Map 按用户 ID 去重，保留最新的连接
       const userMap = new Map<string, Collaborator>()
 
       states.forEach((state: any, clientId: number) => {
         if (state.user) {
-          // 使用用户ID去重，如果没有ID则使用clientId
           const userId = state.user.id || `client_${clientId}`
           const isSelf = clientId === provider.value!.awareness.clientID
 
-          // 如果是自己，优先使用；否则只在没有记录时添加
           if (isSelf || !userMap.has(userId)) {
             userMap.set(userId, {
               clientId,
@@ -299,10 +285,8 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         }
       })
 
-      // 转换为数组
       const users = Array.from(userMap.values())
 
-      // 将当前用户排在第一位
       users.sort((a, b) => {
         if (a.isSelf) return -1
         if (b.isSelf) return 1
@@ -311,7 +295,7 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
 
       collaborators.value = users
       onCollaboratorsChange?.(users)
-    }, 100) // 100ms 防抖
+    }, 100)
   }
 
   /**
@@ -319,7 +303,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
    */
   const initCollaboration = (initOptions: InitCollaborationOptions = {}) => {
     try {
-      // 注册全局错误处理器，用于捕获 y-prosemirror 的已知错误
       registerYjsErrorHandler()
 
       logConnectionEvent(
@@ -327,21 +310,15 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         `文档: ${currentDocumentId}, 用户: ${user.name} (${user.id})`
       )
 
-      // 重置消息标志
       hasShownConnectedMessage = false
       hasShownSyncedMessage = false
       connectedAtTimestamp = undefined
 
-      // 初始化 Y.Doc
       ydoc.value = new Y.Doc()
-
-      // 预先初始化 fragment，确保在编辑器初始化前它已存在
-      // 使用 'default' 作为 field 名称（与 Tiptap Collaboration 扩展的默认值一致）
       fragment.value = ydoc.value.getXmlFragment('default')
 
       logConnectionEvent('Y.Doc 初始化完成')
 
-      // 初始化 WebSocket Provider
       const deviceId = user.deviceId || ''
       const tabId = user.tabId || ''
       logConnectionEvent('WebSocket 连接参数', `URL: ${wsUrl}, deviceId: ${deviceId || '未设置'}, tabId: ${tabId || '未设置'}`)
@@ -354,12 +331,11 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
           userId: String(user.id),
           userName: user.name,
           userColor: user.color,
-          deviceId, // 设备ID（localStorage，同一浏览器共享）
-          tabId     // 标签页ID（sessionStorage，每个标签页独立，用于中间件去重）
+          deviceId,
+          tabId
         }
       })
 
-      // 定义事件处理函数（保存引用以便后续移除）
       handleProviderStatus = (event: any) => {
         if (isComponentDestroyed) return
 
@@ -383,8 +359,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
           }
           updateCollaborators()
 
-          // 挂载底层 WebSocket close 事件拦截器（每次重连都会创建新 ws，需每次挂载）
-          // 服务端已不再主动踢人（Google Docs 模式），4001 仅作为通用断连保留
           const ws = (provider.value as any)?.ws
           if (ws && typeof ws.addEventListener === 'function') {
             ws.addEventListener('close', (ev: CloseEvent) => {
@@ -427,16 +401,10 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         }
       }
 
-      // 监听连接状态
       provider.value.on('status', handleProviderStatus)
-
-      // 监听同步状态
       provider.value.on('sync', handleProviderSync)
-
-      // 监听感知信息（在线用户）
       provider.value.awareness.on('change', handleAwarenessChange)
 
-      // 设置当前用户状态到 awareness
       const userState = {
         id: user.id,
         name: user.name,
@@ -448,13 +416,10 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       }
       provider.value.awareness.setLocalStateField('user', userState)
 
-      // 立即更新一次协作者列表
       updateCollaborators()
 
-      // 重要：检查 provider 是否已经同步（sync 事件可能在注册监听器之前就触发了）
-      // 必须在注册监听器之后立即检查，避免遗漏已同步的情况
+      // sync 事件可能在注册监听器之前就已触发，需立即检查避免遗漏
       if (provider.value.synced && !isReady.value) {
-        // 使用 nextTick 确保 Y.Doc 的内部结构已完全初始化
         setTimeout(() => {
           if (isComponentDestroyed) return
           if (!isReady.value && provider.value?.synced) {
@@ -466,7 +431,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         }, 50)
       }
 
-      // 第一级超时（3s）：如果连接已建立但还没有收到 sync 事件，强制标记就绪并触发 onSynced
       syncTimeoutId = setTimeout(() => {
         if (isComponentDestroyed) return
 
@@ -479,7 +443,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         }
       }, 3000)
     } catch (error) {
-      // 初始化失败时注销已注册的全局错误处理器，防止引用计数泄漏
       unregisterYjsErrorHandler()
       logConnectionEvent('初始化失败', (error as Error).message)
       console.error('协同编辑初始化失败:', error)
@@ -507,28 +470,21 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
   const cleanup = () => {
     logConnectionEvent('开始清理连接资源')
 
-    // 注销全局错误处理器
     unregisterYjsErrorHandler()
-
-    // 标记组件已销毁，防止异步回调继续执行
     isComponentDestroyed = true
 
-    // 清理 syncTimeout
     if (syncTimeoutId) {
       clearTimeout(syncTimeoutId)
       syncTimeoutId = null
     }
 
-    // 清理 updateCollaboratorsTimer（防抖定时器）
     if (updateCollaboratorsTimer) {
       clearTimeout(updateCollaboratorsTimer)
       updateCollaboratorsTimer = null
     }
 
-    // 销毁 WebSocket Provider
     if (provider.value) {
       try {
-        // 移除所有事件监听器（使用保存的函数引用）
         if (handleAwarenessChange) {
           provider.value.awareness.off('change', handleAwarenessChange)
         }
@@ -538,7 +494,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         if (handleProviderSync) {
           provider.value.off('sync', handleProviderSync)
         }
-        // 移除用户状态
         provider.value.awareness.setLocalStateField('user', null)
       } catch (e) {
         console.warn('清理 provider 时出错:', e)
@@ -547,15 +502,12 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       provider.value = null
     }
 
-    // 清理事件处理函数引用
     handleProviderStatus = null
     handleProviderSync = null
     handleAwarenessChange = null
 
-    // 清理 fragment 引用（fragment 会随 ydoc 一起销毁，这里只清理引用）
     fragment.value = null
 
-    // 销毁 Y.Doc
     if (ydoc.value) {
       try {
         ydoc.value.destroy()
@@ -565,7 +517,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       ydoc.value = null
     }
 
-    // 清理其他响应式引用
     collaborators.value = []
     isReady.value = false
   }
@@ -580,25 +531,20 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     newCreatorId?: string | number,
     initOptions: InitCollaborationOptions = {}
   ) => {
-    // 先清理现有资源
     cleanup()
 
-    // 更新文档ID
     if (newDocumentId) {
       currentDocumentId = newDocumentId
     }
 
-    // 更新创建者ID
     if (newCreatorId !== undefined) {
       currentCreatorId = newCreatorId
     }
 
-    // 重置内部状态标志
     isComponentDestroyed = false
     hasShownConnectedMessage = false
     hasShownSyncedMessage = false
 
-    // 重新初始化
     initCollaboration(initOptions)
   }
 
@@ -660,7 +606,6 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     console.groupEnd()
   }
 
-  // 组件卸载时自动清理
   onBeforeUnmount(() => {
     cleanup()
   })

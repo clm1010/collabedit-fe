@@ -3,12 +3,7 @@ import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestCo
 import { ElMessage, ElNotification } from 'element-plus'
 import qs from 'qs'
 import { config } from '@/config/axios/config'
-import {
-  getAccessToken,
-  getRefreshToken,
-  getTenantId,
-  getVisitTenantId
-} from '@/utils/auth'
+import { getAccessToken, getRefreshToken, getTenantId, getVisitTenantId } from '@/utils/auth'
 import errorCode from './errorCode'
 import { handle401, handleAuthorized, isRelogin } from './refreshToken'
 
@@ -97,8 +92,7 @@ service.interceptors.request.use(
     return config
   },
   (error: AxiosError) => {
-    // Do something with request error
-    console.log(error) // for debug
+    console.log(error)
     return Promise.reject(error)
   }
 )
@@ -127,8 +121,6 @@ service.interceptors.response.use(
         throw new Error('响应数据解密失败: ' + (error as Error).message)
       }
     }
-
-    // 【已删除】T-User 响应头提取逻辑，改为通过 /api/user/info 接口获取用户信息
 
     const { t } = useI18n()
     // 未设置状态码则默认成功状态
@@ -207,7 +199,6 @@ service.interceptors.response.use(
       return handleAuthorized()
     }
 
-    console.log('err' + error) // for debug
     let { message } = error
     const { t } = useI18n()
     if (message === 'Network Error') {

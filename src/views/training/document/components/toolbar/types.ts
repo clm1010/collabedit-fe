@@ -1,8 +1,3 @@
-/**
- * 工具栏类型定义
- */
-
-// 工具栏按钮属性
 export interface ToolbarButtonProps {
   icon?: string
   label?: string
@@ -12,7 +7,6 @@ export interface ToolbarButtonProps {
   showLabel?: boolean
 }
 
-// 下拉选项
 export interface DropdownOption {
   label: string
   value: string | number
@@ -206,7 +200,6 @@ export const fontSizePxToLabel: Record<string, string> = {
   '96px': '72' // 72pt
 }
 
-// 行高选项
 export const lineHeightOptions: DropdownOption[] = [
   { label: '默认', value: '' },
   { label: '1', value: '1' },
@@ -218,7 +211,6 @@ export const lineHeightOptions: DropdownOption[] = [
   { label: '3', value: '3' }
 ]
 
-// 预设颜色
 export const presetColors = [
   '#000000',
   '#434343',
@@ -302,7 +294,6 @@ export const presetColors = [
   '#4C1130'
 ]
 
-// 特殊字符分类
 export const specialCharacters: Record<string, string[]> = {
   标点符号: [
     '、',
@@ -496,7 +487,6 @@ export const specialCharacters: Record<string, string[]> = {
   ]
 }
 
-// 表情分类
 export const emojiCategories = {
   常用: [
     '😀',
@@ -608,14 +598,12 @@ export const emojiCategories = {
   ]
 }
 
-// 表格对齐方式
 export const tableAlignOptions: DropdownOption[] = [
   { label: '左对齐', value: 'left', icon: 'mdi:format-align-left' },
   { label: '居中', value: 'center', icon: 'mdi:format-align-center' },
   { label: '右对齐', value: 'right', icon: 'mdi:format-align-right' }
 ]
 
-// 模板列表
 export const templateList = [
   { id: 'blank', name: '空白文档', description: '创建一个新的空白文档' },
   { id: 'report', name: '工作报告', description: '标准工作报告模板' },
@@ -624,5 +612,4 @@ export const templateList = [
   { id: 'resume', name: '简历模板', description: '个人简历模板' }
 ]
 
-// 编辑器注入的 Key
 export const EditorKey = Symbol('Editor')
