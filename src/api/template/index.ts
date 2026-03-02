@@ -20,9 +20,10 @@ import type {
   ExamApplyReqVO,
   PublishDocReqVO,
   ElementItem,
-  GetElementListResponse,
-  TemplateSubclassVO
+  GetElementListResponse
 } from '@/types/management'
+import type { DocCategoryVO } from '@/views/training/performance/config/categories'
+import { performanceCategories } from '@/views/training/performance/config/categories'
 
 const templateCategories = [{ id: 'CHWD', name: '筹划文档' }]
 
@@ -43,11 +44,20 @@ const javaApi = {
 
   /**
    * 获取模板子类列表 - Java 后端
-   * GET /tbTemplate/getTemTypeData
+   * GET /sjrh/dict/dataList?dictType=tb_file_type
    */
-  getTemplateSubclass: async (): Promise<{ data: TemplateSubclassVO[] }> => {
-    const res = await javaRequest.get<{ data: TemplateSubclassVO[] }>('/tbTemplate/getTemTypeData')
-    return { data: (res as any)?.data || (res as any) || [] }
+  getTemplateSubclass: async (): Promise<{ data: DocCategoryVO[] }> => {
+    try {
+      const res = await javaRequest.get('/sjrh/dict/dataList', { dictType: 'tb_file_type' })
+      const data: DocCategoryVO[] = (res || []).map((item: any) => ({
+        value: item.value,
+        label: item.label
+      }))
+      return { data }
+    } catch (error) {
+      console.error('获取模板子类失败:', error)
+      return { data: performanceCategories }
+    }
   },
 
   /**
@@ -212,7 +222,7 @@ const mockApi = {
     return getCategories()
   },
 
-  getTemplateSubclass: async (): Promise<{ data: TemplateSubclassVO[] }> => {
+  getTemplateSubclass: async (): Promise<{ data: DocCategoryVO[] }> => {
     const { getTemplateSubclass } = await import('@/mock/template/management')
     return getTemplateSubclass()
   },
@@ -298,7 +308,7 @@ export const getCategories = api.getCategories
 
 /**
  * 获取模板子类列表
- * GET /tbTemplate/getTemTypeData
+ * GET /sjrh/dict/dataList?dictType=tb_file_type
  */
 export const getTemplateSubclass = api.getTemplateSubclass
 

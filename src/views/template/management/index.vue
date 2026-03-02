@@ -50,9 +50,9 @@
           >
             <el-option
               v-for="item in subClassOptions"
-              :key="item.category_id"
-              :label="item.category_name"
-              :value="item.category_id"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
             />
           </el-select>
         </el-form-item>
@@ -135,7 +135,11 @@
               min-width="150"
               show-overflow-tooltip
             />
-            <el-table-column label="创建时间" prop="createTime" align="center" width="180" />
+            <el-table-column label="创建时间" prop="createTime" align="center" width="180">
+              <template #default="scope">
+                {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+              </template>
+            </el-table-column>
             <el-table-column label="创建人" prop="createBy" align="center" width="120" />
             <el-table-column label="操作" align="center" width="320" fixed="right">
               <template #default="scope">
@@ -264,9 +268,9 @@
           <el-select v-model="formData.temSubclass" placeholder="请选择" clearable class="w-full">
             <el-option
               v-for="item in subClassOptions"
-              :key="item.category_id"
-              :label="item.category_name"
-              :value="item.category_id"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
             />
           </el-select>
         </el-form-item>
@@ -399,7 +403,11 @@
         <el-table-column prop="examOfficeName" label="审核部门" width="120" align="center" />
         <el-table-column prop="examUserId" label="审批用户" width="100" align="center" />
         <el-table-column prop="nextUserId" label="下一审批人" width="100" align="center" />
-        <el-table-column prop="createTime" label="审核时间" width="160" align="center" />
+        <el-table-column prop="createTime" label="审核时间" width="180" align="center">
+          <template #default="scope">
+            {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+          </template>
+        </el-table-column>
       </el-table>
       <template #footer>
         <el-button @click="examRecordDialogVisible = false">关闭</el-button>
@@ -449,9 +457,10 @@
 
 <script lang="ts" setup>
 import { ref, reactive, onMounted, onUnmounted, onActivated, computed } from 'vue'
+import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import * as TemplateApi from '@/api/template'
-import type { TemplateSubclassVO } from '@/types/management'
+import type { DocCategoryVO } from '@/views/training/performance/config/categories'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { isEmpty, isNil, isString, isObject, pickBy, filter, map, every } from 'lodash-es'
@@ -513,7 +522,7 @@ const queryFormRef = ref()
 const templateCategories = ref([{ id: 'CHWD', name: '筹划文档' }])
 const categoryOptions = ref(templateCategories.value)
 // 模板子类选项（从接口获取）
-const subClassOptions = ref<TemplateSubclassVO[]>([])
+const subClassOptions = ref<DocCategoryVO[]>([])
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('新建模板')
@@ -659,12 +668,9 @@ const initCategories = async () => {
   }
 }
 
-// 根据子类 ID 获取子类名称
 const getSubCategoryNameById = (id: string): string => {
-  // const subClass = subClassOptions.value.find((c) => c.template_id === id)
-  // return subClass?.template_name || ''
-  const subClass = subClassOptions.value.find((c) => c.category_id === id)
-  return subClass?.category_name || ''
+  const subClass = subClassOptions.value.find((c) => c.value === id)
+  return subClass?.label || ''
 }
 
 // 获取当前选中的模板子类名称（用于保存时传递 temSubName）

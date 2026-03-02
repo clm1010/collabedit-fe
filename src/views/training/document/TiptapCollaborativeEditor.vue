@@ -169,6 +169,7 @@ import { getFileStream as getFileStreamApi } from '@/api/training'
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
 import { logger } from '@/views/utils/logger'
+import { copyToClipboard } from '@/views/utils/clipboard'
 
 // ==================== IndexedDB 文档解析缓存工具 ====================
 // 使用浏览器原生 IndexedDB 缓存成功解析的带样式 HTML，关闭浏览器后仍保留
@@ -461,19 +462,17 @@ const handleMaterialClick = (item: any) => {
 }
 
 // 复制内容
-const copyContent = (html: string) => {
+const copyContent = async (html: string) => {
   const tempDiv = document.createElement('div')
   tempDiv.innerHTML = html
   const text = tempDiv.innerText || tempDiv.textContent || ''
 
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      ElMessage.success('内容已复制到剪贴板')
-    })
-    .catch(() => {
-      ElMessage.error('复制失败')
-    })
+  const ok = await copyToClipboard(text)
+  if (ok) {
+    ElMessage.success('内容已复制到剪贴板')
+  } else {
+    ElMessage.error('复制失败')
+  }
 }
 
 // 返回

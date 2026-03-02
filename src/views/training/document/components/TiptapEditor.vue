@@ -257,6 +257,7 @@ import ColorPicker from './toolbar/ColorPicker.vue'
 import LinkPopover from './toolbar/LinkPopover.vue'
 import { normalizeColor } from '../utils/wordParser.shared'
 import { generateExportHtml } from '@/views/utils/documentExport'
+import { copyToClipboard } from '@/views/utils/clipboard'
 
 // Props
 interface Props {
@@ -824,8 +825,12 @@ const previewHtml = () => {
 const copyHtml = async () => {
   try {
     const html = await generateFullHtml()
-    await navigator.clipboard.writeText(html)
-    ElMessage.success('HTML 已复制到剪贴板')
+    const ok = await copyToClipboard(html)
+    if (ok) {
+      ElMessage.success('HTML 已复制到剪贴板')
+    } else {
+      ElMessage.error('复制失败')
+    }
   } catch (error) {
     ElMessage.error('复制失败')
   }

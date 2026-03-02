@@ -8,24 +8,14 @@ import type {
   ExamRecordVO,
   ExamApplyReqVO,
   PublishDocReqVO,
-  ElementItem,
-  TemplateSubclassVO
+  ElementItem
 } from '@/types/management'
+import {
+  performanceCategories,
+  type DocCategoryVO
+} from '@/views/training/performance/config/categories'
 
-const mockTemplateSubclassList: TemplateSubclassVO[] = [
-  { template_id: 'ZCQB', template_name: '侦察情报' },
-  { template_id: 'QTLA', template_name: '企图立案' },
-  { template_id: 'ZZJH', template_name: '作战计划' },
-  { template_id: 'YXFA', template_name: '演训方案' },
-  { template_id: 'ZZWS', template_name: '作战文书' },
-  { template_id: 'DTJH', template_name: '导调计划' },
-  { template_id: 'ZZXD', template_name: '作战想定' },
-  { template_id: 'ZJZG', template_name: '战绩战报' },
-  { template_id: 'ZJBG', template_name: '总结报告' },
-  { template_id: 'TZ', template_name: '通知' },
-  { template_id: 'TG', template_name: '通告' },
-  { template_id: 'PGJG', template_name: '评估结果' }
-]
+const mockTemplateSubclassList: DocCategoryVO[] = performanceCategories
 
 const mockTemplateCategoryList = [{ id: 'CHWD', name: '筹划文档' }]
 
@@ -135,7 +125,7 @@ const mockDataList: TemplateVO[] = [
     fileId: 'file-006',
     templateName: '导调计划模板',
     temCategory: '筹划文档',
-    temSubclass: 'DTJH',
+    temSubclass: 'DDJH',
     temSubName: '导调计划',
     temStatus: '启用',
     description: '标准导调计划编制模板',
@@ -291,7 +281,7 @@ export const getCategories = async (): Promise<{ data: { id: string; name: strin
   return { data: mockTemplateCategoryList }
 }
 
-export const getTemplateSubclass = async (): Promise<{ data: TemplateSubclassVO[] }> => {
+export const getTemplateSubclass = async (): Promise<{ data: DocCategoryVO[] }> => {
   await mockDelay(100)
   return { data: mockTemplateSubclassList }
 }

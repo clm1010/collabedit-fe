@@ -7,6 +7,8 @@
             ref="searchRef"
             v-model="queryParams"
             :categories="categories"
+            :level-options="levelOptions"
+            :academy-options="academyOptions"
             @search="handleQuery"
             @reset="resetQuery"
           />
@@ -54,7 +56,7 @@
                   />
                   <el-table-column label="所属学院" prop="collegeCode" align="center" width="120">
                     <template #default="scope">
-                      {{ getCollegeLabel(scope.row.collegeCode) }}
+                      {{ getAcademyLabel(scope.row.collegeCode) }}
                     </template>
                   </el-table-column>
                   <el-table-column label="文档分类" prop="fileType" align="center" width="120">
@@ -84,7 +86,11 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column label="创建时间" prop="createTime" align="center" width="180" />
+                  <el-table-column label="创建时间" prop="createTime" align="center" width="180">
+                    <template #default="scope">
+                      {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+                    </template>
+                  </el-table-column>
                   <el-table-column label="操作" align="center" width="320" fixed="right">
                     <template #default="scope">
                       <!-- 编辑中状态(1)显示：编辑、写作、审核、删除 -->
@@ -196,11 +202,21 @@
     :is-edit-mode="isEditMode"
     :loading="loading"
     :file-type-options="fileTypeOptions"
+    :exercise-type-options="exerciseTypeOptions"
+    :level-options="levelOptions"
+    :academy-options="academyOptions"
     @save="handleFormSave"
     @open-drill-selector="openDrillSelector"
   />
 
-  <DrillSelector v-model:visible="drillSelectorVisible" @select="handleDrillSelect" />
+  <DrillSelector
+    v-model:visible="drillSelectorVisible"
+    :exercise-type-options="exerciseTypeOptions"
+    :level-options="levelOptions"
+    :academy-options="academyOptions"
+    :city-options="cityOptions"
+    @select="handleDrillSelect"
+  />
 
   <AuditFlowDialog
     v-model="auditDialogVisible"
@@ -242,6 +258,7 @@
 <script lang="ts" setup>
 import { ref, reactive, onMounted, onActivated, nextTick, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import dayjs from 'dayjs'
 import * as PerformanceApi from '@/api/training'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
@@ -367,38 +384,12 @@ const fileTypeOptions = computed(() => {
   }))
 })
 
-const exerciseTypeOptions = [
-  { label: '大学年度演训', value: 'DXNDYX' },
-  { label: '联合类', value: 'LHL' },
-  { label: '作战类', value: 'ZUOZL' },
-  { label: '政治类', value: 'ZZL' },
-  { label: '经济类', value: 'JJL' },
-  { label: '认知类', value: 'RZL' },
-  { label: '文化类', value: 'WHL' },
-  { label: '后装类', value: 'HZL' },
-  { label: '国际防务类', value: 'GJFWL' },
-  { label: '网络类', value: 'WLL' },
-  { label: '电磁类', value: 'DCL' },
-  { label: '太空类', value: 'TKL' }
-]
+import type { DocCategoryVO } from '@/views/training/performance/config/categories'
 
-const levelOptions = [
-  { label: '战略级', value: 'ZLJ' },
-  { label: '战役级', value: 'YXJ' },
-  { label: '战术级', value: 'ZSJ' }
-]
-
-const collegeOptions = [
-  { label: '国防大学', value: 'GFDX' },
-  { label: '联合作战学院', value: 'LHZZXY' },
-  { label: '国家安全学院', value: 'GJAQXY' },
-  { label: '联合勤务学院', value: 'LHQWXY' },
-  { label: '国际防务学院', value: 'GJFWXY' },
-  { label: '军事管理学院', value: 'SGLXY' },
-  { label: '政治学院', value: 'ZZXY' },
-  { label: '军事文华学院', value: 'JSWHXY' },
-  { label: '研究生院', value: 'YJSY' }
-]
+const levelOptions = ref<DocCategoryVO[]>([])
+const academyOptions = ref<DocCategoryVO[]>([])
+const exerciseTypeOptions = ref<DocCategoryVO[]>([])
+const cityOptions = ref<DocCategoryVO[]>([])
 
 // 模拟用户列表
 const userOptions = [
@@ -1038,9 +1029,9 @@ const handleBatchDelete = async () => {
   }
 }
 
-const getCollegeLabel = (code?: string) => {
+const getAcademyLabel = (code?: string) => {
   if (!code) return ''
-  const option = collegeOptions.find((item) => item.value === code)
+  const option = academyOptions.value.find((item) => item.value === code)
   return option?.label || code
 }
 
@@ -1054,13 +1045,13 @@ const getFileTypeLabel = (fileType?: string) => {
 
 const getLevelLabel = (level?: string) => {
   if (!level) return ''
-  const option = levelOptions.find((item) => item.value === level)
+  const option = levelOptions.value.find((item) => item.value === level)
   return option?.label || level
 }
 
 const getExerciseTypeLabel = (type?: string) => {
   if (!type) return ''
-  const option = exerciseTypeOptions.find((item) => item.value === type)
+  const option = exerciseTypeOptions.value.find((item) => item.value === type)
   return option?.label || type
 }
 
@@ -1096,8 +1087,18 @@ const getStatusClass = (status?: string) => {
   }
 }
 
-onMounted(() => {
-  getCategories()
+onMounted(async () => {
+  await getCategories()
+  const [levels, academies, types, cities] = await Promise.all([
+    PerformanceApi.getLevelOptions(),
+    PerformanceApi.getAcademyOptions(),
+    PerformanceApi.getExerciseTypeOptions(),
+    PerformanceApi.getCityOptions()
+  ])
+  levelOptions.value = levels
+  academyOptions.value = academies
+  exerciseTypeOptions.value = types
+  cityOptions.value = cities
   getList()
 })
 

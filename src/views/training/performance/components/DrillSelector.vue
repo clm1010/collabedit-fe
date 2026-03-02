@@ -39,9 +39,12 @@
         <el-col :span="8">
           <el-form-item label="演训等级" prop="level">
             <el-select v-model="filterParams.level" clearable placeholder="请选择" class="!w-240px">
-              <el-option label="战略级" value="ZLJ" />
-              <el-option label="战役级" value="ZYJ" />
-              <el-option label="战术级" value="ZSJ" />
+              <el-option
+                v-for="item in levelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
           </el-form-item>
         </el-col>
@@ -54,7 +57,7 @@
               class="!w-240px"
             >
               <el-option
-                v-for="item in collegeOptions"
+                v-for="item in academyOptions"
                 :key="item.value"
                 :label="item.label"
                 :value="item.value"
@@ -64,7 +67,14 @@
         </el-col>
         <el-col :span="8">
           <el-form-item label="演训城市" prop="city">
-            <el-input v-model="filterParams.city" clearable placeholder="请输入" class="!w-240px" />
+            <el-select v-model="filterParams.city" clearable placeholder="请选择" class="!w-240px">
+              <el-option
+                v-for="item in cityOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
           </el-form-item>
         </el-col>
         <el-col :span="8">
@@ -96,11 +106,37 @@
       <el-table-column label="演训名称" prop="exerciseName" min-width="160" align="center" />
       <el-table-column label="演训支持单位" prop="supportUnit" width="160" align="center" />
       <el-table-column label="演训组织单位" prop="organizer" width="140" align="center" />
-      <el-table-column label="演训类型" prop="exerciseType" width="120" align="center" />
-      <el-table-column label="演训等级" prop="level" width="100" align="center" />
+      <el-table-column label="演训类型" prop="exerciseType" width="120" align="center">
+        <template #default="scope">
+          {{
+            exerciseTypeOptions.find((o) => o.value === scope.row.exerciseType)?.label ||
+            scope.row.exerciseType ||
+            ''
+          }}
+        </template>
+      </el-table-column>
+      <el-table-column label="演训等级" prop="level" width="100" align="center">
+        <template #default="scope">
+          {{
+            props.levelOptions.find((o) => o.value === scope.row.level)?.label || scope.row.level || ''
+          }}
+        </template>
+      </el-table-column>
       <el-table-column label="演训参演单位" prop="participatingUnits" width="160" align="center" />
-      <el-table-column label="演训城市" prop="city" width="100" align="center" />
-      <el-table-column label="演训学院" prop="academy" width="100" align="center" />
+      <el-table-column label="演训城市" prop="city" width="100" align="center">
+        <template #default="scope">
+          {{ cityOptions.find((o) => o.value === scope.row.city)?.label || scope.row.city || '' }}
+        </template>
+      </el-table-column>
+      <el-table-column label="演训学院" prop="academy" width="100" align="center">
+        <template #default="scope">
+          {{
+            props.academyOptions.find((o) => o.value === scope.row.academy)?.label ||
+            scope.row.academy ||
+            ''
+          }}
+        </template>
+      </el-table-column>
       <el-table-column label="演训科目" prop="subject" width="120" align="center" />
       <el-table-column label="演训课题" prop="course" width="120" align="center" />
       <el-table-column label="演训内容" prop="content" width="200" align="center" />
@@ -110,8 +146,16 @@
       <el-table-column label="重点班次" prop="keyClasses" width="100" align="center" />
       <el-table-column label="参与人数" prop="participantCount" width="100" align="center" />
       <el-table-column label="创建人" prop="updater" width="100" align="center" />
-      <el-table-column label="开始时间" prop="startTime" width="120" align="center" />
-      <el-table-column label="结束时间" prop="endTime" width="120" align="center" />
+      <el-table-column label="开始时间" prop="startTime" width="180" align="center">
+        <template #default="scope">
+          {{ scope.row.startTime ? dayjs(scope.row.startTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+        </template>
+      </el-table-column>
+      <el-table-column label="结束时间" prop="endTime" width="180" align="center">
+        <template #default="scope">
+          {{ scope.row.endTime ? dayjs(scope.row.endTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+        </template>
+      </el-table-column>
     </el-table>
 
     <div class="mt-4 flex justify-end">
@@ -130,41 +174,26 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { isEmpty, isNil, isArray, pickBy } from 'lodash-es'
+import dayjs from 'dayjs'
 import { Icon } from '@/components/Icon'
 import * as PerformanceApi from '@/api/training'
 
-const exerciseTypeOptions = [
-  { label: '大学年度演训', value: 'DXNDYX' },
-  { label: '联合类', value: 'LHL' },
-  { label: '作战类', value: 'ZUOZL' },
-  { label: '政治类', value: 'ZZL' },
-  { label: '经济类', value: 'JJL' },
-  { label: '认知类', value: 'RZL' },
-  { label: '文化类', value: 'WHL' },
-  { label: '后装类', value: 'HZL' },
-  { label: '国际防务类', value: 'GJFWL' },
-  { label: '网络类', value: 'WLL' },
-  { label: '电磁类', value: 'DCL' },
-  { label: '太空类', value: 'TKL' }
-]
-
-const collegeOptions = [
-  { label: '国防大学', value: 'GFDX' },
-  { label: '联合作战学院', value: 'LHZZXY' },
-  { label: '国家安全学院', value: 'GJAQXY' },
-  { label: '联合勤务学院', value: 'LHQWXY' },
-  { label: '国际防务学院', value: 'GJFWXY' },
-  { label: '军事管理学院', value: 'SGLXY' },
-  { label: '政治学院', value: 'ZZXY' },
-  { label: '军事文华学院', value: 'JSWHXY' },
-  { label: '研究生院', value: 'YJSY' }
-]
+import type { DocCategoryVO } from '@/views/training/performance/config/categories'
 
 interface Props {
   visible: boolean
+  exerciseTypeOptions?: DocCategoryVO[]
+  levelOptions?: DocCategoryVO[]
+  academyOptions?: DocCategoryVO[]
+  cityOptions?: DocCategoryVO[]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  exerciseTypeOptions: () => [],
+  levelOptions: () => [],
+  academyOptions: () => [],
+  cityOptions: () => []
+})
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void

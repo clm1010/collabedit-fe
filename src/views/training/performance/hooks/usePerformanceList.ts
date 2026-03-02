@@ -28,11 +28,10 @@ export function usePerformanceList() {
   const selectedCategory = ref('0')
 
   const fileTypeOptions = computed(() => {
-    const filtered = filter(categories.value, (item) => item.id !== '0')
+    const filtered = filter(categories.value, (item) => item.value !== '0')
     return map(filtered, (item) => ({
-      label: item.fileType,
-      value: item.id,
-      id: item.id
+      label: item.label,
+      value: item.value
     }))
   })
 
@@ -111,90 +110,29 @@ export function usePerformanceList() {
 
   const handleCategorySelect = (categoryId: string) => {
     selectedCategory.value = categoryId
-    const category = categories.value.find((cat) => cat.id === categoryId)
+    const category = categories.value.find((cat) => cat.value === categoryId)
 
     if (categoryId === '0') {
       queryParams.fileType = undefined
     } else if (category) {
-      queryParams.fileType = category.fileType
+      queryParams.fileType = category.label
     }
 
     handleQuery()
   }
 
-  const collegeOptions = [
-    { label: '国防大学', value: 'GFDX' },
-    { label: '联合作战学院', value: 'LHZZXY' },
-    { label: '国家安全学院', value: 'GJAQXY' },
-    { label: '联合勤务学院', value: 'LHQWXY' },
-    { label: '国际防务学院', value: 'GJFWXY' },
-    { label: '军事管理学院', value: 'SGLXY' },
-    { label: '政治学院', value: 'ZZXY' },
-    { label: '军事文华学院', value: 'JSWHXY' },
-    { label: '研究生院', value: 'YJSY' }
-  ]
-
-  const exerciseThemeOptions = [
-    { label: '联合作战训练', value: 'LHZZYX' },
-    { label: '作战训练', value: 'ZUOZL' },
-    { label: '政治训练', value: 'ZZL' },
-    { label: '经济训练', value: 'JJL' },
-    { label: '认知训练', value: 'RZL' },
-    { label: '文化训练', value: 'WHL' },
-    { label: '后装训练', value: 'HZL' }
-  ]
-
-  const exerciseTypeOptions = [
-    { label: '大学年度演训', value: 'DXNDYX' },
-    { label: '联合类', value: 'LHL' },
-    { label: '作战类', value: 'ZUOZL' },
-    { label: '政治类', value: 'ZZL' },
-    { label: '经济类', value: 'JJL' },
-    { label: '认知类', value: 'RZL' },
-    { label: '文化类', value: 'WHL' },
-    { label: '后装类', value: 'HZL' },
-    { label: '国际防务类', value: 'GJFWL' },
-    { label: '网络类', value: 'WLL' },
-    { label: '电磁类', value: 'DCL' },
-    { label: '太空类', value: 'TKL' }
-  ]
-
-  const levelOptions = [
-    { label: '战略级', value: 'ZLJ' },
-    { label: '战役级', value: 'YXJ' },
-    { label: '战术级', value: 'ZSJ' }
-  ]
-
-  const getCollegeLabel = (code?: string) => {
-    if (!code) return ''
-    const option = collegeOptions.find((item) => item.value === code)
-    return option?.label || code
-  }
-
   const getFileTypeLabel = (fileType?: string) => {
     if (!fileType) return ''
     const category = categories.value.find(
-      (item) => item.fileType === fileType || item.id === fileType
+      (item) => item.label === fileType || item.value === fileType
     )
-    return category?.fileType || fileType
+    return category?.label || fileType
   }
 
-  const getLevelLabel = (level?: string) => {
-    if (!level) return ''
-    const option = levelOptions.find((item) => item.value === level)
-    return option?.label || level
-  }
-
-  const getExerciseThemeLabel = (theme?: string) => {
-    if (!theme) return ''
-    const option = exerciseThemeOptions.find((item) => item.value === theme)
-    return option?.label || theme
-  }
-
-  const getExerciseTypeLabel = (type?: string) => {
-    if (!type) return ''
-    const option = exerciseTypeOptions.find((item) => item.value === type)
-    return option?.label || type
+  const getLabelFromOptions = (options: PerformanceApi.DocCategoryVO[], value?: string) => {
+    if (!value) return ''
+    const option = options.find((item) => item.value === value)
+    return option?.label || value
   }
 
   const applyNodeTextMap: Record<string, string> = {
@@ -246,18 +184,10 @@ export function usePerformanceList() {
     handleTabChange,
     handleCategorySelect,
 
-    getCollegeLabel,
     getFileTypeLabel,
-    getLevelLabel,
-    getExerciseThemeLabel,
-    getExerciseTypeLabel,
+    getLabelFromOptions,
     getApplyNodeLabel,
-    getStatusClass,
-
-    collegeOptions,
-    exerciseThemeOptions,
-    exerciseTypeOptions,
-    levelOptions
+    getStatusClass
   }
 }
 

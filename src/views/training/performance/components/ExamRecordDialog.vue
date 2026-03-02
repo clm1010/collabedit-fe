@@ -32,7 +32,11 @@
       <el-table-column prop="examOfficeName" label="审核部门" width="120" align="center" />
       <el-table-column prop="examUserId" label="审批用户" width="120" align="center" />
       <el-table-column prop="nextUserId" label="下一审批人" width="160" align="center" />
-      <el-table-column prop="createTime" label="审核时间" width="160" align="center" />
+      <el-table-column prop="createTime" label="审核时间" width="180" align="center">
+        <template #default="scope">
+          {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+        </template>
+      </el-table-column>
     </el-table>
     <template #footer>
       <el-button @click="dialogVisible = false">关闭</el-button>
@@ -42,6 +46,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import dayjs from 'dayjs'
 import type { ExamRecordVO } from '@/api/training'
 
 interface Props {

@@ -67,7 +67,7 @@
           class="w-full"
         >
           <el-option
-            v-for="item in collegeOptions"
+            v-for="item in academyOptions"
             :key="item.value"
             :label="item.label"
             :value="item.value"
@@ -155,9 +155,16 @@ interface Props {
   isEditMode: boolean
   loading: boolean
   fileTypeOptions: { label: string; value: string }[]
+  exerciseTypeOptions?: { label: string; value: string }[]
+  levelOptions?: { label: string; value: string }[]
+  academyOptions?: { label: string; value: string }[]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  exerciseTypeOptions: () => [],
+  levelOptions: () => [],
+  academyOptions: () => []
+})
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
@@ -216,49 +223,6 @@ const formRules = {
 const isExerciseFieldDisabled = computed(() => {
   return !isEmpty(formData.planId) && !isEmpty(formData.exerciseName)
 })
-
-const exerciseThemeOptions = [
-  { label: '联合作战训练', value: 'LHZZYX' },
-  { label: '作战训练', value: 'ZUOZL' },
-  { label: '政治训练', value: 'ZZL' },
-  { label: '经济训练', value: 'JJL' },
-  { label: '认知训练', value: 'RZL' },
-  { label: '文化训练', value: 'WHL' },
-  { label: '后装训练', value: 'HZL' }
-]
-
-const exerciseTypeOptions = [
-  { label: '大学年度演训', value: 'DXNDYX' },
-  { label: '联合类', value: 'LHL' },
-  { label: '作战类', value: 'ZUOZL' },
-  { label: '政治类', value: 'ZZL' },
-  { label: '经济类', value: 'JJL' },
-  { label: '认知类', value: 'RZL' },
-  { label: '文化类', value: 'WHL' },
-  { label: '后装类', value: 'HZL' },
-  { label: '国际防务类', value: 'GJFWL' },
-  { label: '网络类', value: 'WLL' },
-  { label: '电磁类', value: 'DCL' },
-  { label: '太空类', value: 'TKL' }
-]
-
-const levelOptions = [
-  { label: '战略级', value: 'ZLJ' },
-  { label: '战役级', value: 'YXJ' },
-  { label: '战术级', value: 'ZSJ' }
-]
-
-const collegeOptions = [
-  { label: '国防大学', value: 'GFDX' },
-  { label: '联合作战学院', value: 'LHZZXY' },
-  { label: '国家安全学院', value: 'GJAQXY' },
-  { label: '联合勤务学院', value: 'LHQWXY' },
-  { label: '国际防务学院', value: 'GJFWXY' },
-  { label: '军事管理学院', value: 'SGLXY' },
-  { label: '政治学院', value: 'ZZXY' },
-  { label: '军事文华学院', value: 'JSWHXY' },
-  { label: '研究生院', value: 'YJSY' }
-]
 
 const activeUserOptions = [
   { label: '管理员', value: 'admin' },

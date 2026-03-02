@@ -142,6 +142,7 @@ import { useEditor } from './useEditor'
 import { docModelToDocx, normalizeHtmlThroughDocModel, parseHtmlToDocModel } from '../../utils/wordParser'
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
+import { copyToClipboard } from '@/views/utils/clipboard'
 
 const editor = useEditor()
 
@@ -250,8 +251,12 @@ const exportText = () => {
 const copyHtml = async () => {
   try {
     const html = await generateFullHtml()
-    await navigator.clipboard.writeText(html)
-    ElMessage.success('HTML 已复制到剪贴板')
+    const ok = await copyToClipboard(html)
+    if (ok) {
+      ElMessage.success('HTML 已复制到剪贴板')
+    } else {
+      ElMessage.error('复制失败')
+    }
   } catch (error) {
     ElMessage.error('复制失败')
   }
@@ -298,10 +303,10 @@ const printPreview = async () => {
 }
 
 const copyShareLink = async () => {
-  try {
-    await navigator.clipboard.writeText(window.location.href)
+  const ok = await copyToClipboard(window.location.href)
+  if (ok) {
     ElMessage.success('链接已复制')
-  } catch (error) {
+  } else {
     ElMessage.error('复制失败')
   }
 }

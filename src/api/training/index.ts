@@ -10,6 +10,10 @@ import { isArray } from 'lodash-es'
 import {
   performanceCategories,
   ALL_CATEGORY,
+  levelCategories,
+  academyCategories,
+  exerciseTypeCategories,
+  cityCategories,
   type DocCategoryVO
 } from '@/views/training/performance/config/categories'
 
@@ -40,13 +44,12 @@ const javaApi = {
 
   /**
    * 获取文档分类列表 - Java 后端
-   * GET /dict/list?dictType=FILE_TYPE
-   * 返回格式: [{ value: 'ZCQB', label: '侦察情报' }, ...]
+   * GET /sjrh/dict/dataList?dictType=tb_file_type
    */
   getDocCategories: async (): Promise<{ data: DocCategoryVO[]; withAll: DocCategoryVO[] }> => {
     try {
-      const res = await javaRequest.get('/dict/list', { dictType: 'FILE_TYPE' })
-      const data: DocCategoryVO[] = res || []
+      const res = await javaRequest.get('/sjrh/dict/dataList', { dictType: 'tb_file_type' })
+      const data: DocCategoryVO[] = (res || []).map((item: any) => ({ value: item.value, label: item.label }))
       return {
         data,
         withAll: [ALL_CATEGORY, ...data]
@@ -57,6 +60,46 @@ const javaApi = {
         data: performanceCategories,
         withAll: [ALL_CATEGORY, ...performanceCategories]
       }
+    }
+  },
+
+  getLevelOptions: async (): Promise<DocCategoryVO[]> => {
+    try {
+      const res = await javaRequest.get('/sjrh/dict/dataList', { dictType: 'tb_level_type' })
+      return (res || []).map((item: any) => ({ value: item.value, label: item.label }))
+    } catch (error) {
+      console.error('获取演训等级失败:', error)
+      return levelCategories
+    }
+  },
+
+  getAcademyOptions: async (): Promise<DocCategoryVO[]> => {
+    try {
+      const res = await javaRequest.get('/sjrh/dict/dataList', { dictType: 'tb_academy_type' })
+      return (res || []).map((item: any) => ({ value: item.value, label: item.label }))
+    } catch (error) {
+      console.error('获取所属学院失败:', error)
+      return academyCategories
+    }
+  },
+
+  getExerciseTypeOptions: async (): Promise<DocCategoryVO[]> => {
+    try {
+      const res = await javaRequest.get('/sjrh/dict/dataList', { dictType: 'tb_exercise_type' })
+      return (res || []).map((item: any) => ({ value: item.value, label: item.label }))
+    } catch (error) {
+      console.error('获取演训类型失败:', error)
+      return exerciseTypeCategories
+    }
+  },
+
+  getCityOptions: async (): Promise<DocCategoryVO[]> => {
+    try {
+      const res = await javaRequest.get('/sjrh/dict/dataList', { dictType: 'tb_city_type' })
+      return (res || []).map((item: any) => ({ value: item.value, label: item.label }))
+    } catch (error) {
+      console.error('获取演训城市失败:', error)
+      return cityCategories
     }
   },
 
@@ -212,6 +255,26 @@ const mockApi = {
     return getDocCategories()
   },
 
+  getLevelOptions: async (): Promise<DocCategoryVO[]> => {
+    const { getLevelOptions } = await import('@/mock/training/performance')
+    return getLevelOptions()
+  },
+
+  getAcademyOptions: async (): Promise<DocCategoryVO[]> => {
+    const { getAcademyOptions } = await import('@/mock/training/performance')
+    return getAcademyOptions()
+  },
+
+  getExerciseTypeOptions: async (): Promise<DocCategoryVO[]> => {
+    const { getExerciseTypeOptions } = await import('@/mock/training/performance')
+    return getExerciseTypeOptions()
+  },
+
+  getCityOptions: async (): Promise<DocCategoryVO[]> => {
+    const { getCityOptions } = await import('@/mock/training/performance')
+    return getCityOptions()
+  },
+
   createNewData: async (data: TrainingPerformanceVO) => {
     const { createNewData } = await import('@/mock/training/performance')
     const res = await createNewData(data)
@@ -308,10 +371,11 @@ const api = USE_MOCK ? mockApi : javaApi
  */
 export const getPageList = api.getPageList
 
-/**
- * 获取文档分类列表
- */
 export const getDocCategories = api.getDocCategories
+export const getLevelOptions = api.getLevelOptions
+export const getAcademyOptions = api.getAcademyOptions
+export const getExerciseTypeOptions = api.getExerciseTypeOptions
+export const getCityOptions = api.getCityOptions
 
 /**
  * 新建筹划方案

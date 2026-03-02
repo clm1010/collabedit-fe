@@ -35,9 +35,12 @@
 
           <el-form-item label="演训等级" prop="level">
             <el-select v-model="localParams.level" placeholder="请选择" clearable class="!w-260px">
-              <el-option label="战略级" value="ZLJ" />
-              <el-option label="战役级" value="ZYJ" />
-              <el-option label="战术级" value="ZSJ" />
+              <el-option
+                v-for="item in levelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="所属学院" prop="collegeCode">
@@ -48,7 +51,7 @@
               class="!w-260px"
             >
               <el-option
-                v-for="item in collegeOptions"
+                v-for="item in academyOptions"
                 :key="item.value"
                 :label="item.label"
                 :value="item.value"
@@ -118,43 +121,21 @@ import { Icon } from '@/components/Icon'
 import type { TrainingPerformancePageReqVO } from '@/api/training'
 import type { DocCategoryVO } from '@/api/training'
 
-// 演训主题选项
-// const exerciseThemeOptions = [
-//   { label: '联合作战训练', value: 'LHZZYX' },
-//   { label: '作战训练', value: 'ZUOZL' },
-//   { label: '政治训练', value: 'ZZL' },
-//   { label: '经济训练', value: 'JJL' },
-//   { label: '认知训练', value: 'RZL' },
-//   { label: '文化训练', value: 'WHL' },
-//   { label: '后装训练', value: 'HZL' }
-// ]
-
-// 所属学院选项
-const collegeOptions = [
-  { label: '国防大学', value: 'GFDX' },
-  { label: '联合作战学院', value: 'LHZZXY' },
-  { label: '国家安全学院', value: 'GJAQXY' },
-  { label: '联合勤务学院', value: 'LHQWXY' },
-  { label: '国际防务学院', value: 'GJFWXY' },
-  { label: '军事管理学院', value: 'SGLXY' },
-  { label: '政治学院', value: 'ZZXY' },
-  { label: '军事文华学院', value: 'JSWHXY' },
-  { label: '研究生院', value: 'YJSY' }
-]
-
-// 文档分类选项（过滤掉"全部"）
 const fileTypeOptions = computed(() => {
   return props.categories.filter((item) => item.value !== '0')
 })
 
-// Props
 interface Props {
   modelValue: TrainingPerformancePageReqVO
-  categories?: DocCategoryVO[] // 文档分类数据
+  categories?: DocCategoryVO[]
+  levelOptions?: DocCategoryVO[]
+  academyOptions?: DocCategoryVO[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  categories: () => []
+  categories: () => [],
+  levelOptions: () => [],
+  academyOptions: () => []
 })
 
 // Emits

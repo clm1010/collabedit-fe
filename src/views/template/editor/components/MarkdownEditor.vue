@@ -648,6 +648,7 @@ import { ColoredHorizontalRule } from '../extensions/ColoredHorizontalRule'
 // AI 模块扩展（块级 - 支持内部编辑）
 import { AIBlockNode } from '../extensions/AIBlockNode'
 import { generateExportHtml } from '@/views/utils/documentExport'
+import { copyToClipboard } from '@/views/utils/clipboard'
 
 interface Props {
   ydoc: Y.Doc
@@ -1283,8 +1284,12 @@ const handlePreview = () => {
 const copyHtml = async () => {
   try {
     const html = await generateFullHtml()
-    await navigator.clipboard.writeText(html)
-    ElMessage.success('HTML 已复制到剪贴板')
+    const ok = await copyToClipboard(html)
+    if (ok) {
+      ElMessage.success('HTML 已复制到剪贴板')
+    } else {
+      ElMessage.error('复制失败')
+    }
   } catch (error) {
     ElMessage.error('复制失败')
   }

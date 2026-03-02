@@ -14,6 +14,10 @@ import type {
 import {
   performanceCategories,
   ALL_CATEGORY,
+  levelCategories,
+  academyCategories,
+  exerciseTypeCategories,
+  cityCategories,
   type DocCategoryVO
 } from '@/views/training/performance/config/categories'
 
@@ -37,12 +41,12 @@ const mockDataList: TrainingPerformanceVO[] = [
     planId: 'drill-001',
     exerciseName: '2024年度联合作战演练',
     planName: '联合作战演练筹划方案',
-    collegeCode: 'LHZZXY',
+    collegeCode: 'LHZZ',
     fileType: '演训方案',
     activeUser: 'admin,staff_a',
     description: '本方案用于指导2024年度联合作战演练的组织实施',
-    level: 'ZLJ',
-    exerciseType: 'LHL',
+    level: '3',
+    exerciseType: '4',
     docType: 'docx',
     createBy: 'admin',
     applyNode: ApplyNode.EDITING,
@@ -59,8 +63,8 @@ const mockDataList: TrainingPerformanceVO[] = [
     fileType: '作战计划',
     activeUser: 'staff_b',
     description: '战略级综合演练的总体方案设计',
-    level: 'ZLJ',
-    exerciseType: 'ZUOZL',
+    level: '3',
+    exerciseType: '2',
     docType: 'docx',
     createBy: 'staff_b',
     applyNode: ApplyNode.REVIEWING,
@@ -73,12 +77,12 @@ const mockDataList: TrainingPerformanceVO[] = [
     planId: 'drill-003',
     exerciseName: '网络安全演练',
     planName: '网络攻防演练实施方案',
-    collegeCode: 'GJAQXY',
+    collegeCode: 'GJAQ',
     fileType: '导调计划',
     activeUser: 'admin',
     description: '网络空间安全攻防演练方案',
-    level: 'YXJ',
-    exerciseType: 'WLL',
+    level: '2',
+    exerciseType: '12',
     docType: 'docx',
     createBy: 'admin',
     applyNode: ApplyNode.APPROVED,
@@ -91,12 +95,12 @@ const mockDataList: TrainingPerformanceVO[] = [
     planId: 'drill-004',
     exerciseName: '后勤保障演练',
     planName: '联合勤务保障方案',
-    collegeCode: 'LHQWXY',
+    collegeCode: 'LHQW',
     fileType: '作战文书',
     activeUser: 'staff_a,staff_b',
     description: '后勤保障体系综合演练方案',
-    level: 'ZSJ',
-    exerciseType: 'HZL',
+    level: '1',
+    exerciseType: '10',
     docType: 'docx',
     createBy: 'staff_a',
     applyNode: ApplyNode.PUBLISHED,
@@ -109,12 +113,12 @@ const mockDataList: TrainingPerformanceVO[] = [
     planId: 'drill-005',
     exerciseName: '电磁频谱管控演练',
     planName: '电磁环境管控方案',
-    collegeCode: 'SGLXY',
+    collegeCode: 'JSGL',
     fileType: '企图立案',
     activeUser: 'admin',
     description: '复杂电磁环境下的频谱管控方案',
-    level: 'YXJ',
-    exerciseType: 'DCL',
+    level: '2',
+    exerciseType: '13',
     docType: 'docx',
     createBy: 'admin',
     applyNode: ApplyNode.REJECTED,
@@ -127,12 +131,12 @@ const mockDataList: TrainingPerformanceVO[] = [
     planId: 'drill-006',
     exerciseName: '后勤保障演练',
     planName: '联合勤务保障方案',
-    collegeCode: 'SGLXY',
+    collegeCode: 'JSGL',
     fileType: '作战文书',
     activeUser: 'staff_a,staff_b',
     description: '后勤保障体系综合演练方案',
-    level: 'YXJ',
-    exerciseType: 'HZL',
+    level: '2',
+    exerciseType: '10',
     docType: 'docx',
     createBy: 'staff_a',
     applyNode: ApplyNode.REVIEWING,
@@ -145,12 +149,12 @@ const mockDataList: TrainingPerformanceVO[] = [
     planId: 'drill-007',
     exerciseName: '太空作战演练',
     planName: '太空作战演练方案',
-    collegeCode: 'SGLXY',
+    collegeCode: 'JSGL',
     fileType: '企图立案',
     activeUser: 'staff_a',
     description: '太空作战演练方案',
-    level: 'YXJ',
-    exerciseType: 'KZL',
+    level: '2',
+    exerciseType: '14',
     docType: 'docx',
     createBy: 'staff_a',
     applyNode: ApplyNode.REJECTED,
@@ -325,6 +329,26 @@ export const getDocCategories = async (): Promise<{ data: DocCategoryVO[]; withA
     data: performanceCategories,
     withAll: [ALL_CATEGORY, ...performanceCategories]
   }
+}
+
+export const getLevelOptions = async (): Promise<DocCategoryVO[]> => {
+  await mockDelay(100)
+  return levelCategories
+}
+
+export const getAcademyOptions = async (): Promise<DocCategoryVO[]> => {
+  await mockDelay(100)
+  return academyCategories
+}
+
+export const getExerciseTypeOptions = async (): Promise<DocCategoryVO[]> => {
+  await mockDelay(100)
+  return exerciseTypeCategories
+}
+
+export const getCityOptions = async (): Promise<DocCategoryVO[]> => {
+  await mockDelay(100)
+  return cityCategories
 }
 
 export const createNewData = async (data: TrainingPerformanceVO) => {
@@ -517,10 +541,10 @@ const mockExerciseDataList = [
     exerciseName: '2024年度联合作战演练',
     supportUnit: '中央军委',
     organizer: '参谋部',
-    exerciseType: 'LHL',
-    level: 'ZLJ',
+    exerciseType: '4',
+    level: '3',
     participatingUnits: '陆海空联合部队',
-    city: '北京',
+    city: 'BJ',
     academy: 'GFDX',
     subject: '联合作战指挥',
     course: '现代战争理论',
@@ -539,11 +563,11 @@ const mockExerciseDataList = [
     exerciseName: '战略级综合演训项目',
     supportUnit: '总参谋部',
     organizer: '训练处',
-    exerciseType: 'ZUOZL',
-    level: 'ZLJ',
+    exerciseType: '2',
+    level: '3',
     participatingUnits: '装甲部队',
-    city: '沈阳',
-    academy: 'LHZZXY',
+    city: 'BJ',
+    academy: 'LHZZ',
     subject: '装甲突击',
     course: '机械化作战',
     content: '装甲部队机动作战演练',
@@ -561,11 +585,11 @@ const mockExerciseDataList = [
     exerciseName: '网络安全攻防演练',
     supportUnit: '网络安全局',
     organizer: '作训科',
-    exerciseType: 'WLL',
-    level: 'ZSJ',
+    exerciseType: '12',
+    level: '1',
     participatingUnits: '网络部队',
-    city: '上海',
-    academy: 'GJAQXY',
+    city: 'SH',
+    academy: 'GJAQ',
     subject: '网络攻防',
     course: '信息安全',
     content: '网络空间安全攻防对抗演练',
@@ -583,11 +607,11 @@ const mockExerciseDataList = [
     exerciseName: '后勤保障综合演练',
     supportUnit: '后勤部',
     organizer: '网络部',
-    exerciseType: 'HZL',
-    level: 'ZSJ',
+    exerciseType: '10',
+    level: '1',
     participatingUnits: '后勤保障部队',
-    city: '广州',
-    academy: 'LHQWXY',
+    city: 'NJ',
+    academy: 'LHQW',
     subject: '后勤保障',
     course: '综合保障',
     content: '后勤保障体系综合演练',
@@ -605,11 +629,11 @@ const mockExerciseDataList = [
     exerciseName: '电磁频谱管控演练',
     supportUnit: '电子对抗部',
     organizer: '电子对抗处',
-    exerciseType: 'DCL',
-    level: 'ZLJ',
+    exerciseType: '13',
+    level: '3',
     participatingUnits: '电子对抗部队',
-    city: '成都',
-    academy: 'SGLXY',
+    city: 'XA',
+    academy: 'JSGL',
     subject: '电磁管控',
     course: '电子对抗',
     content: '复杂电磁环境下的频谱管控演练',
@@ -627,11 +651,11 @@ const mockExerciseDataList = [
     exerciseName: '太空作战演练',
     supportUnit: '航天局',
     organizer: '作战部',
-    exerciseType: 'KZL',
-    level: 'ZLJ',
+    exerciseType: '14',
+    level: '3',
     participatingUnits: '航天部队',
-    city: '西昌',
-    academy: 'SGLXY',
+    city: 'XA',
+    academy: 'JSGL',
     subject: '太空作战',
     course: '航天技术',
     content: '太空作战能力验证演练',
@@ -649,11 +673,11 @@ const mockExerciseDataList = [
     exerciseName: '海上联合演练',
     supportUnit: '海军司令部',
     organizer: '训练处',
-    exerciseType: 'HHL',
-    level: 'ZSJ',
+    exerciseType: '4',
+    level: '1',
     participatingUnits: '海军陆战队',
-    city: '青岛',
-    academy: 'GJFWXY',
+    city: 'NJ',
+    academy: 'GJFW',
     subject: '海上作战',
     course: '海战战术',
     content: '海上联合作战演练',
@@ -671,11 +695,11 @@ const mockExerciseDataList = [
     exerciseName: '跨区机动演练',
     supportUnit: '陆军司令部',
     organizer: '训练处',
-    exerciseType: 'ZUOZL',
-    level: 'ZSJ',
+    exerciseType: '2',
+    level: '1',
     participatingUnits: '装甲旅',
-    city: '兰州',
-    academy: 'LHZZXY',
+    city: 'XA',
+    academy: 'LHZZ',
     subject: '机动作战',
     course: '快速反应',
     content: '远程机动和快速部署演练',
@@ -693,11 +717,11 @@ const mockExerciseDataList = [
     exerciseName: '山地攻防演练',
     supportUnit: '西部战区',
     organizer: '作训科',
-    exerciseType: 'ZUOZL',
-    level: 'ZSJ',
+    exerciseType: '2',
+    level: '1',
     participatingUnits: '合成营',
-    city: '昆明',
-    academy: 'JSWHXY',
+    city: 'BJ',
+    academy: 'JSWH',
     subject: '山地作战',
     course: '复杂地形作战',
     content: '山地环境下的攻防作战演练',
@@ -715,11 +739,11 @@ const mockExerciseDataList = [
     exerciseName: '城市反恐演练',
     supportUnit: '武警总部',
     organizer: '特战处',
-    exerciseType: 'ZUOZL',
-    level: 'ZSJ',
+    exerciseType: '2',
+    level: '1',
     participatingUnits: '特战旅',
-    city: '北京',
-    academy: 'ZZXY',
+    city: 'BJ',
+    academy: 'ZZ',
     subject: '反恐作战',
     course: '特种作战',
     content: '城市环境反恐作战演练',
@@ -734,20 +758,45 @@ const mockExerciseDataList = [
   }
 ]
 
-export const getExerciseData = async (params: { pageNo?: number; pageSize?: number }) => {
+export const getExerciseData = async (params: {
+  pageNo?: number
+  pageSize?: number
+  exerciseName?: string
+  exerciseType?: string
+  level?: string
+  academy?: string
+  city?: string
+}) => {
   await mockDelay(200)
+
+  let filteredList = [...mockExerciseDataList]
+  if (params.exerciseName) {
+    filteredList = filteredList.filter((i) => i.exerciseName?.includes(params.exerciseName!))
+  }
+  if (params.exerciseType) {
+    filteredList = filteredList.filter((i) => i.exerciseType === params.exerciseType)
+  }
+  if (params.level) {
+    filteredList = filteredList.filter((i) => i.level === params.level)
+  }
+  if (params.academy) {
+    filteredList = filteredList.filter((i) => i.academy === params.academy)
+  }
+  if (params.city) {
+    filteredList = filteredList.filter((i) => i.city === params.city)
+  }
 
   const pageNo = params.pageNo || 1
   const pageSize = params.pageSize || 10
   const startIndex = (pageNo - 1) * pageSize
   const endIndex = startIndex + pageSize
-  const list = mockExerciseDataList.slice(startIndex, endIndex)
+  const list = filteredList.slice(startIndex, endIndex)
 
   return {
     code: 200,
     data: {
       records: list,
-      total: mockExerciseDataList.length
+      total: filteredList.length
     },
     msg: 'success'
   }
@@ -787,6 +836,10 @@ export const examApply = async (data: ExamApplyReqVO) => {
 export default {
   getPageList,
   getDocCategories,
+  getLevelOptions,
+  getAcademyOptions,
+  getExerciseTypeOptions,
+  getCityOptions,
   createNewData,
   updatePerformanceData,
   deleteTrainingPerformance,
