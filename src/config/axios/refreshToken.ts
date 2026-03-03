@@ -10,6 +10,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 import { ElMessageBox } from 'element-plus'
 import { config } from '@/config/axios/config'
+import { javaConfig } from './javaService'
 import {
   getAccessToken,
   getRefreshToken,
@@ -33,6 +34,9 @@ let requestList: { resolve: (value: any) => void; reject: (reason: any) => void 
 /** 是否正在刷新中 */
 let isRefreshToken = false
 
+/** 刷新是否已失败（防止 405/网络异常等导致的无限重试循环，页面重载自动重置） */
+let refreshFailed = false
+
 /** 是否显示重新登录弹窗 */
 export const isRelogin = { show: false }
 
@@ -52,12 +56,23 @@ const REFRESH_TOKEN_URL: Record<string, string> = {
 const doRefreshToken = async () => {
   axios.defaults.headers.common['tenant-id'] = getTenantId()
   const refreshUrl = REFRESH_TOKEN_URL[backendType] || REFRESH_TOKEN_URL.node
-  const url = base_url + refreshUrl + '?refreshToken=' + getRefreshToken()
-  // Java 后端刷新接口只接受 GET，Node 后端接受 POST
-  if (backendType === 'java') {
-    return await axios.get(url)
+  // Java 模式使用 javaConfig.base_url（与 javaService 实例一致），Node 模式使用 config.ts 的 base_url
+  const baseUrl = backendType === 'java' ? javaConfig.base_url : base_url
+  const url = baseUrl + refreshUrl + '?refreshToken=' + getRefreshToken()
+  try {
+    // Java 后端刷新接口只接受 GET，Node 后端接受 POST
+    if (backendType === 'java') {
+      return await axios.get(url)
+    }
+    return await axios.post(url)
+  } catch (error: any) {
+    if (error.response?.status === 405) {
+      console.error(
+        `[refreshToken] 405 Method Not Allowed: ${url}, backendType=${backendType}, 请检查 VITE_BACKEND_TYPE 配置`
+      )
+    }
+    throw error
   }
-  return await axios.post(url)
 }
 
 /**
@@ -72,6 +87,11 @@ export async function handle401(
   originalConfig: InternalAxiosRequestConfig,
   axiosInstance: AxiosInstance
 ): Promise<any> {
+  // 刷新已失败过（如 405/网络异常），直接走登出，不再重试，避免无限循环
+  if (refreshFailed) {
+    return handleAuthorized()
+  }
+
   if (!isRefreshToken) {
     isRefreshToken = true
     // 1. 如果获取不到刷新令牌，则只能执行登出操作
@@ -95,7 +115,8 @@ export async function handle401(
       requestList = []
       return axiosInstance(originalConfig)
     } catch (e) {
-      // 2.3 刷新失败，拒绝队列中所有请求（不再用失效 token 重试）
+      // 2.3 刷新失败，标记并拒绝队列中所有请求（不再用失效 token 重试）
+      refreshFailed = true
       requestList.forEach(({ reject }) => reject(new Error('刷新令牌失败')))
       // 提示登出。不回放当前请求，避免递归
       return handleAuthorized()
