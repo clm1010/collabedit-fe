@@ -178,13 +178,22 @@ const javaApi = {
   /**
    * 上传文档文件 - Java 后端
    */
-  uploadDocument: async (data: UploadDocumentData) => {
+  uploadDocument: async (data: UploadDocumentData): Promise<string | null> => {
     const formData = new FormData()
     if (data.id) {
       formData.append('id', data.id)
     }
     formData.append('file', data.file)
-    return await javaRequest.upload('/getPlan/saveFile', formData)
+    if (data.fileType) {
+      formData.append('fileType', data.fileType)
+    }
+    const res: any = await javaRequest.upload('/getPlan/saveFile', formData)
+    // 后端返回 { code: 0, data: { fileId: "uuid" }, msg: "success" }
+    // 拦截器解包后 res = { code: 0, data: { fileId: "uuid" }, msg: "" }
+    if (res?.data?.fileId) return res.data.fileId
+    if (res?.fileId) return res.fileId
+    if (typeof res === 'string') return res
+    return null
   },
 
   /**

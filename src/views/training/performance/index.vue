@@ -281,7 +281,6 @@ import {
   isArray,
   isNil,
   isObject,
-  isString,
   pickBy,
   find,
   every,
@@ -492,30 +491,16 @@ const handleFormSave = async (formData: any, uploadFile: File | null) => {
     if (formData.creationMethod === 'upload') {
       logger.debug('上传文档文件:', uploadFile!.name)
       const uploadResult = await PerformanceApi.uploadDocument({
-        file: uploadFile!
+        file: uploadFile!,
+        fileType: fileType
       })
-      logger.debug('上传结果:', uploadResult, typeof uploadResult)
+      logger.debug('上传结果:', uploadResult)
 
-      // 兼容两种响应格式
-      let fileId: string | null = null
+      // API 层已统一提取 fileId 字符串
+      const fileId: string | null = uploadResult as string | null
+      logger.debug('上传成功, 文件ID:', fileId)
 
-      if (isString(uploadResult)) {
-        // axios 封装解包后直接返回了 data 值
-        fileId = uploadResult
-        logger.debug('上传成功(解包响应), 文件ID:', fileId)
-      } else if (isObject(uploadResult)) {
-        // 完整响应对象
-        const result = uploadResult as { code?: number; data?: string; msg?: string }
-        if (result.code === 200 || result.code === 0) {
-          fileId = result.data || null
-          logger.debug('上传成功(完整响应), 文件ID:', fileId)
-        } else {
-          ElMessage.error(result.msg || '上传文档失败')
-          return
-        }
-      }
-
-      if (isEmpty(fileId)) {
+      if (!fileId) {
         ElMessage.error('上传文档失败：未获取到文件ID')
         return
       }

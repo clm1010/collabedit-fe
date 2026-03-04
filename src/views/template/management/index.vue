@@ -463,7 +463,7 @@ import * as TemplateApi from '@/api/template'
 import type { DocCategoryVO } from '@/views/training/performance/config/categories'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
-import { isEmpty, isNil, isString, isObject, pickBy, filter, map, every } from 'lodash-es'
+import { isEmpty, isNil, isObject, pickBy, filter, map, every } from 'lodash-es'
 import AuditFlowDialog from '@/lmComponents/AuditFlowDialog/index.vue'
 import DocumentPreviewDialog from '@/lmComponents/DocumentPreviewDialog/index.vue'
 import {
@@ -846,8 +846,8 @@ const handleSave = async () => {
   try {
     await formRef.value?.validate()
 
-    // 如果是上传文档方式，检查是否选择了文件
-    if (formData.creationMethod === 'upload' && isNil(uploadFile.value)) {
+    // 只有新建模式且选择上传文档时，才验证是否已选择文件
+    if (!isEditMode.value && formData.creationMethod === 'upload' && isNil(uploadFile.value)) {
       ElMessage.warning('请选择要上传的文件')
       return
     }
@@ -885,28 +885,15 @@ const handleSave = async () => {
       if (formData.creationMethod === 'upload') {
         // 上传文档模式
         // 先上传文档文件
-        const uploadResult = await TemplateApi.saveDocument({
-          file: uploadFile.value!
+      const uploadResult = await TemplateApi.saveDocument({
+          file: uploadFile.value!,
+          fileType: formData.temSubclass
         })
 
-        // 处理上传结果 - 兼容两种响应格式
-        let fileId: string | null = null
+        // API 层已统一提取 fileId 字符串
+        const fileId: string | null = uploadResult as string | null
 
-        if (isString(uploadResult)) {
-          // axios 封装解包后直接返回了 data 值
-          fileId = uploadResult
-        } else if (isObject(uploadResult)) {
-          // 完整响应对象
-          const result = uploadResult as { code?: number; data?: string; msg?: string }
-          if (result.code === 200 || result.code === 0) {
-            fileId = result.data || null
-          } else {
-            ElMessage.error(result.msg || '上传文档失败')
-            return
-          }
-        }
-
-        if (isEmpty(fileId)) {
+        if (!fileId) {
           ElMessage.error('上传文档失败：未获取到文件ID')
           return
         }

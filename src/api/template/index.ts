@@ -161,10 +161,19 @@ const javaApi = {
   /**
    * 上传文档文件 - Java 后端
    */
-  saveDocument: async (data: ImportTemplateData) => {
+  saveDocument: async (data: ImportTemplateData): Promise<string | null> => {
     const formData = new FormData()
     formData.append('file', data.file)
-    return await javaRequest.upload('/tbTemplate/saveFile', formData)
+    if (data.fileType) {
+      formData.append('fileType', data.fileType)
+    }
+    const res: any = await javaRequest.upload('/tbTemplate/saveFile', formData)
+    // 后端返回 { code: 0, data: { fileId: "uuid" }, msg: "success" }
+    // 拦截器解包后 res = { code: 0, data: { fileId: "uuid" }, msg: "" }
+    if (res?.data?.fileId) return res.data.fileId
+    if (res?.fileId) return res.fileId
+    if (typeof res === 'string') return res
+    return null
   },
 
   /**

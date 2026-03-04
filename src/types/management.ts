@@ -82,6 +82,7 @@ export interface SubmitAuditReqVO {
 // 导入模板参数接口
 export interface ImportTemplateData {
   file: File
+  fileType?: string // 文档分类（可选）
 }
 
 // 权限校验请求接口

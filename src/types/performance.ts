@@ -134,6 +134,7 @@ export interface FileStreamResponse {
 export interface UploadDocumentData {
   id?: string // 文档ID（可选）
   file: File // 文件对象
+  fileType?: string // 文档分类（可选）
 }
 
 // 审核记录接口 - GET /examRecord/examApply 返回参数
