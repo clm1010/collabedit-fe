@@ -74,7 +74,10 @@ const skipAuth = import.meta.env.VITE_SKIP_AUTH === 'true'
 // 路由加载前
 router.beforeEach(async (to, from, next) => {
   start()
-  loadStart()
+  const skipPageLoading = ['DocumentEdit', 'TemplateEditor'].includes(to.name as string)
+  if (!skipPageLoading) {
+    loadStart()
+  }
 
   const permissionStore = usePermissionStoreWithOut()
   const dictStore = useDictStoreWithOut()

@@ -833,6 +833,7 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
     }
     sessionStorage.setItem(`markdown_info_${row.id}`, JSON.stringify(docInfo))
 
+    loadingInstance.close()
     // 7. 跳转到模板编辑器页面
     router.push({
       path: `/template/editor/${row.id}`,

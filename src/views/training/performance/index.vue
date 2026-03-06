@@ -579,6 +579,7 @@ const handleEdit = async (row: any) => {
       creatorName: row.createBy || '未知'
     }
     sessionStorage.setItem(`doc_info_${row.id}`, JSON.stringify(documentInfo))
+    loadingInstance.close()
     router.push({
       name: 'DocumentEdit',
       params: { id: row.id },
