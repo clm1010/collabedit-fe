@@ -1,0 +1,71 @@
+/**
+ * 自定义 Loading 样式 - 全局样式
+ * 使用方式: 在 ElLoading.service 中添加 customClass: 'custom-writing-loading'
+ * 纯 CSS 伪元素实现双环旋转动画，参考 index.html 中 .app-loading-item 样式
+ */
+.custom-writing-loading {
+  .el-loading-spinner {
+    margin-top: -50px;
+
+    svg.circular {
+      display: none !important;
+    }
+
+    &::before {
+      content: '';
+      display: block;
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 15px;
+      border: 4px solid #2d8cf0;
+      border-bottom-width: 0;
+      border-left-color: transparent;
+      border-radius: 50%;
+      box-sizing: border-box;
+      animation: loader-outter 1s cubic-bezier(0.42, 0.61, 0.58, 0.41) infinite;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 10px;
+      // left: 49%;
+      left: 0;
+      right: 0;
+      margin: auto;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 40px;
+      border: 4px solid #87bdff;
+      border-right-width: 0;
+      border-top-color: transparent;
+      border-radius: 50%;
+      box-sizing: border-box;
+      animation: loader-inner 1s cubic-bezier(0.42, 0.61, 0.58, 0.41) infinite;
+    }
+  }
+
+  .el-loading-text {
+    // color: #303133;
+  }
+}
+
+@keyframes loader-outter {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-inner {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(-360deg);
+  }
+}

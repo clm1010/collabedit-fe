@@ -16,11 +16,17 @@ import { setupGlobCom } from '@/components'
 // 引入 element-plus
 import { setupElementPlus } from '@/plugins/elementPlus'
 
+// 引入 element-plus 表格全局配置
+import { setupElementPlusTableConfig } from '@/utils/elementplusTableConfig'
+
 // 引入 form-create
 import { setupFormCreate } from '@/plugins/formCreate'
 
 // 引入全局样式
 import '@/styles/index.scss'
+
+// 引入自定义 loading 样式
+import '@/lmStyles/loading.scss'
 
 // 引入动画
 import '@/plugins/animate.css'
@@ -47,6 +53,8 @@ import print from 'vue3-print-nb' // 打印插件
 // 创建实例
 const setupAll = async () => {
   const app = createApp(App)
+
+  setupElementPlusTableConfig()
 
   await setupI18n(app)
 

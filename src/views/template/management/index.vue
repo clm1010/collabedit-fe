@@ -99,18 +99,18 @@
           >
             <el-table-column type="selection" width="55" align="center" />
             <el-table-column label="序号" type="index" width="60" align="center" />
-            <el-table-column label="模板名称" prop="templateName" align="center" min-width="150" />
-            <el-table-column label="模板分类" prop="temCategory" align="center" min-width="120">
+            <el-table-column label="模板名称" prop="templateName" align="center" min-width="200" />
+            <el-table-column label="模板分类" prop="temCategory" align="center" width="140">
               <template #default>
                 {{ templateCategories[0]?.name || '筹划文档' }}
               </template>
             </el-table-column>
-            <el-table-column label="模板子类" prop="temSubclass" align="center" width="120">
+            <el-table-column label="模板子类" prop="temSubclass" align="center" width="140">
               <template #default="scope">
                 {{ getSubCategoryNameById(scope.row.temSubclass) || scope.row.temSubclass }}
               </template>
             </el-table-column>
-            <el-table-column label="模板状态" prop="temStatus" align="center" width="100">
+            <el-table-column label="模板状态" prop="temStatus" align="center" width="120">
               <template #default="scope">
                 <el-tag :type="getStatusType(scope.row.temStatus)">
                   {{ getStatusText(scope.row.temStatus) }}
@@ -132,16 +132,20 @@
               label="描述"
               prop="description"
               align="center"
-              min-width="150"
+              min-width="200"
               show-overflow-tooltip
             />
-            <el-table-column label="创建时间" prop="createTime" align="center" width="180">
+            <el-table-column label="创建时间" prop="createTime" align="center" width="200">
               <template #default="scope">
-                {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+                {{
+                  scope.row.createTime
+                    ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss')
+                    : ''
+                }}
               </template>
             </el-table-column>
-            <el-table-column label="创建人" prop="createBy" align="center" width="120" />
-            <el-table-column label="操作" align="center" width="320" fixed="right">
+            <el-table-column label="创建人" prop="createBy" align="center" width="140" />
+            <el-table-column label="操作" align="center" width="360" fixed="right">
               <template #default="scope">
                 <!-- 编辑中状态(1)显示：编辑、写作、提交审核、删除 -->
                 <template v-if="scope.row.applyNode === '1'">
@@ -373,7 +377,7 @@
     <el-dialog
       v-model="examRecordDialogVisible"
       title="审核记录"
-      width="900px"
+      width="1200px"
       :close-on-click-modal="false"
       class="custom-dialog-header"
     >
@@ -385,8 +389,8 @@
         style="width: 100%"
         max-height="400px"
       >
-        <el-table-column prop="examNode" label="审核节点" width="100" align="center" />
-        <el-table-column prop="examResult" label="审核结果" width="100" align="center">
+        <el-table-column prop="examNode" label="审核节点" width="120" align="center" />
+        <el-table-column prop="examResult" label="审核结果" width="120" align="center">
           <template #default="scope">
             <el-tag :type="scope.row.examResult === '1' ? 'success' : 'danger'">
               {{ scope.row.examResult === '1' ? '通过' : '驳回' }}
@@ -397,15 +401,17 @@
           prop="examOpinion"
           label="审核意见"
           min-width="200"
-          align="left"
+          align="center"
           show-overflow-tooltip
         />
         <el-table-column prop="examOfficeName" label="审核部门" width="120" align="center" />
-        <el-table-column prop="examUserId" label="审批用户" width="100" align="center" />
-        <el-table-column prop="nextUserId" label="下一审批人" width="100" align="center" />
-        <el-table-column prop="createTime" label="审核时间" width="180" align="center">
+        <el-table-column prop="examUserId" label="审批用户" width="120" align="center" />
+        <el-table-column prop="nextUserId" label="下一审批人" width="120" align="center" />
+        <el-table-column prop="createTime" label="审核时间" width="200" align="center">
           <template #default="scope">
-            {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+            {{
+              scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : ''
+            }}
           </template>
         </el-table-column>
       </el-table>
@@ -742,7 +748,8 @@ const handleEdit = async (row: TemplateApi.TemplateVO) => {
   const loadingInstance = ElLoading.service({
     lock: true,
     text: '正在校验权限...',
-    background: 'rgba(0, 0, 0, 0.7)'
+    background: 'rgba(255, 255, 255, 0.7)',
+    customClass: 'custom-writing-loading'
   })
 
   try {
@@ -885,7 +892,7 @@ const handleSave = async () => {
       if (formData.creationMethod === 'upload') {
         // 上传文档模式
         // 先上传文档文件
-      const uploadResult = await TemplateApi.saveDocument({
+        const uploadResult = await TemplateApi.saveDocument({
           file: uploadFile.value!,
           fileType: formData.temSubclass
         })
@@ -1314,7 +1321,6 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 @use '@/lmStyles/dialog.scss';
-@use '@/lmStyles/table.scss';
 .template-management {
   padding: 0;
   height: calc(100vh - 90px); // 减去头部和标签栏高度

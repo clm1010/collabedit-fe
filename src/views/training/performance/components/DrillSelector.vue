@@ -95,18 +95,17 @@
     <el-table
       v-loading="loading"
       :data="dataList"
-      border
       stripe
       highlight-current-row
       @current-change="handleSelect"
       class="w-full"
       height="400px"
     >
-      <el-table-column label="序号" type="index" width="60" align="center" />
-      <el-table-column label="演训名称" prop="exerciseName" min-width="160" align="center" />
+      <el-table-column label="序号" type="index" width="80" align="center" />
+      <el-table-column label="演训名称" prop="exerciseName" min-width="200" align="center" />
       <el-table-column label="演训支持单位" prop="supportUnit" width="160" align="center" />
       <el-table-column label="演训组织单位" prop="organizer" width="140" align="center" />
-      <el-table-column label="演训类型" prop="exerciseType" width="120" align="center">
+      <el-table-column label="演训类型" prop="exerciseType" width="140" align="center">
         <template #default="scope">
           {{
             exerciseTypeOptions.find((o) => o.value === scope.row.exerciseType)?.label ||
@@ -115,20 +114,22 @@
           }}
         </template>
       </el-table-column>
-      <el-table-column label="演训等级" prop="level" width="100" align="center">
+      <el-table-column label="演训等级" prop="level" width="120" align="center">
         <template #default="scope">
           {{
-            props.levelOptions.find((o) => o.value === scope.row.level)?.label || scope.row.level || ''
+            props.levelOptions.find((o) => o.value === scope.row.level)?.label ||
+            scope.row.level ||
+            ''
           }}
         </template>
       </el-table-column>
-      <el-table-column label="演训参演单位" prop="participatingUnits" width="160" align="center" />
-      <el-table-column label="演训城市" prop="city" width="100" align="center">
+      <el-table-column label="演训参演单位" prop="participatingUnits" width="180" align="center" />
+      <el-table-column label="演训城市" prop="city" width="120" align="center">
         <template #default="scope">
           {{ cityOptions.find((o) => o.value === scope.row.city)?.label || scope.row.city || '' }}
         </template>
       </el-table-column>
-      <el-table-column label="演训学院" prop="academy" width="100" align="center">
+      <el-table-column label="演训学院" prop="academy" width="140" align="center">
         <template #default="scope">
           {{
             props.academyOptions.find((o) => o.value === scope.row.academy)?.label ||
@@ -139,19 +140,19 @@
       </el-table-column>
       <el-table-column label="演训科目" prop="subject" width="120" align="center" />
       <el-table-column label="演训课题" prop="course" width="120" align="center" />
-      <el-table-column label="演训内容" prop="content" width="200" align="center" />
-      <el-table-column label="演训相关集成系统" prop="relatedSystems" width="140" align="center" />
+      <el-table-column label="演训内容" prop="content" width="240" align="center" />
+      <el-table-column label="演训相关集成系统" prop="relatedSystems" width="200" align="center" />
       <el-table-column label="实施计划" prop="implPlan" width="200" align="center" />
       <el-table-column label="编组信息" prop="groupingInfo" width="160" align="center" />
-      <el-table-column label="重点班次" prop="keyClasses" width="100" align="center" />
-      <el-table-column label="参与人数" prop="participantCount" width="100" align="center" />
-      <el-table-column label="创建人" prop="updater" width="100" align="center" />
-      <el-table-column label="开始时间" prop="startTime" width="180" align="center">
+      <el-table-column label="重点班次" prop="keyClasses" width="120" align="center" />
+      <el-table-column label="参与人数" prop="participantCount" width="120" align="center" />
+      <el-table-column label="创建人" prop="updater" width="120" align="center" />
+      <el-table-column label="开始时间" prop="startTime" width="200" align="center">
         <template #default="scope">
           {{ scope.row.startTime ? dayjs(scope.row.startTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
         </template>
       </el-table-column>
-      <el-table-column label="结束时间" prop="endTime" width="180" align="center">
+      <el-table-column label="结束时间" prop="endTime" width="200" align="center">
         <template #default="scope">
           {{ scope.row.endTime ? dayjs(scope.row.endTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
         </template>

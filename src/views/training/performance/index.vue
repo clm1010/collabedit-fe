@@ -15,7 +15,7 @@
 
           <ContentWrap class="flex-1 overflow-hidden mt-4 table-container-wrap">
             <div class="h-full flex flex-col p-4">
-            <div class="mb-4 flex-shrink-0">
+              <div class="mb-4 flex-shrink-0">
                 <el-button type="primary" size="large" @click="handleAdd">
                   <Icon icon="ep:plus" class="mr-1" />
                   新建
@@ -54,23 +54,23 @@
                     align="center"
                     min-width="200"
                   />
-                  <el-table-column label="所属学院" prop="collegeCode" align="center" width="120">
+                  <el-table-column label="所属学院" prop="collegeCode" align="center" width="140">
                     <template #default="scope">
                       {{ getAcademyLabel(scope.row.collegeCode) }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="文档分类" prop="fileType" align="center" width="120">
+                  <el-table-column label="文档分类" prop="fileType" align="center" width="140">
                     <template #default="scope">
                       {{ getFileTypeLabel(scope.row.fileType) }}
                     </template>
                   </el-table-column>
 
-                  <el-table-column label="演训类型" prop="exerciseType" align="center" width="120">
+                  <el-table-column label="演训类型" prop="exerciseType" align="center" width="140">
                     <template #default="scope">
                       {{ getExerciseTypeLabel(scope.row.exerciseType) }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="演训等级" prop="level" align="center" width="100">
+                  <el-table-column label="演训等级" prop="level" align="center" width="120">
                     <template #default="scope">
                       {{ getLevelLabel(scope.row.level) }}
                     </template>
@@ -86,12 +86,16 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column label="创建时间" prop="createTime" align="center" width="180">
+                  <el-table-column label="创建时间" prop="createTime" align="center" width="200">
                     <template #default="scope">
-                      {{ scope.row.createTime ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss') : '' }}
+                      {{
+                        scope.row.createTime
+                          ? dayjs(scope.row.createTime).format('YYYY-MM-DD HH:mm:ss')
+                          : ''
+                      }}
                     </template>
                   </el-table-column>
-                  <el-table-column label="操作" align="center" width="320" fixed="right">
+                  <el-table-column label="操作" align="center" width="360" fixed="right">
                     <template #default="scope">
                       <!-- 编辑中状态(1)显示：编辑、写作、审核、删除 -->
                       <div v-if="scope.row.applyNode === '1'">
@@ -276,17 +280,7 @@ import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { blobToText } from '@/views/utils/fileUtils'
 import { logger } from '@/views/utils/logger'
 import { parseFileContent } from '@/views/training/document/utils/wordParser'
-import {
-  isEmpty,
-  isArray,
-  isNil,
-  isObject,
-  pickBy,
-  find,
-  every,
-  filter,
-  map
-} from 'lodash-es'
+import { isEmpty, isArray, isNil, isObject, pickBy, find, every, filter, map } from 'lodash-es'
 
 defineOptions({ name: 'TrainingPerformance' })
 
@@ -546,7 +540,8 @@ const handleEdit = async (row: any) => {
   const loadingInstance = ElLoading.service({
     lock: true,
     text: '正在校验权限...',
-    background: 'rgba(0, 0, 0, 0.7)'
+    background: 'rgba(255, 255, 255, 0.7)',
+    customClass: 'custom-writing-loading'
   })
 
   try {
@@ -555,16 +550,13 @@ const handleEdit = async (row: any) => {
       id: row.id,
       userId: collaborationUser.id as string
     })
-
     if (permResult.status === 500 || permResult.data === false) {
       ElMessage.error('您没有该文档的写作权限')
       ElMessage.error(permResult.msg)
       return
     }
-
     loadingInstance.setText('正在加载文档内容...')
     const streamResult = await PerformanceApi.getFileStream(row.id)
-
     let hasContent = false
     if (streamResult && streamResult.size > 0) {
       const docBufferStore = useDocBufferStore()
@@ -575,7 +567,6 @@ const handleEdit = async (row: any) => {
     } else {
       logger.warn('文件流为空或无效')
     }
-
     const documentInfo = {
       id: String(row.id),
       title: row.planName,
@@ -588,7 +579,6 @@ const handleEdit = async (row: any) => {
       creatorName: row.createBy || '未知'
     }
     sessionStorage.setItem(`doc_info_${row.id}`, JSON.stringify(documentInfo))
-
     router.push({
       name: 'DocumentEdit',
       params: { id: row.id },
@@ -689,11 +679,11 @@ const openPublishDialog = (row: PerformanceApi.TrainingPerformanceVO) => {
 
 const handlePublishDialogSubmit = async (visibleScope: string[]) => {
   if (isNil(currentPublishRow.value?.id)) return
-  logger.debug('发布参数:', currentPublishRow.value.id, visibleScope)
+  logger.debug('发布参数:', currentPublishRow.value?.id || '', visibleScope)
   publishLoading.value = true
   try {
     const result = await PerformanceApi.publishDocument({
-      id: currentPublishRow.value.id,
+      id: currentPublishRow.value?.id || '',
       visibleScope: visibleScope
     })
     logger.debug('发布结果:', result)
@@ -851,7 +841,7 @@ const openExamRecordDialog = async (row: PerformanceApi.TrainingPerformanceVO) =
   try {
     const res = await PerformanceApi.getExamRecordList(row.id)
     // 兼容两种返回格式：数组或 { data: [...] }
-    examRecordList.value = Array.isArray(res) ? res : (res.data || [])
+    examRecordList.value = Array.isArray(res) ? res : res.data || []
   } catch (error) {
     logger.error('获取审核记录失败:', error)
     ElMessage.error('获取审核记录失败')
@@ -879,7 +869,7 @@ const handleRejectDialogSubmit = async (reason: string) => {
     const userId = collaborationUser.id || 'admin'
 
     await PerformanceApi.examApply({
-      applyId: currentRejectRow.value.id,
+      applyId: currentRejectRow.value?.id || '',
       examResult: '2', // 驳回
       examOpinion: reason,
       examUserId: userId
@@ -1100,7 +1090,6 @@ onUnmounted(() => {
 </script>
 <style scoped lang="scss">
 @use '@/lmStyles/dialog.scss';
-@use '@/lmStyles/table.scss';
 .performance-container {
   height: calc(100vh - 90px); // 减去头部和标签栏高度
   display: flex;

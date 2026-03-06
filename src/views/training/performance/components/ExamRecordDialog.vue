@@ -66,6 +66,3 @@ const dialogVisible = computed({
   set: (val) => emit('update:visible', val)
 })
 </script>
-<style scoped lang="scss">
-@use '@/lmStyles/table.scss';
-</style>
