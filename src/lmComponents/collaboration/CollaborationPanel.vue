@@ -65,20 +65,37 @@
     >
       <template v-if="mode === 'materials'">
         <h3 class="font-bold text-gray-800 mb-3">参考素材</h3>
-        <div class="overflow-y-auto flex-1 custom-scrollbar -mx-2 px-2">
+        <div
+          class="overflow-y-auto flex-1 custom-scrollbar -mx-2 px-2"
+          @scroll="handleMaterialScroll"
+        >
           <div v-if="materials && materials.length > 0" class="space-y-2">
             <div
               v-for="(item, index) in materials"
               :key="index"
               class="p-3 bg-gray-50 rounded hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-all border border-transparent hover:border-blue-100"
-              @click="$emit('click-material', item)"
+              @click="emit('click-material', item)"
             >
-              <div class="font-medium mb-1 truncate" :title="item.title">{{ item.title }}</div>
+              <div class="flex items-center gap-1.5 mb-1">
+                <el-icon class="text-gray-400 flex-shrink-0" :size="14"><Memo /></el-icon>
+                <span class="font-medium truncate" :title="item.title">{{ item.title }}</span>
+              </div>
               <div class="text-xs text-gray-400 flex justify-between items-center">
-                <span>{{ item.date }}</span>
-                <span>{{ item.author }}</span>
+                <span>{{ item.createTime }}</span>
+                <span>{{ item.createBy }}</span>
               </div>
             </div>
+            <div v-if="materialLoading" class="text-center text-gray-400 py-2 text-xs"
+              >加载中...</div
+            >
+            <template v-else-if="materials.length < materialTotal">
+              <div class="text-center py-2">
+                <el-button text size="small" type="primary" @click="emit('load-more-materials')"
+                  >加载更多</el-button
+                >
+              </div>
+            </template>
+            <div v-else class="text-center text-gray-400 py-2 text-xs">已加载全部</div>
           </div>
           <div v-else class="text-center text-gray-400 py-8"> 暂无参考素材 </div>
         </div>
@@ -117,6 +134,7 @@
 <script setup lang="ts">
 import { ELEMENT_TYPE_LABELS, type ElementItemType } from '@/utils/tmmConstants'
 import type { ElementItem } from '@/types/management'
+import { Memo } from '@element-plus/icons-vue'
 
 interface Props {
   /** 协作者列表 */
@@ -131,21 +149,35 @@ interface Props {
   properties?: any
   /** 默认角色显示文本 */
   defaultRole?: string
+  /** 素材总数（用于判断是否还有更多数据） */
+  materialTotal?: number
+  /** 素材加载中 */
+  materialLoading?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   mode: 'materials',
   materials: () => [],
   elements: () => [],
-  defaultRole: '查看者'
+  defaultRole: '查看者',
+  materialTotal: 0,
+  materialLoading: false
 })
-
-defineEmits<{
-  (e: 'click-material', item: any): void
-}>()
 
 const getTypeLabel = (type: ElementItemType): string => {
   return ELEMENT_TYPE_LABELS[type] || type
+}
+
+const emit = defineEmits<{
+  (e: 'click-material', item: any): void
+  (e: 'load-more-materials'): void
+}>()
+
+const handleMaterialScroll = (e: Event) => {
+  const el = e.target as HTMLElement
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
+    emit('load-more-materials')
+  }
 }
 </script>
 

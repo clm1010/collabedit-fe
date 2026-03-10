@@ -115,7 +115,7 @@ export function usePerformanceList() {
     if (categoryId === '0') {
       queryParams.fileType = undefined
     } else if (category) {
-      queryParams.fileType = category.label
+      queryParams.fileType = category.value
     }
 
     handleQuery()

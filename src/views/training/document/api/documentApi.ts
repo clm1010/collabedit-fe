@@ -44,15 +44,6 @@ export interface SaveDocumentParams {
   creatorName?: string
 }
 
-// 参考素材
-export interface ReferenceMaterial {
-  id: number
-  title: string
-  date: string
-  author: string
-  content: string
-}
-
 // 保存文档响应接口
 export interface SaveDocumentFileResponse {
   code: number
@@ -97,23 +88,6 @@ export const convertDocToHtml = async (file: File): Promise<string> => {
   } catch (error) {
     console.error('.doc 文件转换失败:', error)
     throw error
-  }
-}
-
-/**
- * 获取参考素材列表 - 直接调用 Java 后端
- * POST /getPlan/getMaterial
- * @param docId 文档ID
- */
-export const getReferenceMaterials = async (docId: string): Promise<ReferenceMaterial[]> => {
-  try {
-    const res = await javaRequest.post<ReferenceMaterial[]>('/getPlan/getMaterial', {
-      id: docId
-    })
-    return res || []
-  } catch (error) {
-    console.error('获取参考素材失败:', error)
-    return []
   }
 }
 

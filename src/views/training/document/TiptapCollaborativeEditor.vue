@@ -50,8 +50,11 @@
           :collaborators="collaborators"
           :materials="referenceMaterials"
           :properties="docProperties"
+          :material-total="materialTotal"
+          :material-loading="materialLoading"
           default-role="查看者"
           @click-material="handleMaterialClick"
+          @load-more-materials="loadMoreMaterials"
         />
       </div>
 
@@ -115,15 +118,15 @@
       >
         <div v-if="currentMaterial" class="h-full flex flex-col">
           <div class="text-xs text-gray-400 mb-4 flex justify-between">
-            <span>发布时间: {{ currentMaterial.date }}</span>
-            <span>作者: {{ currentMaterial.author }}</span>
+            <span>创建时间: {{ currentMaterial.createTime }}</span>
+            <span>创建人: {{ currentMaterial.createBy }}</span>
           </div>
           <div
             class="prose prose-sm flex-1 overflow-y-auto border p-3 rounded bg-gray-50 mb-4"
-            v-html="currentMaterial.content"
+            v-html="currentMaterial.content || '暂无内容'"
           ></div>
           <div class="flex justify-end gap-2">
-            <el-button type="primary" @click="copyContent(currentMaterial.content)">
+            <el-button type="primary" @click="copyContent(currentMaterial.content || '')">
               复制内容
             </el-button>
             <el-button @click="drawerVisible = false">关闭</el-button>
@@ -150,13 +153,13 @@ import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { useCollaboration } from '@/lmHooks'
 import { defaultCollaborationConfig } from './config/editorConfig'
 import {
-  getReferenceMaterials,
   saveDocumentFile,
   submitAudit,
   examApply,
   type DocumentInfo,
   type SubmitAuditReqVO
 } from './api/documentApi'
+import { getFilePage } from '@/api/training'
 import {
   docModelToDocx,
   normalizeHtmlThroughDocModel,
@@ -169,7 +172,7 @@ import { getFileStream as getFileStreamApi } from '@/api/training'
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
 import { logger } from '@/views/utils/logger'
-import { copyToClipboard } from '@/views/utils/clipboard'
+import { copyHtmlToClipboard } from '@/views/utils/clipboard'
 
 // ==================== IndexedDB 文档解析缓存工具 ====================
 // 使用浏览器原生 IndexedDB 缓存成功解析的带样式 HTML，关闭浏览器后仍保留
@@ -396,6 +399,40 @@ const isContentReady = computed(() => {
 
 // 参考素材
 const referenceMaterials = ref<any[]>([])
+const materialPageNo = ref(1)
+const materialPageSize = ref(10)
+const materialTotal = ref(0)
+const materialLoading = ref(false)
+const currentFileType = computed(() => documentInfo.value?.tags?.[0] || '')
+
+const loadMaterials = async (append = false) => {
+  materialLoading.value = true
+  try {
+    const params: any = {
+      pageNo: materialPageNo.value,
+      pageSize: materialPageSize.value
+    }
+    if (currentFileType.value) {
+      params.fileTypeList = [currentFileType.value]
+    }
+    const res = await getFilePage(params)
+    referenceMaterials.value = append
+      ? [...referenceMaterials.value, ...(res.records || [])]
+      : res.records || []
+    materialTotal.value = res.total || 0
+  } catch (error) {
+    console.error('获取参考素材失败:', error)
+  } finally {
+    materialLoading.value = false
+  }
+}
+
+const loadMoreMaterials = async () => {
+  if (materialLoading.value) return
+  if (referenceMaterials.value.length >= materialTotal.value) return
+  materialPageNo.value++
+  await loadMaterials(true)
+}
 
 // 文档属性 - 使用与 performance mockData 一致的格式
 const docProperties = computed(() => ({
@@ -463,11 +500,7 @@ const handleMaterialClick = (item: any) => {
 
 // 复制内容
 const copyContent = async (html: string) => {
-  const tempDiv = document.createElement('div')
-  tempDiv.innerHTML = html
-  const text = tempDiv.innerText || tempDiv.textContent || ''
-
-  const ok = await copyToClipboard(text)
+  const ok = await copyHtmlToClipboard(html)
   if (ok) {
     ElMessage.success('内容已复制到剪贴板')
   } else {
@@ -824,7 +857,10 @@ const applyPreloadedContent = async () => {
     const safeHtml = sanitizeImagesIfNeeded(normalizedHtml, 'preload')
 
     // 2. 检查内容是否有实质（纯文本或图片）
-    const strippedText = content.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+    const strippedText = content
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .trim()
     const hasImages = /<img\b[^>]*src=/i.test(content)
     if (!strippedText && !hasImages) {
       logger.debug('预加载内容为空，跳过')
@@ -1009,23 +1045,8 @@ const loadDocument = async () => {
     }
 
     // 加载参考素材
-    referenceMaterials.value = await getReferenceMaterials(documentId.value)
-    // referenceMaterials.value = [
-    //   {
-    //     id: 1,
-    //     title: '参考素材1',
-    //     date: '2025-01-01',
-    //     author: '张三',
-    //     content: '参考素材1内容'
-    //   },
-    //   {
-    //     id: 2,
-    //     title: '参考素材2',
-    //     date: '2025-01-02',
-    //     author: '李四',
-    //     content: '参考素材2内容'
-    //   }
-    // ]
+    materialPageNo.value = 1
+    await loadMaterials()
   } catch (error) {
     console.error('加载文档失败:', error)
     // 确保即使出错也有默认值
@@ -1110,7 +1131,10 @@ onMounted(async () => {
           // 解析成功且带样式 -> 缓存到 IndexedDB
           preloadedContent.value = parsedContent
           void setDocCache(documentId.value, parsedContent)
-          logger.debug('预加载内容解析成功（含样式），已缓存到 IndexedDB，HTML 长度:', parsedContent.length)
+          logger.debug(
+            '预加载内容解析成功（含样式），已缓存到 IndexedDB，HTML 长度:',
+            parsedContent.length
+          )
         } else {
           // 解析结果无样式 -> 尝试从 IndexedDB 恢复带样式的缓存版本
           const cachedHtml = await getDocCache(documentId.value)
@@ -1120,7 +1144,10 @@ onMounted(async () => {
           } else {
             // 没有缓存或缓存也无样式，使用当前解析结果
             preloadedContent.value = parsedContent
-            logger.debug('预加载内容解析成功（无样式，无可用缓存），HTML 长度:', parsedContent.length)
+            logger.debug(
+              '预加载内容解析成功（无样式，无可用缓存），HTML 长度:',
+              parsedContent.length
+            )
           }
         }
         isFirstLoadWithContent.value = true
@@ -1214,5 +1241,4 @@ onBeforeUnmount(() => {
     pointer-events: auto;
   }
 }
-
 </style>

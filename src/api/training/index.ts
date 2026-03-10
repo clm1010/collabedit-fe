@@ -249,6 +249,14 @@ const javaApi = {
    */
   examApply: async (data: ExamApplyReqVO) => {
     return await javaRequest.postOriginal('/examRecord/examApply', data)
+  },
+
+  /**
+   * 参考素材查询
+   * POST /file/page
+   */
+  getFilePage: async (params: { pageNo?: number; pageSize?: number; fileTypeList?: string[] | string }) => {
+    return await javaRequest.post('/file/page', params)
   }
 }
 
@@ -368,6 +376,12 @@ const mockApi = {
   examApply: async (data: ExamApplyReqVO) => {
     const { examApply } = await import('@/mock/training/performance')
     return examApply(data)
+  },
+
+  getFilePage: async (params: { pageNo?: number; pageSize?: number; fileTypeList?: string[] | string }) => {
+    const { getFilePage } = await import('@/mock/training/performance')
+    const res = await getFilePage(params)
+    return res.data
   }
 }
 
@@ -461,5 +475,12 @@ export const getExamRecordList = api.getExamRecordList
  * @param data 审核/驳回参数 { apply, examResult, examOpinion, examuserId }
  */
 export const examApply = api.examApply
+
+/**
+ * 参考素材查询
+ * POST /file/page
+ * @param params { pageNo, pageSize, fileTypeList }
+ */
+export const getFilePage = api.getFilePage
 
 export { performanceCategories } from '@/views/training/performance/config/categories'

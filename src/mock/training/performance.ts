@@ -42,7 +42,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '2024年度联合作战演练',
     planName: '联合作战演练筹划方案',
     collegeCode: 'LHZZ',
-    fileType: '演训方案',
+    fileType: 'YXFA',
     activeUser: 'admin,staff_a',
     description: '本方案用于指导2024年度联合作战演练的组织实施',
     level: '3',
@@ -60,7 +60,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '战略级演训项目',
     planName: '战略级综合演练方案',
     collegeCode: 'GFDX',
-    fileType: '作战计划',
+    fileType: 'ZZJH',
     activeUser: 'staff_b',
     description: '战略级综合演练的总体方案设计',
     level: '3',
@@ -78,7 +78,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '网络安全演练',
     planName: '网络攻防演练实施方案',
     collegeCode: 'GJAQ',
-    fileType: '导调计划',
+    fileType: 'DDJH',
     activeUser: 'admin',
     description: '网络空间安全攻防演练方案',
     level: '2',
@@ -96,7 +96,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '后勤保障演练',
     planName: '联合勤务保障方案',
     collegeCode: 'LHQW',
-    fileType: '作战文书',
+    fileType: 'ZZWS',
     activeUser: 'staff_a,staff_b',
     description: '后勤保障体系综合演练方案',
     level: '1',
@@ -114,7 +114,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '电磁频谱管控演练',
     planName: '电磁环境管控方案',
     collegeCode: 'JSGL',
-    fileType: '企图立案',
+    fileType: 'QTLA',
     activeUser: 'admin',
     description: '复杂电磁环境下的频谱管控方案',
     level: '2',
@@ -132,7 +132,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '后勤保障演练',
     planName: '联合勤务保障方案',
     collegeCode: 'JSGL',
-    fileType: '作战文书',
+    fileType: 'ZZWS',
     activeUser: 'staff_a,staff_b',
     description: '后勤保障体系综合演练方案',
     level: '2',
@@ -150,7 +150,7 @@ const mockDataList: TrainingPerformanceVO[] = [
     exerciseName: '太空作战演练',
     planName: '太空作战演练方案',
     collegeCode: 'JSGL',
-    fileType: '企图立案',
+    fileType: 'QTLA',
     activeUser: 'staff_a',
     description: '太空作战演练方案',
     level: '2',
@@ -833,6 +833,75 @@ export const examApply = async (data: ExamApplyReqVO) => {
   }
 }
 
+interface MockMaterial {
+  id: string
+  title: string
+  content?: string
+  fileType: string
+  createBy: string
+  createTime: string
+  delFlg: number
+}
+
+const mockMaterialList: MockMaterial[] = [
+  // YXFA 演训方案
+  { id: 'mat-001', title: '联合作战演练任务背景', fileType: 'YXFA', createBy: 'admin', createTime: '2025-01-05 09:00:00', delFlg: 0, content: '本素材用于说明联合作战演练的任务背景与总体目标，包含参演力量编成、演练地域范围等基础信息。演练将在东部战区辖区内展开，涵盖陆海空三军联合行动。' },
+  { id: 'mat-002', title: '演训方案组织结构模板', fileType: 'YXFA', createBy: 'admin', createTime: '2025-01-06 10:30:00', delFlg: 0, content: '<h3>组织结构</h3><p>本次演练采用<strong>红蓝对抗</strong>模式，参演力量包括：</p><ul><li>红方：合成旅战斗群</li><li>蓝方：模拟假想敌分队</li></ul><p>演练重点检验<em>联合指挥</em>与<em>协同作战</em>能力。</p>' },
+  { id: 'mat-003', title: '演练总体筹划要点', fileType: 'YXFA', createBy: 'staff_b', createTime: '2025-01-07 14:00:00', delFlg: 0, content: '<h3>筹划要点</h3><ol><li>明确演练目的和科目设置</li><li>拟定参演力量及编组方案</li><li>确定演练时间与地域</li><li>制定安全保障预案</li></ol><p>筹划工作应于演练前<strong>30天</strong>完成，经逐级审批后下达。</p>' },
+  { id: 'mat-004', title: '年度演训计划编制说明', fileType: 'YXFA', createBy: 'admin', createTime: '2025-01-08 08:15:00', delFlg: 0, content: '年度演训计划应包含演练名称、参演单位、时间节点、保障需求等核心要素。编制过程中需结合上级训练大纲要求，统筹安排各阶段训练内容。' },
+
+  // ZZJH 作战计划
+  { id: 'mat-005', title: '作战计划编写规范', fileType: 'ZZJH', createBy: 'staff_a', createTime: '2025-01-10 09:30:00', delFlg: 0, content: '<h3>编写规范</h3><p>作战计划应包含以下要素：</p><table><tr><th>章节</th><th>内容</th></tr><tr><td>敌情判断</td><td>敌方兵力部署、可能行动方向</td></tr><tr><td>我方态势</td><td>己方编成、战斗序列</td></tr><tr><td>任务区分</td><td>各部队作战任务及协同关系</td></tr><tr><td>保障计划</td><td>后勤、装备、通信保障</td></tr></table>' },
+  { id: 'mat-006', title: '合同战斗计划要素', fileType: 'ZZJH', createBy: 'admin', createTime: '2025-01-11 10:00:00', delFlg: 0, content: '合同战斗计划核心要素：战斗编成、任务区分、协同动作、火力计划、工程保障、后勤保障、通信保障、指挥关系。每个要素需明确责任单位和时间节点。' },
+  { id: 'mat-007', title: '防御作战计划参考', fileType: 'ZZJH', createBy: 'staff_b', createTime: '2025-01-12 14:20:00', delFlg: 0, content: '<p>防御作战计划应重点包含：</p><ul><li><strong>阵地编成</strong>：主阵地、前沿阵地、预备阵地</li><li><strong>火力配置</strong>：直射火力、间接火力、反坦克火力</li><li><strong>障碍设置</strong>：雷场、壕沟、铁丝网</li><li><strong>反冲击计划</strong>：预备队使用时机和方向</li></ul>' },
+
+  // DDJH 导调计划
+  { id: 'mat-008', title: '导调工作基本流程', fileType: 'DDJH', createBy: 'admin', createTime: '2025-01-14 09:00:00', delFlg: 0, content: '<h3>导调流程</h3><ol><li><strong>导调准备</strong>：拟定导调方案，明确导调人员分工</li><li><strong>情况诱导</strong>：按时序发放态势信息</li><li><strong>裁决评判</strong>：依据交战规则进行实时裁决</li><li><strong>讲评总结</strong>：梳理问题，总结经验教训</li></ol>' },
+  { id: 'mat-009', title: '导调文书编写指南', fileType: 'DDJH', createBy: 'staff_a', createTime: '2025-01-15 10:30:00', delFlg: 0, content: '导调文书包括：导调方案、情况想定、导调日志、裁决记录、讲评报告。文书编写应做到时间精确、内容详实、格式规范，确保导调活动有据可查。' },
+  { id: 'mat-010', title: '导调情况想定示例', fileType: 'DDJH', createBy: 'admin', createTime: '2025-01-16 11:45:00', delFlg: 0, content: '<p>XX时XX分，蓝方在我防御正面实施<strong>佯攻</strong>，主力向我左翼迂回。</p><p>导调要求：红方指挥员需在<em>15分钟内</em>判明蓝方意图并调整部署。考核重点：情报研判能力、指挥决策速度。</p>' },
+
+  // ZZWS 作战文书
+  { id: 'mat-011', title: '作战命令格式规范', fileType: 'ZZWS', createBy: 'admin', createTime: '2025-01-18 09:30:00', delFlg: 0, content: '<h3>作战命令格式</h3><p>标准作战命令包含五个部分：</p><ol><li>敌情</li><li>任务</li><li>执行（各分队任务）</li><li>保障</li><li>指挥与通信</li></ol><p>命令应简明扼要，避免歧义，使用规范军语。</p>' },
+  { id: 'mat-012', title: '战斗文书签发流程', fileType: 'ZZWS', createBy: 'staff_a', createTime: '2025-01-19 14:00:00', delFlg: 0, content: '战斗文书签发流程：拟稿→核稿→签发→登记→分发→签收。紧急文书可先口头下达后补签书面文书。所有文书须编号存档，非密文书保存期限不少于5年。' },
+  { id: 'mat-013', title: '协同动作计划要素', fileType: 'ZZWS', createBy: 'staff_b', createTime: '2025-01-20 10:15:00', delFlg: 0, content: '<p>协同动作计划应明确：</p><ul><li>协同目标与方法</li><li>火力协同时序表</li><li>各分队动作衔接点</li><li>联络信号与暗语</li></ul><p>重点确保<strong>时间协同</strong>和<strong>空间协同</strong>的统一。</p>' },
+
+  // QTLA 企图立案
+  { id: 'mat-014', title: '企图判断分析方法', fileType: 'QTLA', createBy: 'admin', createTime: '2025-01-21 09:00:00', delFlg: 0, content: '企图判断需综合运用情报分析、态势研判、兵棋推演等手段。重点分析敌方兵力调动、后勤保障变化、通信活动异常等征候，形成多种可能行动方案的概率评估。' },
+  { id: 'mat-015', title: '立案报告编写标准', fileType: 'QTLA', createBy: 'staff_a', createTime: '2025-01-22 10:30:00', delFlg: 0, content: '<h3>立案报告结构</h3><ol><li><strong>背景概述</strong>：阐述任务背景及当面敌情</li><li><strong>企图分析</strong>：列出敌方可能行动方案（最危险/最可能）</li><li><strong>我方对策</strong>：针对各方案拟定应对措施</li><li><strong>建议方案</strong>：推荐最优行动方案并说明理由</li></ol>' },
+  { id: 'mat-016', title: '态势研判报告模板', fileType: 'QTLA', createBy: 'admin', createTime: '2025-01-23 11:00:00', delFlg: 0, content: '<p>态势研判报告应包含：</p><ul><li>战场环境分析（地形、气象、电磁）</li><li>敌我力量对比</li><li>关键时间节点预判</li><li>态势发展趋势评估</li></ul><p>报告结论需给出<strong>置信度等级</strong>（高/中/低）。</p>' }
+]
+
+export const getFilePage = async (params: {
+  pageNo?: number
+  pageSize?: number
+  fileTypeList?: string[] | string
+}) => {
+  await mockDelay()
+
+  let filteredList = mockMaterialList.filter((item) => item.delFlg === 0)
+
+  if (params.fileTypeList) {
+    const types = Array.isArray(params.fileTypeList)
+      ? params.fileTypeList
+      : [params.fileTypeList]
+    if (types.length > 0) {
+      filteredList = filteredList.filter((item) => types.includes(item.fileType))
+    }
+  }
+
+  const total = filteredList.length
+  if (params.pageNo && params.pageSize) {
+    const start = (params.pageNo - 1) * params.pageSize
+    filteredList = filteredList.slice(start, start + params.pageSize)
+  }
+
+  return {
+    code: 200,
+    data: { records: filteredList, total },
+    msg: 'success'
+  }
+}
+
 export default {
   getPageList,
   getDocCategories,
@@ -853,5 +922,6 @@ export default {
   exportTrainingPerformance,
   getExerciseData,
   getExamRecordList,
-  examApply
+  examApply,
+  getFilePage
 }
