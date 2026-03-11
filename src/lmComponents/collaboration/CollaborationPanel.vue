@@ -78,11 +78,11 @@
             >
               <div class="flex items-center gap-1.5 mb-1">
                 <el-icon class="text-gray-400 flex-shrink-0" :size="14"><Memo /></el-icon>
-                <span class="font-medium truncate" :title="item.title">{{ item.title }}</span>
+                <span class="font-medium truncate" :title="item.fileName">{{ item.fileName }}</span>
               </div>
               <div class="text-xs text-gray-400 flex justify-between items-center">
-                <span>{{ item.createTime }}</span>
-                <span>{{ item.createBy }}</span>
+                <span>{{ formatDate(item.createTime) }}</span>
+                <span>{{ item.creator }}</span>
               </div>
             </div>
             <div v-if="materialLoading" class="text-center text-gray-400 py-2 text-xs"
@@ -135,6 +135,7 @@
 import { ELEMENT_TYPE_LABELS, type ElementItemType } from '@/utils/tmmConstants'
 import type { ElementItem } from '@/types/management'
 import { Memo } from '@element-plus/icons-vue'
+import dayjs from 'dayjs'
 
 interface Props {
   /** 协作者列表 */
@@ -163,6 +164,11 @@ const props = withDefaults(defineProps<Props>(), {
   materialTotal: 0,
   materialLoading: false
 })
+
+const formatDate = (date: string | number | null | undefined): string => {
+  if (!date) return ''
+  return dayjs(date).format('YYYY-MM-DD HH:mm')
+}
 
 const getTypeLabel = (type: ElementItemType): string => {
   return ELEMENT_TYPE_LABELS[type] || type

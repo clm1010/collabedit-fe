@@ -99,7 +99,7 @@
       <!-- 参考素材抽屉 (无遮罩，从协同面板左侧滑出) -->
       <el-drawer
         v-model="drawerVisible"
-        :title="currentMaterial?.title || '参考素材'"
+        :title="currentMaterial?.fileName || '参考素材'"
         :modal="false"
         :lock-scroll="false"
         :append-to-body="true"
@@ -118,15 +118,22 @@
       >
         <div v-if="currentMaterial" class="h-full flex flex-col">
           <div class="text-xs text-gray-400 mb-4 flex justify-between">
-            <span>创建时间: {{ currentMaterial.createTime }}</span>
-            <span>创建人: {{ currentMaterial.createBy }}</span>
+            <span
+              >创建时间:
+              {{
+                currentMaterial.createTime
+                  ? dayjs(currentMaterial.createTime).format('YYYY-MM-DD HH:mm')
+                  : ''
+              }}</span
+            >
+            <span>创建人: {{ currentMaterial.creator }}</span>
           </div>
           <div
             class="prose prose-sm flex-1 overflow-y-auto border p-3 rounded bg-gray-50 mb-4"
-            v-html="currentMaterial.content || '暂无内容'"
+            v-html="currentMaterial.fileContent || '暂无内容'"
           ></div>
           <div class="flex justify-end gap-2">
-            <el-button type="primary" @click="copyContent(currentMaterial.content || '')">
+            <el-button type="primary" @click="copyContent(currentMaterial.fileContent || '')">
               复制内容
             </el-button>
             <el-button @click="drawerVisible = false">关闭</el-button>
@@ -417,8 +424,8 @@ const loadMaterials = async (append = false) => {
     }
     const res = await getFilePage(params)
     referenceMaterials.value = append
-      ? [...referenceMaterials.value, ...(res.records || [])]
-      : res.records || []
+      ? [...referenceMaterials.value, ...(res.dataFileVoList || [])]
+      : res.dataFileVoList || []
     materialTotal.value = res.total || 0
   } catch (error) {
     console.error('获取参考素材失败:', error)

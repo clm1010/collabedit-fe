@@ -835,40 +835,54 @@ export const examApply = async (data: ExamApplyReqVO) => {
 
 interface MockMaterial {
   id: string
-  title: string
-  content?: string
-  fileType: string
-  createBy: string
+  deleted: number
+  creator: string
   createTime: string
-  delFlg: number
+  updater: string
+  updateTime: string
+  fileName: string
+  fileType: string
+  contentType: string
+  pathType: string
+  filePath: string
+  fileIntroduction: string
+  fileContent: string
+  oldPathType: string | null
+  oldFilePath: string | null
+  fileTypeLabel: string
+  contentTypeName: string
 }
+
+const fp = (obj: string) => JSON.stringify({ bucket: 'zsrz-education', object: `/2025-12/${obj}`, path: `http://192.168.20.175:9003/zsrz-education/2025-12/${obj}`, pathExpireDate: 1765358124497 })
+const WORD_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const PDF_MIME = 'application/pdf'
 
 const mockMaterialList: MockMaterial[] = [
   // YXFA 演训方案
-  { id: 'mat-001', title: '联合作战演练任务背景', fileType: 'YXFA', createBy: 'admin', createTime: '2025-01-05 09:00:00', delFlg: 0, content: '本素材用于说明联合作战演练的任务背景与总体目标，包含参演力量编成、演练地域范围等基础信息。演练将在东部战区辖区内展开，涵盖陆海空三军联合行动。' },
-  { id: 'mat-002', title: '演训方案组织结构模板', fileType: 'YXFA', createBy: 'admin', createTime: '2025-01-06 10:30:00', delFlg: 0, content: '<h3>组织结构</h3><p>本次演练采用<strong>红蓝对抗</strong>模式，参演力量包括：</p><ul><li>红方：合成旅战斗群</li><li>蓝方：模拟假想敌分队</li></ul><p>演练重点检验<em>联合指挥</em>与<em>协同作战</em>能力。</p>' },
-  { id: 'mat-003', title: '演练总体筹划要点', fileType: 'YXFA', createBy: 'staff_b', createTime: '2025-01-07 14:00:00', delFlg: 0, content: '<h3>筹划要点</h3><ol><li>明确演练目的和科目设置</li><li>拟定参演力量及编组方案</li><li>确定演练时间与地域</li><li>制定安全保障预案</li></ol><p>筹划工作应于演练前<strong>30天</strong>完成，经逐级审批后下达。</p>' },
-  { id: 'mat-004', title: '年度演训计划编制说明', fileType: 'YXFA', createBy: 'admin', createTime: '2025-01-08 08:15:00', delFlg: 0, content: '年度演训计划应包含演练名称、参演单位、时间节点、保障需求等核心要素。编制过程中需结合上级训练大纲要求，统筹安排各阶段训练内容。' },
+  { id: 'mat-001', deleted: 0, creator: 'admin', createTime: '2025-01-05T01:00:00.000+00:00', updater: 'admin', updateTime: '2025-01-05T01:00:00.000+00:00', fileName: '联合作战演练任务背景.pdf', fileType: 'YXFA', contentType: PDF_MIME, pathType: 'MINIO', filePath: fp('20250105090000001.pdf'), fileIntroduction: '联合作战演练任务背景', fileContent: '本素材用于说明联合作战演练的任务背景与总体目标，包含参演力量编成、演练地域范围等基础信息。演练将在东部战区辖区内展开，涵盖陆海空三军联合行动。', oldPathType: null, oldFilePath: null, fileTypeLabel: '演训方案', contentTypeName: 'PDF' },
+  { id: 'mat-002', deleted: 0, creator: 'admin', createTime: '2025-01-06T02:30:00.000+00:00', updater: 'admin', updateTime: '2025-01-06T02:30:00.000+00:00', fileName: '演训方案组织结构模板.word', fileType: 'YXFA', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250106103000002.word'), fileIntroduction: '演训方案组织结构模板', fileContent: '<h3>组织结构</h3><p>本次演练采用<strong>红蓝对抗</strong>模式，参演力量包括：</p><ul><li>红方：合成旅战斗群</li><li>蓝方：模拟假想敌分队</li></ul><p>演练重点检验<em>联合指挥</em>与<em>协同作战</em>能力。</p>', oldPathType: null, oldFilePath: null, fileTypeLabel: '演训方案', contentTypeName: 'WORD' },
+  { id: 'mat-003', deleted: 0, creator: 'staff_b', createTime: '2025-01-07T06:00:00.000+00:00', updater: 'staff_b', updateTime: '2025-01-07T06:00:00.000+00:00', fileName: '演练总体筹划要点.word', fileType: 'YXFA', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250107140000003.word'), fileIntroduction: '演练总体筹划要点', fileContent: '<h3>筹划要点</h3><ol><li>明确演练目的和科目设置</li><li>拟定参演力量及编组方案</li><li>确定演练时间与地域</li><li>制定安全保障预案</li></ol><p>筹划工作应于演练前<strong>30天</strong>完成，经逐级审批后下达。</p>', oldPathType: null, oldFilePath: null, fileTypeLabel: '演训方案', contentTypeName: 'WORD' },
+  { id: 'mat-004', deleted: 0, creator: 'admin', createTime: '2025-01-08T00:15:00.000+00:00', updater: 'admin', updateTime: '2025-01-08T00:15:00.000+00:00', fileName: '年度演训计划编制说明.pdf', fileType: 'YXFA', contentType: PDF_MIME, pathType: 'MINIO', filePath: fp('20250108081500004.pdf'), fileIntroduction: '年度演训计划编制说明', fileContent: '年度演训计划应包含演练名称、参演单位、时间节点、保障需求等核心要素。编制过程中需结合上级训练大纲要求，统筹安排各阶段训练内容。', oldPathType: null, oldFilePath: null, fileTypeLabel: '演训方案', contentTypeName: 'PDF' },
 
   // ZZJH 作战计划
-  { id: 'mat-005', title: '作战计划编写规范', fileType: 'ZZJH', createBy: 'staff_a', createTime: '2025-01-10 09:30:00', delFlg: 0, content: '<h3>编写规范</h3><p>作战计划应包含以下要素：</p><table><tr><th>章节</th><th>内容</th></tr><tr><td>敌情判断</td><td>敌方兵力部署、可能行动方向</td></tr><tr><td>我方态势</td><td>己方编成、战斗序列</td></tr><tr><td>任务区分</td><td>各部队作战任务及协同关系</td></tr><tr><td>保障计划</td><td>后勤、装备、通信保障</td></tr></table>' },
-  { id: 'mat-006', title: '合同战斗计划要素', fileType: 'ZZJH', createBy: 'admin', createTime: '2025-01-11 10:00:00', delFlg: 0, content: '合同战斗计划核心要素：战斗编成、任务区分、协同动作、火力计划、工程保障、后勤保障、通信保障、指挥关系。每个要素需明确责任单位和时间节点。' },
-  { id: 'mat-007', title: '防御作战计划参考', fileType: 'ZZJH', createBy: 'staff_b', createTime: '2025-01-12 14:20:00', delFlg: 0, content: '<p>防御作战计划应重点包含：</p><ul><li><strong>阵地编成</strong>：主阵地、前沿阵地、预备阵地</li><li><strong>火力配置</strong>：直射火力、间接火力、反坦克火力</li><li><strong>障碍设置</strong>：雷场、壕沟、铁丝网</li><li><strong>反冲击计划</strong>：预备队使用时机和方向</li></ul>' },
+  { id: 'mat-005', deleted: 0, creator: 'staff_a', createTime: '2025-01-10T01:30:00.000+00:00', updater: 'staff_a', updateTime: '2025-01-10T01:30:00.000+00:00', fileName: '作战计划编写规范.word', fileType: 'ZZJH', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250110093000005.word'), fileIntroduction: '作战计划编写规范', fileContent: '<h3>编写规范</h3><p>作战计划应包含以下要素：</p><table><tr><th>章节</th><th>内容</th></tr><tr><td>敌情判断</td><td>敌方兵力部署、可能行动方向</td></tr><tr><td>我方态势</td><td>己方编成、战斗序列</td></tr><tr><td>任务区分</td><td>各部队作战任务及协同关系</td></tr><tr><td>保障计划</td><td>后勤、装备、通信保障</td></tr></table>', oldPathType: null, oldFilePath: null, fileTypeLabel: '作战计划', contentTypeName: 'WORD' },
+  { id: 'mat-006', deleted: 0, creator: 'admin', createTime: '2025-01-11T02:00:00.000+00:00', updater: 'admin', updateTime: '2025-01-11T02:00:00.000+00:00', fileName: '合同战斗计划要素.pdf', fileType: 'ZZJH', contentType: PDF_MIME, pathType: 'MINIO', filePath: fp('20250111100000006.pdf'), fileIntroduction: '合同战斗计划要素', fileContent: '合同战斗计划核心要素：战斗编成、任务区分、协同动作、火力计划、工程保障、后勤保障、通信保障、指挥关系。每个要素需明确责任单位和时间节点。', oldPathType: null, oldFilePath: null, fileTypeLabel: '作战计划', contentTypeName: 'PDF' },
+  { id: 'mat-007', deleted: 0, creator: 'staff_b', createTime: '2025-01-12T06:20:00.000+00:00', updater: 'staff_b', updateTime: '2025-01-12T06:20:00.000+00:00', fileName: '防御作战计划参考.word', fileType: 'ZZJH', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250112142000007.word'), fileIntroduction: '防御作战计划参考', fileContent: '<p>防御作战计划应重点包含：</p><ul><li><strong>阵地编成</strong>：主阵地、前沿阵地、预备阵地</li><li><strong>火力配置</strong>：直射火力、间接火力、反坦克火力</li><li><strong>障碍设置</strong>：雷场、壕沟、铁丝网</li><li><strong>反冲击计划</strong>：预备队使用时机和方向</li></ul>', oldPathType: null, oldFilePath: null, fileTypeLabel: '作战计划', contentTypeName: 'WORD' },
 
   // DDJH 导调计划
-  { id: 'mat-008', title: '导调工作基本流程', fileType: 'DDJH', createBy: 'admin', createTime: '2025-01-14 09:00:00', delFlg: 0, content: '<h3>导调流程</h3><ol><li><strong>导调准备</strong>：拟定导调方案，明确导调人员分工</li><li><strong>情况诱导</strong>：按时序发放态势信息</li><li><strong>裁决评判</strong>：依据交战规则进行实时裁决</li><li><strong>讲评总结</strong>：梳理问题，总结经验教训</li></ol>' },
-  { id: 'mat-009', title: '导调文书编写指南', fileType: 'DDJH', createBy: 'staff_a', createTime: '2025-01-15 10:30:00', delFlg: 0, content: '导调文书包括：导调方案、情况想定、导调日志、裁决记录、讲评报告。文书编写应做到时间精确、内容详实、格式规范，确保导调活动有据可查。' },
-  { id: 'mat-010', title: '导调情况想定示例', fileType: 'DDJH', createBy: 'admin', createTime: '2025-01-16 11:45:00', delFlg: 0, content: '<p>XX时XX分，蓝方在我防御正面实施<strong>佯攻</strong>，主力向我左翼迂回。</p><p>导调要求：红方指挥员需在<em>15分钟内</em>判明蓝方意图并调整部署。考核重点：情报研判能力、指挥决策速度。</p>' },
+  { id: 'mat-008', deleted: 0, creator: 'admin', createTime: '2025-01-14T01:00:00.000+00:00', updater: 'admin', updateTime: '2025-01-14T01:00:00.000+00:00', fileName: '导调工作基本流程.word', fileType: 'DDJH', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250114090000008.word'), fileIntroduction: '导调工作基本流程', fileContent: '<h3>导调流程</h3><ol><li><strong>导调准备</strong>：拟定导调方案，明确导调人员分工</li><li><strong>情况诱导</strong>：按时序发放态势信息</li><li><strong>裁决评判</strong>：依据交战规则进行实时裁决</li><li><strong>讲评总结</strong>：梳理问题，总结经验教训</li></ol>', oldPathType: null, oldFilePath: null, fileTypeLabel: '导调计划', contentTypeName: 'WORD' },
+  { id: 'mat-009', deleted: 0, creator: 'staff_a', createTime: '2025-01-15T02:30:00.000+00:00', updater: 'staff_a', updateTime: '2025-01-15T02:30:00.000+00:00', fileName: '导调文书编写指南.pdf', fileType: 'DDJH', contentType: PDF_MIME, pathType: 'MINIO', filePath: fp('20250115103000009.pdf'), fileIntroduction: '导调文书编写指南', fileContent: '导调文书包括：导调方案、情况想定、导调日志、裁决记录、讲评报告。文书编写应做到时间精确、内容详实、格式规范，确保导调活动有据可查。', oldPathType: null, oldFilePath: null, fileTypeLabel: '导调计划', contentTypeName: 'PDF' },
+  { id: 'mat-010', deleted: 0, creator: 'admin', createTime: '2025-01-16T03:45:00.000+00:00', updater: 'admin', updateTime: '2025-01-16T03:45:00.000+00:00', fileName: '导调情况想定示例.word', fileType: 'DDJH', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250116114500010.word'), fileIntroduction: '导调情况想定示例', fileContent: '<p>XX时XX分，蓝方在我防御正面实施<strong>佯攻</strong>，主力向我左翼迂回。</p><p>导调要求：红方指挥员需在<em>15分钟内</em>判明蓝方意图并调整部署。考核重点：情报研判能力、指挥决策速度。</p>', oldPathType: null, oldFilePath: null, fileTypeLabel: '导调计划', contentTypeName: 'WORD' },
 
   // ZZWS 作战文书
-  { id: 'mat-011', title: '作战命令格式规范', fileType: 'ZZWS', createBy: 'admin', createTime: '2025-01-18 09:30:00', delFlg: 0, content: '<h3>作战命令格式</h3><p>标准作战命令包含五个部分：</p><ol><li>敌情</li><li>任务</li><li>执行（各分队任务）</li><li>保障</li><li>指挥与通信</li></ol><p>命令应简明扼要，避免歧义，使用规范军语。</p>' },
-  { id: 'mat-012', title: '战斗文书签发流程', fileType: 'ZZWS', createBy: 'staff_a', createTime: '2025-01-19 14:00:00', delFlg: 0, content: '战斗文书签发流程：拟稿→核稿→签发→登记→分发→签收。紧急文书可先口头下达后补签书面文书。所有文书须编号存档，非密文书保存期限不少于5年。' },
-  { id: 'mat-013', title: '协同动作计划要素', fileType: 'ZZWS', createBy: 'staff_b', createTime: '2025-01-20 10:15:00', delFlg: 0, content: '<p>协同动作计划应明确：</p><ul><li>协同目标与方法</li><li>火力协同时序表</li><li>各分队动作衔接点</li><li>联络信号与暗语</li></ul><p>重点确保<strong>时间协同</strong>和<strong>空间协同</strong>的统一。</p>' },
+  { id: 'mat-011', deleted: 0, creator: 'admin', createTime: '2025-01-18T01:30:00.000+00:00', updater: 'admin', updateTime: '2025-01-18T01:30:00.000+00:00', fileName: '作战命令格式规范.word', fileType: 'ZZWS', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250118093000011.word'), fileIntroduction: '作战命令格式规范', fileContent: '<h3>作战命令格式</h3><p>标准作战命令包含五个部分：</p><ol><li>敌情</li><li>任务</li><li>执行（各分队任务）</li><li>保障</li><li>指挥与通信</li></ol><p>命令应简明扼要，避免歧义，使用规范军语。</p>', oldPathType: null, oldFilePath: null, fileTypeLabel: '作战文书', contentTypeName: 'WORD' },
+  { id: 'mat-012', deleted: 0, creator: 'staff_a', createTime: '2025-01-19T06:00:00.000+00:00', updater: 'staff_a', updateTime: '2025-01-19T06:00:00.000+00:00', fileName: '战斗文书签发流程.pdf', fileType: 'ZZWS', contentType: PDF_MIME, pathType: 'MINIO', filePath: fp('20250119140000012.pdf'), fileIntroduction: '战斗文书签发流程', fileContent: '战斗文书签发流程：拟稿→核稿→签发→登记→分发→签收。紧急文书可先口头下达后补签书面文书。所有文书须编号存档，非密文书保存期限不少于5年。', oldPathType: null, oldFilePath: null, fileTypeLabel: '作战文书', contentTypeName: 'PDF' },
+  { id: 'mat-013', deleted: 0, creator: 'staff_b', createTime: '2025-01-20T02:15:00.000+00:00', updater: 'staff_b', updateTime: '2025-01-20T02:15:00.000+00:00', fileName: '协同动作计划要素.word', fileType: 'ZZWS', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250120101500013.word'), fileIntroduction: '协同动作计划要素', fileContent: '<p>协同动作计划应明确：</p><ul><li>协同目标与方法</li><li>火力协同时序表</li><li>各分队动作衔接点</li><li>联络信号与暗语</li></ul><p>重点确保<strong>时间协同</strong>和<strong>空间协同</strong>的统一。</p>', oldPathType: null, oldFilePath: null, fileTypeLabel: '作战文书', contentTypeName: 'WORD' },
 
   // QTLA 企图立案
-  { id: 'mat-014', title: '企图判断分析方法', fileType: 'QTLA', createBy: 'admin', createTime: '2025-01-21 09:00:00', delFlg: 0, content: '企图判断需综合运用情报分析、态势研判、兵棋推演等手段。重点分析敌方兵力调动、后勤保障变化、通信活动异常等征候，形成多种可能行动方案的概率评估。' },
-  { id: 'mat-015', title: '立案报告编写标准', fileType: 'QTLA', createBy: 'staff_a', createTime: '2025-01-22 10:30:00', delFlg: 0, content: '<h3>立案报告结构</h3><ol><li><strong>背景概述</strong>：阐述任务背景及当面敌情</li><li><strong>企图分析</strong>：列出敌方可能行动方案（最危险/最可能）</li><li><strong>我方对策</strong>：针对各方案拟定应对措施</li><li><strong>建议方案</strong>：推荐最优行动方案并说明理由</li></ol>' },
-  { id: 'mat-016', title: '态势研判报告模板', fileType: 'QTLA', createBy: 'admin', createTime: '2025-01-23 11:00:00', delFlg: 0, content: '<p>态势研判报告应包含：</p><ul><li>战场环境分析（地形、气象、电磁）</li><li>敌我力量对比</li><li>关键时间节点预判</li><li>态势发展趋势评估</li></ul><p>报告结论需给出<strong>置信度等级</strong>（高/中/低）。</p>' }
+  { id: 'mat-014', deleted: 0, creator: 'admin', createTime: '2025-01-21T01:00:00.000+00:00', updater: 'admin', updateTime: '2025-01-21T01:00:00.000+00:00', fileName: '企图判断分析方法.pdf', fileType: 'QTLA', contentType: PDF_MIME, pathType: 'MINIO', filePath: fp('20250121090000014.pdf'), fileIntroduction: '企图判断分析方法', fileContent: '企图判断需综合运用情报分析、态势研判、兵棋推演等手段。重点分析敌方兵力调动、后勤保障变化、通信活动异常等征候，形成多种可能行动方案的概率评估。', oldPathType: null, oldFilePath: null, fileTypeLabel: '企图立案', contentTypeName: 'PDF' },
+  { id: 'mat-015', deleted: 0, creator: 'staff_a', createTime: '2025-01-22T02:30:00.000+00:00', updater: 'staff_a', updateTime: '2025-01-22T02:30:00.000+00:00', fileName: '立案报告编写标准.word', fileType: 'QTLA', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250122103000015.word'), fileIntroduction: '立案报告编写标准', fileContent: '<h3>立案报告结构</h3><ol><li><strong>背景概述</strong>：阐述任务背景及当面敌情</li><li><strong>企图分析</strong>：列出敌方可能行动方案（最危险/最可能）</li><li><strong>我方对策</strong>：针对各方案拟定应对措施</li><li><strong>建议方案</strong>：推荐最优行动方案并说明理由</li></ol>', oldPathType: null, oldFilePath: null, fileTypeLabel: '企图立案', contentTypeName: 'WORD' },
+  { id: 'mat-016', deleted: 0, creator: 'admin', createTime: '2025-01-23T03:00:00.000+00:00', updater: 'admin', updateTime: '2025-01-23T03:00:00.000+00:00', fileName: '态势研判报告模板.word', fileType: 'QTLA', contentType: WORD_MIME, pathType: 'MINIO', filePath: fp('20250123110000016.word'), fileIntroduction: '态势研判报告模板', fileContent: '<p>态势研判报告应包含：</p><ul><li>战场环境分析（地形、气象、电磁）</li><li>敌我力量对比</li><li>关键时间节点预判</li><li>态势发展趋势评估</li></ul><p>报告结论需给出<strong>置信度等级</strong>（高/中/低）。</p>', oldPathType: null, oldFilePath: null, fileTypeLabel: '企图立案', contentTypeName: 'WORD' }
 ]
 
 export const getFilePage = async (params: {
@@ -878,7 +892,7 @@ export const getFilePage = async (params: {
 }) => {
   await mockDelay()
 
-  let filteredList = mockMaterialList.filter((item) => item.delFlg === 0)
+  let filteredList = mockMaterialList.filter((item) => item.deleted === 0)
 
   if (params.fileTypeList) {
     const types = Array.isArray(params.fileTypeList)
@@ -897,8 +911,8 @@ export const getFilePage = async (params: {
 
   return {
     code: 200,
-    data: { records: filteredList, total },
-    msg: 'success'
+    data: { dataFileVoList: filteredList, size: params.pageSize || filteredList.length, total },
+    message: 'success'
   }
 }
 

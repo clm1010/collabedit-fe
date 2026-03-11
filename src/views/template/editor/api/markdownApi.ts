@@ -46,30 +46,11 @@ export interface SaveMarkdownParams {
   creatorName?: string
 }
 
-export interface ReferenceMaterial {
-  id: number
-  title: string
-  date: string
-  author: string
-  content: string
-}
-
 export interface SaveMarkdownFileResponse {
   code: number
   data: any
   status: number
   msg?: string
-}
-
-/** POST /users/getMaterial */
-export const getReferenceMaterials = async (docId: string): Promise<ReferenceMaterial[]> => {
-  try {
-    const res = await javaRequest.post<ReferenceMaterial[]>('/users/getMaterial', { id: docId })
-    return res || []
-  } catch (error) {
-    console.error('获取参考素材失败:', error)
-    return []
-  }
 }
 
 /** POST /tbTemplate/saveFile */
