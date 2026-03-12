@@ -5,13 +5,13 @@
       <ToolbarButton
         icon="mdi:undo"
         title="撤销"
-        :disabled="!editor?.can().undo()"
+        :disabled="!canUndo"
         @click="editor?.chain().focus().undo().run()"
       />
       <ToolbarButton
         icon="mdi:redo"
         title="重做"
-        :disabled="!editor?.can().redo()"
+        :disabled="!canRedo"
         @click="editor?.chain().focus().redo().run()"
       />
     </div>
@@ -516,7 +516,7 @@ import {
   fontSizeLabelToPx,
   fontSizePxToLabel
 } from './types'
-import { useEditor } from './useEditor'
+import { useEditorState } from './useEditor'
 import {
   isDocFormat,
   isZipFormat,
@@ -536,8 +536,8 @@ import {
 } from '../../utils/wordParser'
 import { normalizeColor } from '../../utils/wordParser.shared'
 
-// 获取编辑器实例
-const editor = useEditor()
+// 获取编辑器实例及撤销/重做响应式状态
+const { editor, canUndo, canRedo } = useEditorState()
 
 // 状态
 const formatPainterActive = ref(false)

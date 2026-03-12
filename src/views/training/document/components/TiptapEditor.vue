@@ -265,6 +265,7 @@ interface Props {
   fragment: Y.XmlFragment
   provider: WebsocketProvider
   user: {
+    id: string
     name: string
     color: string
     avatar?: string

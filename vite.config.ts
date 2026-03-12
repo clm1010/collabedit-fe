@@ -69,6 +69,15 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       }
     },
     resolve: {
+      dedupe: [
+        'prosemirror-state',
+        'prosemirror-view',
+        'prosemirror-model',
+        'prosemirror-transform',
+        'prosemirror-keymap',
+        'yjs',
+        '@tiptap/y-tiptap',
+      ],
       extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.scss', '.css'],
       alias: [
         {

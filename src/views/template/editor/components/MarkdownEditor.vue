@@ -39,7 +39,7 @@
         <button
           class="toolbar-btn"
           @click="editor?.chain().focus().undo().run()"
-          :disabled="!editor?.can().undo()"
+          :disabled="!canUndo"
           title="撤销"
         >
           <Icon icon="mdi:undo" />
@@ -47,7 +47,7 @@
         <button
           class="toolbar-btn"
           @click="editor?.chain().focus().redo().run()"
-          :disabled="!editor?.can().redo()"
+          :disabled="!canRedo"
           title="重做"
         >
           <Icon icon="mdi:redo" />
@@ -655,6 +655,7 @@ interface Props {
   fragment: Y.XmlFragment
   provider: WebsocketProvider
   user: {
+    id: string
     name: string
     color: string
     avatar?: string
@@ -985,6 +986,142 @@ const editor = useEditor({
     updateColorFromSelection()
   }
 })
+
+const canUndo = ref(false)
+const canRedo = ref(false)
+let undoRedoRafId = 0
+let currentUndoManager: any = null
+
+function getMdEditorPlugins(ed: any) {
+  try {
+    const view = ed?.view
+    if (!view) return null
+    const state = view.state
+    const plugins: any[] = state?.plugins || []
+
+    let um: any = null
+    let syncPluginKey: any = null
+
+    for (const p of plugins) {
+      if (!um && p.key?.includes?.('y-undo')) {
+        const ps = p.getState(state)
+        um = ps?.undoManager ?? null
+      }
+      if (!syncPluginKey && p.key?.includes?.('y-sync') && !p.key?.includes?.('cursor')) {
+        syncPluginKey = p.spec?.key ?? null
+      }
+    }
+    return { um, syncPluginKey }
+  } catch { /* ignore */ }
+  return null
+}
+
+function patchMdUndoManagerTracking(um: any): boolean {
+  if (!um || um.__patchedV3) return false
+  const originalHandler = um.afterTransactionHandler
+  if (!originalHandler) return false
+  const ydoc = um.doc
+  if (!ydoc) return false
+
+  um.__patchedV3 = true
+  ydoc.off('afterTransaction', originalHandler)
+
+  const patchedHandler = (transaction: any) => {
+    const origin = transaction.origin
+
+    // Fix 1: ySyncPluginKey reference mismatch (module duplication)
+    if (origin && typeof origin === 'object' && origin.key && !um.trackedOrigins.has(origin)) {
+      for (const tracked of um.trackedOrigins) {
+        if (tracked && typeof tracked === 'object' && tracked.key === origin.key) {
+          um.trackedOrigins.add(origin)
+          break
+        }
+      }
+    }
+
+    // Fix 2: During undo/redo, the transaction origin is the UndoManager
+    // instance used internally by popStackItem. Due to .bind() or prototype
+    // chain issues, this may be a different reference than `um`.
+    // Ensure it is always tracked so the handler doesn't early-return.
+    if ((um.undoing || um.redoing) && origin && !um.trackedOrigins.has(origin)) {
+      um.trackedOrigins.add(origin)
+    }
+
+    // Ensure um itself is always tracked
+    if (!um.trackedOrigins.has(um)) {
+      um.trackedOrigins.add(um)
+    }
+
+    return originalHandler.call(um, transaction)
+  }
+
+  um.afterTransactionHandler = patchedHandler
+  ydoc.on('afterTransaction', patchedHandler)
+  return true
+}
+
+const syncUndoRedoFromManager = () => {
+  const um = currentUndoManager
+  if (um) {
+    canUndo.value = um.undoStack.length > 0
+    canRedo.value = um.redoStack.length > 0
+  }
+}
+
+const scheduleUndoRedoUpdate = () => {
+  if (undoRedoRafId) return
+  undoRedoRafId = requestAnimationFrame(() => {
+    undoRedoRafId = 0
+    syncUndoRedoFromManager()
+  })
+}
+
+const onUmStackChanged = () => { syncUndoRedoFromManager() }
+
+function bindUndoManager(ed: any) {
+  const info = getMdEditorPlugins(ed)
+  if (!info) return
+  const { um, syncPluginKey } = info
+  if (um && um !== currentUndoManager) {
+    unbindUndoManager()
+    currentUndoManager = um
+    if (syncPluginKey && !um.trackedOrigins.has(syncPluginKey)) {
+      um.trackedOrigins.add(syncPluginKey)
+    }
+    if (!um.trackedOrigins.has(um)) {
+      um.trackedOrigins.add(um)
+    }
+    patchMdUndoManagerTracking(um)
+    um.on('stack-item-added', onUmStackChanged)
+    um.on('stack-item-popped', onUmStackChanged)
+    um.on('stack-cleared', onUmStackChanged)
+  }
+}
+
+function unbindUndoManager() {
+  if (currentUndoManager) {
+    currentUndoManager.off('stack-item-added', onUmStackChanged)
+    currentUndoManager.off('stack-item-popped', onUmStackChanged)
+    currentUndoManager.off('stack-cleared', onUmStackChanged)
+    currentUndoManager = null
+  }
+}
+
+watch(
+  () => editor.value,
+  (newEditor, oldEditor) => {
+    if (oldEditor) {
+      oldEditor.off('transaction', scheduleUndoRedoUpdate)
+    }
+    unbindUndoManager()
+    if (newEditor) {
+      newEditor.on('transaction', scheduleUndoRedoUpdate)
+      bindUndoManager(newEditor)
+      syncUndoRedoFromManager()
+    }
+  },
+  { immediate: true }
+)
 
 const currentDragNode = ref<{ node: any; editor: any; pos: number } | null>(null)
 
@@ -1534,6 +1671,9 @@ watch(
 onBeforeUnmount(() => {
   // 标记组件已销毁
   isComponentDestroyed = true
+
+  if (undoRedoRafId) cancelAnimationFrame(undoRedoRafId)
+  unbindUndoManager()
 
   // 移除链接点击事件监听
   removeLinkClickListener(editor.value)
