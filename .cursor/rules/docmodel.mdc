@@ -1,0 +1,48 @@
+---
+description: DocModel 文档模型与 DOCX 解析/导出规范。修改文档解析或导出逻辑时自动加载。
+globs: src/**/docModel/**, src/**/wordParser/**
+---
+
+# DocModel 文档模型规范
+
+## 数据流
+
+```
+导入：DOCX -> parser.ts -> DocModel -> serializer.ts -> HTML
+导出：DocModel -> docModelToDocx.ts -> DOCX
+```
+
+## DOCX 解析管道（多层回退策略）
+
+优先级从高到低：
+1. **红头文件检测** -> 专用解析
+2. **OOXML Enhanced** -> 直接解析（保留样式最完整）
+3. **DocModel 管线**（docx4js）-> 标准解析
+4. **Mammoth 兜底** -> 最后手段
+
+**重要警告**：Mammoth **不输出内联样式**（font-family, font-size, color, background-color），回退到 Mammoth 会导致样式丢失。应优先确保 OOXML Enhanced 或 DocModel 管线正常工作。
+
+当 HTML 已包含样式时，应直接透传，避免经过 DocModel round-trip 丢失样式。
+
+## 新增节点类型
+
+必须同步修改以下 5 个文件（缺一不可）：
+
+1. `types.ts` — 新增 Block 接口 + 加入 `DocBlock` 联合类型
+2. `htmlParser.ts` — HTML -> DocModel 解析逻辑
+3. `serializer.ts` — DocModel -> HTML 序列化逻辑
+4. `docx4jsParser.ts` — DOCX -> DocModel 解析逻辑
+5. `docModelToDocx.ts` — DocModel -> DOCX 导出逻辑
+
+所有文件位于 `src/views/training/document/utils/docModel/`。
+
+## 图片分类规则（DocRun.image vs DocImageBlock）
+
+- **DocImageBlock**（块图片）：段落中仅含一张图片、无文本内容 -> `type: 'image'` 块，DOCX 导出宽度上限 600px，独占段落
+- **DocRun.image**（行内图片）：段落中图片与文字混排 -> 作为 `DocRun.image`，DOCX 导出宽度上限 300px，混在段落中
+
+关键判定逻辑：
+
+- **导入路径**（`docx4jsParser.ts` `parseBlocksFromTree`）：解析 `<p>` 后检查 `imgRuns.length === 1 && textRuns.length === 0`，满足则提升为 `DocImageBlock`
+- **保存路径**（`htmlParser.ts` `parseParagraphWithInlineImages`）：`isSoleImage = !hasTextContent`，若为 true 则走块图片路径，否则按 `data-display` / `hasInlineStyle` 判定行内
+- **序列化**（`serializer.ts`）：`DocRun.image` 输出 `data-display="inline"`，`DocImageBlock` 输出 `data-display="block"`

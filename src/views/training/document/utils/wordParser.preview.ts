@@ -219,7 +219,7 @@ export function postProcessDocxPreviewHtml(html: string): string {
 
   html = convertLargeFontParagraphsToHeadings(html)
 
-  html = html.replace(/\s+data-[^=]+="[^"]*"/g, '')
+  html = html.replace(/\s+data-(?!display\b)[^=]+="[^"]*"/g, '')
 
   html = html.trim()
   html = html.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')

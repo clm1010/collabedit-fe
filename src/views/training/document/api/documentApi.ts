@@ -119,6 +119,23 @@ export const saveDocumentFile = async (
 }
 
 /**
+ * 重置文档的 Y.js 协同数据（清理中间件 LevelDB 持久化）
+ * DELETE /collaboration/reset/:docId
+ * 调用中间件 REST API，fire-and-forget，失败不阻塞主流程
+ */
+export const resetCollaborationDoc = async (docId: string): Promise<void> => {
+  try {
+    const wsPort = (import.meta.env.VITE_WS_PORT as string | undefined) || '3001'
+    const baseUrl = `${window.location.protocol}//${window.location.hostname}:${wsPort}`
+    await fetch(`${baseUrl}/collaboration/reset/${encodeURIComponent(docId)}`, {
+      method: 'DELETE',
+    })
+  } catch (error) {
+    console.warn('重置协同文档数据失败（不影响保存）:', error)
+  }
+}
+
+/**
  * 导出文档为 HTML - 前端实现
  * @param title 文档标题
  * @param content 文档内容

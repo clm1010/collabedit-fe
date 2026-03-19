@@ -161,6 +161,7 @@ import { useCollaboration } from '@/lmHooks'
 import { defaultCollaborationConfig } from './config/editorConfig'
 import {
   saveDocumentFile,
+  resetCollaborationDoc,
   submitAudit,
   examApply,
   type DocumentInfo,
@@ -186,7 +187,7 @@ import { copyHtmlToClipboard } from '@/views/utils/clipboard'
 const DOC_CACHE_DB_NAME = 'docParseCache'
 const DOC_CACHE_STORE_NAME = 'parsedHtml'
 const DOC_CACHE_VERSION = 1
-const DOC_CACHE_EXPIRE_MS = 7 * 24 * 60 * 60 * 1000 // 7 天过期
+const DOC_CACHE_EXPIRE_MS = 24 * 60 * 60 * 1000 // 24 小时过期
 
 interface DocCacheEntry {
   html: string
@@ -845,9 +846,13 @@ const applyPreloadedContent = async () => {
   if (isUnmounted.value || isApplyingContent.value) return
 
   // 协同同步后检查：如果编辑器已有内容（来自其他用户的协作同步），跳过预加载，防止内容重复
+  // 双重检查：ProseMirror HTML + Y.XmlFragment（防止 y-prosemirror binding 时序问题导致 getHTML 为空）
   const syncedHtml = editorInstance.value?.getHTML() || ''
-  if (!isEditorContentEmpty(syncedHtml)) {
-    logger.debug('协同同步已有内容，跳过预加载（防止内容重复）')
+  const yjsHasContent = fragment.value && fragment.value.length > 1
+
+  if (!isEditorContentEmpty(syncedHtml) || yjsHasContent) {
+    logger.debug('协同同步已有内容，跳过预加载（防止内容重复）',
+      { htmlEmpty: isEditorContentEmpty(syncedHtml), yjsLength: fragment.value?.length })
     preloadedApplied.value = true
     isFirstLoadWithContent.value = false
     void clearPreloadedCache()
@@ -877,7 +882,18 @@ const applyPreloadedContent = async () => {
     // 3. 直接使用 data:image（跳过 blob URL 转换，避免竞态错误）
     const contentToApply = safeHtml
 
-    // 4. 等待编辑器 DOM 稳定后再尝试
+    // 4. 清除 Y.js fragment 中可能残留的 LevelDB 旧内容，防止与预加载内容合并导致重复
+    const frag = fragment.value
+    if (ydoc.value && frag && frag.length > 0) {
+      ydoc.value.transact(() => {
+        while (frag.length > 0) {
+          frag.delete(0, 1)
+        }
+      })
+      logger.debug('已清除 Y.js fragment 旧内容，准备应用预加载内容')
+    }
+
+    // 5. 等待编辑器 DOM 稳定后再尝试
     await sleep(300)
 
     // 5. 重试循环（最多 3 次）
@@ -891,6 +907,14 @@ const applyPreloadedContent = async () => {
       const currentHtml = editorInstance.value?.getHTML() || ''
       const preloadedHasStyle = hasStyleHintsInHtml(safeHtml)
 
+      // 重试期间也检查 Y.XmlFragment，防止等待期间协同同步完成导致重复
+      const yjsNowHasContent = fragment.value && fragment.value.length > 1
+      if (yjsNowHasContent && !isEditorContentEmpty(currentHtml)) {
+        logger.debug('重试期间检测到协同内容已就绪，跳过预加载')
+        applied = true
+        break
+      }
+
       // 判断是否需要应用：编辑器空、首次加载、或预加载有样式但编辑器没有
       const needsApply =
         isEditorContentEmpty(currentHtml) ||
@@ -898,7 +922,6 @@ const applyPreloadedContent = async () => {
         (preloadedHasStyle && !hasStyleHintsInHtml(currentHtml))
 
       if (!needsApply && !isEditorContentEmpty(currentHtml)) {
-        // 编辑器已有实质内容（可能来自协同同步），跳过预加载
         logger.debug('编辑器已有实质内容，跳过预加载')
         applied = true
         break
@@ -1006,10 +1029,10 @@ const handleSave = async () => {
 
     if (result.code === 200 || result.code === 0 || result.status === 200) {
       ElMessage.success('文档已保存')
-      // 标记文档已保存
       hasUnsavedChanges.value = false
+      void deleteDocCache(documentId.value)
+      void resetCollaborationDoc(documentId.value)
 
-      // 更新文档信息
       if (documentInfo.value) {
         documentInfo.value.updateTime = new Date().toISOString()
       }
@@ -1133,9 +1156,7 @@ onMounted(async () => {
       logger.debug('开始解析文件内容, 大小:', arrayBuffer.byteLength)
       const parsedContent = await parseFileContent(arrayBuffer)
       if (parsedContent) {
-        // IndexedDB 缓存策略：解析结果有样式时缓存，无样式时尝试用缓存版本恢复
         if (hasStyleHintsInHtml(parsedContent)) {
-          // 解析成功且带样式 -> 缓存到 IndexedDB
           preloadedContent.value = parsedContent
           void setDocCache(documentId.value, parsedContent)
           logger.debug(
@@ -1143,19 +1164,11 @@ onMounted(async () => {
             parsedContent.length
           )
         } else {
-          // 解析结果无样式 -> 尝试从 IndexedDB 恢复带样式的缓存版本
-          const cachedHtml = await getDocCache(documentId.value)
-          if (cachedHtml && hasStyleHintsInHtml(cachedHtml)) {
-            preloadedContent.value = cachedHtml
-            logger.info('解析结果无样式，使用 IndexedDB 缓存的带样式版本，长度:', cachedHtml.length)
-          } else {
-            // 没有缓存或缓存也无样式，使用当前解析结果
-            preloadedContent.value = parsedContent
-            logger.debug(
-              '预加载内容解析成功（无样式，无可用缓存），HTML 长度:',
-              parsedContent.length
-            )
-          }
+          preloadedContent.value = parsedContent
+          logger.debug(
+            '预加载内容解析成功（无样式），使用当前结果，HTML 长度:',
+            parsedContent.length
+          )
         }
         isFirstLoadWithContent.value = true
       } else {

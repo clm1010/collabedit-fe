@@ -494,12 +494,12 @@ function extractImageFromDrawing(drawing: any, imageMap: Map<string, string>): s
   try {
     const inline = drawing['wp:inline']
     if (inline) {
-      return extractImageFromInlineOrAnchor(inline, imageMap)
+      return extractImageFromInlineOrAnchor(inline, imageMap, true)
     }
 
     const anchor = drawing['wp:anchor']
     if (anchor) {
-      return extractImageFromInlineOrAnchor(anchor, imageMap)
+      return extractImageFromInlineOrAnchor(anchor, imageMap, false)
     }
   } catch (e) {
     console.warn('提取图片失败:', e)
@@ -510,12 +510,18 @@ function extractImageFromDrawing(drawing: any, imageMap: Map<string, string>): s
 /**
  * 从 inline/anchor 元素提取图片
  */
-function extractImageFromInlineOrAnchor(element: any, imageMap: Map<string, string>): string {
+function extractImageFromInlineOrAnchor(
+  element: any,
+  imageMap: Map<string, string>,
+  isInline = false
+): string {
   try {
     const extent = element['wp:extent']
     let width = 0
+    let height = 0
     if (extent) {
       width = Math.round((parseInt(extent['@_cx'] || '0') / 914400) * 96)
+      height = Math.round((parseInt(extent['@_cy'] || '0') / 914400) * 96)
     }
 
     const graphic = element['a:graphic']
@@ -528,9 +534,17 @@ function extractImageFromInlineOrAnchor(element: any, imageMap: Map<string, stri
       const embedId = blip['@_r:embed']
       if (embedId && imageMap.has(embedId)) {
         const src = imageMap.get(embedId)
-        const styleArr = ['max-width: 100%', 'height: auto', 'display: block']
-        if (width > 0) styleArr.unshift(`width: ${Math.min(width, 540)}px`)
-        return `<img src="${src}" style="${styleArr.join('; ')}" />`
+        const attrs = [`src="${src}"`]
+        if (width > 0) attrs.push(`width="${Math.min(width, 540)}"`)
+        if (height > 0) attrs.push(`height="${height}"`)
+        if (isInline) {
+          attrs.push('data-display="inline"')
+          attrs.push('style="display: inline-block; vertical-align: bottom; max-width: 100%;"')
+        } else {
+          attrs.push('data-display="block"')
+          attrs.push('style="display: block; max-width: 100%; height: auto;"')
+        }
+        return `<img ${attrs.join(' ')} />`
       }
     }
   } catch (e) {

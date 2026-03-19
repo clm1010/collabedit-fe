@@ -1,0 +1,28 @@
+---
+description: Vue 组件编码规范。编写或修改 .vue 文件时自动加载。
+globs: src/**/*.vue
+---
+
+# Vue 组件规范
+
+## 组件结构
+
+- 始终使用 `<script setup lang="ts">`
+- Props 用 `interface Props` + `defineProps<Props>()` + `withDefaults`
+- Emits 用 `defineEmits<{ (e: 'name', payload: T): void }>()`
+- 样式用 `<style lang="scss" scoped>`，穿透子组件用 `:deep()`，全局用 `:global()`
+
+## 路径与引用
+
+- 路径别名统一用 `@/`（如 `import { xxx } from '@/utils/xxx'`）
+- 全局 SCSS 变量通过 Vite 自动注入（`@use "@/styles/variables.scss" as *`），可直接使用 `$namespace` 等变量
+
+## UI 组件
+
+- Element Plus 按需引入（`unplugin-element-plus` + `ElementPlusResolver`），无需手动 import 组件
+- 自定义业务组件放 `src/lmComponents/` 下，按功能分目录，通过 `index.ts` 统一导出
+
+## 编辑器相关
+
+- 编辑器实例注入用 `useEditor()` 获取（来自 `toolbar/useEditor.ts`）
+- 编辑器通过 `provide(EditorKey, editor)` 注入

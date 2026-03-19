@@ -578,13 +578,17 @@ const handleImageSelect = (event: Event) => {
   reader.onload = (e) => {
     const src = e.target?.result as string
     if (isInlineImage.value) {
-      editor.value?.chain().focus().setImage({ src }).run()
+      editor.value?.chain().focus().setImage({ src, display: 'inline' } as any).run()
     } else {
-      editor.value?.chain().focus().setImage({ src }).run()
+      const { $from } = editor.value!.state.selection
+      if ($from.parentOffset > 0) {
+        editor.value?.chain().focus().splitBlock().setImage({ src }).run()
+      } else {
+        editor.value?.chain().focus().setImage({ src }).run()
+      }
     }
   }
   reader.readAsDataURL(file)
-  // 清空 input 以便可以重复选择同一文件
   ;(event.target as HTMLInputElement).value = ''
 }
 

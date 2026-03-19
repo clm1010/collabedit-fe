@@ -1,9 +1,11 @@
 <template>
   <node-view-wrapper
+    as="span"
     class="resizable-image-wrapper"
     :class="{
       'is-selected': selected,
-      'is-resizing': isResizing
+      'is-resizing': isResizing,
+      'is-inline': isInline
     }"
     :style="wrapperStyle"
   >
@@ -65,6 +67,14 @@
         ></div>
       </template>
 
+      <div
+        v-if="selected && editor?.isEditable && !imageError"
+        class="image-drag-handle"
+        data-drag-handle
+        title="拖动移动图片"
+        @mousedown.stop
+      >⠿</div>
+
       <div v-if="isResizing" class="size-tooltip">
         {{ Math.round(currentWidth) }} × {{ Math.round(currentHeight) }}
       </div>
@@ -72,35 +82,50 @@
       <div v-if="selected && editor?.isEditable && !imageError" class="image-toolbar">
         <button
           class="toolbar-btn"
-          :class="{ active: currentAlign === 'left' }"
-          @click.stop="alignImage('left')"
-          title="左对齐"
+          @click.stop="toggleDisplay"
+          :title="isInline ? '转为块图片' : '转为行内图片'"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z" />
+          <svg v-if="isInline" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 5h18v2H3V5zm0 12h18v2H3v-2zm0-4h18v2H3v-2zm0-4h18v2H3V9z" />
           </svg>
-        </button>
-        <button
-          class="toolbar-btn"
-          :class="{ active: currentAlign === 'center' || !currentAlign }"
-          @click.stop="alignImage('center')"
-          title="居中"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 3h18v2H3V3zm3 4h12v2H6V7zm-3 4h18v2H3v-2zm3 4h12v2H6v-2zm-3 4h18v2H3v-2z" />
-          </svg>
-        </button>
-        <button
-          class="toolbar-btn"
-          :class="{ active: currentAlign === 'right' }"
-          @click.stop="alignImage('right')"
-          title="右对齐"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 3h18v2H3V3zm6 4h12v2H9V7zm-6 4h18v2H3v-2zm6 4h12v2H9v-2zm-6 4h18v2H3v-2z" />
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 5h8v2H3V5zm0 12h8v2H3v-2zm0-4h18v2H3v-2zm0-4h18v2H3V9z" />
           </svg>
         </button>
         <span class="toolbar-divider"></span>
+        <template v-if="!isInline">
+          <button
+            class="toolbar-btn"
+            :class="{ active: currentAlign === 'left' }"
+            @click.stop="alignImage('left')"
+            title="左对齐"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z" />
+            </svg>
+          </button>
+          <button
+            class="toolbar-btn"
+            :class="{ active: currentAlign === 'center' || !currentAlign }"
+            @click.stop="alignImage('center')"
+            title="居中"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 3h18v2H3V3zm3 4h12v2H6V7zm-3 4h18v2H3v-2zm3 4h12v2H6v-2zm-3 4h18v2H3v-2z" />
+            </svg>
+          </button>
+          <button
+            class="toolbar-btn"
+            :class="{ active: currentAlign === 'right' }"
+            @click.stop="alignImage('right')"
+            title="右对齐"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 3h18v2H3V3zm6 4h12v2H9V7zm-6 4h18v2H3v-2zm6 4h12v2H9v-2zm-6 4h18v2H3v-2z" />
+            </svg>
+          </button>
+          <span class="toolbar-divider"></span>
+        </template>
         <button class="toolbar-btn" @click.stop="previewImage" title="预览">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path
@@ -208,24 +233,31 @@ let dragStartPreviewX = 0
 let dragStartPreviewY = 0
 
 const currentAlign = computed(() => props.node.attrs.align || 'center')
+const isInline = computed(() => props.node.attrs.display === 'inline')
+
+const toggleDisplay = () => {
+  const newDisplay = isInline.value ? 'block' : 'inline'
+  props.updateAttributes({ display: newDisplay })
+}
 
 const wrapperStyle = computed(() => {
-  const align = props.node.attrs.align || 'center'
-  let justifyContent = 'center'
-
-  if (align === 'left') {
-    justifyContent = 'flex-start'
-  } else if (align === 'right') {
-    justifyContent = 'flex-end'
+  if (isInline.value) {
+    return {
+      display: 'inline-block',
+      verticalAlign: 'bottom',
+      maxWidth: '100%'
+    }
   }
+  const align = props.node.attrs.align || 'center'
+  let textAlign = 'center'
+  if (align === 'left') textAlign = 'left'
+  else if (align === 'right') textAlign = 'right'
 
   return {
-    display: 'flex',
-    justifyContent,
+    display: 'block',
+    textAlign,
     width: '100%',
-    height: 'auto',
-    minHeight: 'fit-content',
-    overflow: 'visible'
+    lineHeight: '0'
   }
 })
 
@@ -247,13 +279,42 @@ const containerStyle = computed(() => {
 })
 
 const imageStyle = computed(() => {
-  // 图片最大宽度为编辑器宽度，高度自动按比例缩放
-  return {
+  const base: Record<string, string> = {
     maxWidth: `${editorMaxWidth.value}px`,
-    width: 'auto',
-    height: 'auto',
     display: imageError.value ? 'none' : 'block'
   }
+
+  if (isResizing.value) {
+    base.width = `${currentWidth.value}px`
+    base.height = `${currentHeight.value}px`
+    return base
+  }
+
+  const w = props.node.attrs.width
+  const h = props.node.attrs.height
+  if (w != null && w !== '' && w !== 0) {
+    const parsedW = typeof w === 'number' ? w : parseFloat(String(w))
+    if (!isNaN(parsedW) && parsedW > 0) {
+      base.width = `${Math.min(parsedW, editorMaxWidth.value)}px`
+    } else {
+      base.width = 'auto'
+    }
+  } else {
+    base.width = 'auto'
+  }
+
+  if (h != null && h !== '' && h !== 0) {
+    const parsedH = typeof h === 'number' ? h : parseFloat(String(h))
+    if (!isNaN(parsedH) && parsedH > 0) {
+      base.height = `${parsedH}px`
+    } else {
+      base.height = 'auto'
+    }
+  } else {
+    base.height = 'auto'
+  }
+
+  return base
 })
 
 const handleImageLoad = () => {
@@ -267,9 +328,12 @@ const handleImageLoad = () => {
     naturalHeight.value = imageRef.value.naturalHeight
     aspectRatio.value = naturalWidth.value / naturalHeight.value
 
-    // 如果没有设置宽高，使用自然尺寸（限制最大宽度）
+    // 如果没有设置宽高，使用自然尺寸（限制最大宽度）；行内图片限制为编辑器 50% 宽度防止撑满行宽
     if (!props.node.attrs.width) {
-      currentWidth.value = Math.min(naturalWidth.value, editorMaxWidth.value)
+      const maxW = isInline.value
+        ? Math.min(naturalWidth.value, Math.round(editorMaxWidth.value * 0.5))
+        : Math.min(naturalWidth.value, editorMaxWidth.value)
+      currentWidth.value = maxW
       currentHeight.value = currentWidth.value / aspectRatio.value
     } else {
       let parsedWidth = parseFloat(props.node.attrs.width) || naturalWidth.value
@@ -277,8 +341,8 @@ const handleImageLoad = () => {
       if (parsedWidth > editorMaxWidth.value) {
         parsedWidth = editorMaxWidth.value
       }
-      // 只有宽度且没有高度时，使用自然宽度（避免导入后被过度压缩）
-      if (!props.node.attrs.height && naturalWidth.value) {
+      // 只有宽度且没有高度时，使用自然宽度（避免导入后被过度压缩）；行内图片跳过，保留原始宽度
+      if (!props.node.attrs.height && naturalWidth.value && !isInline.value) {
         parsedWidth = Math.min(naturalWidth.value, editorMaxWidth.value)
         props.updateAttributes({
           width: Math.round(parsedWidth)
@@ -362,8 +426,8 @@ const handleClick = () => {
 }
 
 const handleDoubleClick = () => {
-  if (props.node.attrs.src) {
-    window.open(props.node.attrs.src, '_blank')
+  if (props.node.attrs.src && !imageError.value) {
+    previewImage()
   }
 }
 
@@ -625,41 +689,64 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 .resizable-image-wrapper {
-  display: flex !important;
+  display: block !important;
   position: relative;
   line-height: 0;
   margin: 8px 0;
-  justify-content: center;
+  text-align: center;
   width: 100% !important;
   height: auto !important;
   min-height: fit-content !important;
   overflow: visible !important;
 
-  &.is-selected .image-container {
-    outline: 2px solid #1a73e8;
-    outline-offset: 2px;
-  }
-
   &.is-resizing .image-container {
     outline: 2px dashed #1a73e8;
   }
 
-  &.align-left {
-    justify-content: flex-start;
+  &.is-inline {
+    display: inline-block !important;
+    width: auto !important;
+    margin: 0 4px;
+    vertical-align: bottom;
+    line-height: 1;
+  }
+}
+
+.image-drag-handle {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: grab;
+  font-size: 14px;
+  color: #6b7280;
+  z-index: 10;
+  user-select: none;
+  transition: all 0.15s ease;
+  line-height: 1;
+
+  &:hover {
+    background: #f3f4f6;
+    color: #374151;
+    border-color: #9ca3af;
   }
 
-  &.align-center {
-    justify-content: center;
-  }
-
-  &.align-right {
-    justify-content: flex-end;
+  &:active {
+    cursor: grabbing;
+    background: #e5e7eb;
   }
 }
 
 .image-container {
   position: relative;
-  display: block !important;
+  display: inline-block !important;
   border-radius: 4px;
   overflow: visible !important;
   transition: outline 0.15s ease;
@@ -671,7 +758,6 @@ onBeforeUnmount(() => {
     cursor: default;
     user-select: none;
     display: block !important;
-    height: auto !important;
     max-height: none !important;
   }
 }

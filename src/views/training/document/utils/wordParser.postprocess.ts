@@ -76,6 +76,10 @@ export const cleanWordHtml = (html: string): string => {
   const MAX_IMAGE_WIDTH = 540 // 编辑器可用宽度（A4 页面 794px - 边距 240px - 一些余量）
 
   html = html.replace(/<img([^>]*)style="([^"]*)"/gi, (_match, attrs, style) => {
+    const isInlineImg =
+      /data-display\s*=\s*"inline"/i.test(attrs) ||
+      /display\s*:\s*inline(-block)?/i.test(style)
+
     const widthMatch = style.match(/width:\s*([^;]+)/i)
     let width = 0
 
@@ -106,6 +110,15 @@ export const cleanWordHtml = (html: string): string => {
     if (!newStyle.includes('max-width')) {
       newStyle += '; max-width: 100%'
     }
+
+    if (isInlineImg) {
+      if (!newStyle.includes('vertical-align')) {
+        newStyle += '; vertical-align: bottom'
+      }
+      newStyle = newStyle.replace(/display\s*:\s*[^;]+;?/gi, '')
+      return `<img${attrs}style="${newStyle}; display: inline-block;"`
+    }
+
     if (!newStyle.includes('height: auto')) {
       newStyle = newStyle.replace(/height:\s*[^;]+;?/i, 'height: auto;')
     }
@@ -115,7 +128,13 @@ export const cleanWordHtml = (html: string): string => {
 
   html = html.replace(
     /<img(?![^>]*style=)([^>]*)>/gi,
-    '<img$1 style="max-width: 100%; height: auto; display: block;">'
+    (_match, attrs) => {
+      const isInlineImg = /data-display\s*=\s*"inline"/i.test(attrs)
+      if (isInlineImg) {
+        return `<img${attrs} style="max-width: 100%; display: inline-block; vertical-align: bottom;">`
+      }
+      return `<img${attrs} style="max-width: 100%; height: auto; display: block;">`
+    }
   )
 
   // 还原 base64 图片数据

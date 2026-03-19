@@ -234,13 +234,51 @@ const parseParagraphWithInlineImages = (element: Element): DocBlock[] => {
     return [parseParagraph(element)]
   }
 
+  const hasTextContent = children.some((child) => {
+    if (child.nodeType === Node.TEXT_NODE) return !!child.textContent?.trim()
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const tag = (child as Element).tagName.toLowerCase()
+      if (tag !== 'img' && tag !== 'br') return !!(child as Element).textContent?.trim()
+    }
+    return false
+  })
+
+  const pushInlineImage = (el: Element) => {
+    const rawOriginSrc = el.getAttribute('data-origin-src') || undefined
+    const rawSrc = rawOriginSrc || el.getAttribute('src') || ''
+    const imgStyleText = el.getAttribute('style') || ''
+    const imgStyleMap = imgStyleText ? extractStyleMap(imgStyleText) : {}
+    currentRuns.push({
+      text: '',
+      image: {
+        src: cleanDataUrlWhitespace(rawSrc),
+        originSrc: rawOriginSrc ? cleanDataUrlWhitespace(rawOriginSrc) : undefined,
+        alt: el.getAttribute('alt') || undefined,
+        width: parsePxValue(el.getAttribute('width') || undefined) || parsePxValue(imgStyleMap['width']),
+        height: parsePxValue(el.getAttribute('height') || undefined) || parsePxValue(imgStyleMap['height'])
+      }
+    })
+  }
+
   children.forEach((child) => {
     if (child.nodeType === Node.ELEMENT_NODE) {
       const el = child as Element
       const tag = el.tagName.toLowerCase()
       if (tag === 'img') {
-        flushParagraph()
-        blocks.push(parseImage(el))
+        const display = el.getAttribute('data-display')
+        const styleText = el.getAttribute('style') || ''
+        const hasInlineStyle = /display\s*:\s*inline(-block)?/i.test(styleText)
+
+        const isSoleImage = !hasTextContent
+        if (isSoleImage) {
+          flushParagraph()
+          blocks.push(parseImage(el))
+        } else if (display === 'inline' || hasInlineStyle || display !== 'block') {
+          pushInlineImage(el)
+        } else {
+          flushParagraph()
+          blocks.push(parseImage(el))
+        }
         return
       }
     }

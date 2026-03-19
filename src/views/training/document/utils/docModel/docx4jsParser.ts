@@ -71,6 +71,37 @@ const attrsToText = (props: any): string => {
 
 const createHtmlElement = (type: string, props: any, children: any): string => {
   const tag = String(type).toLowerCase()
+
+  if (tag === 'picture' || tag === 'drawing.inline' || tag === 'drawing.anchor') {
+    let picProps = props || {}
+    if (tag !== 'picture') {
+      const childHtml = normalizeChildren(children)
+      const imgMatch = childHtml.match(/<img\s[^>]*\/>/)
+      if (imgMatch) return imgMatch[0]
+      picProps = {}
+    }
+    const blip = picProps?.blipFill?.blip
+    const src =
+      typeof blip === 'object' && blip?.url
+        ? String(blip.url)
+        : typeof blip === 'string'
+          ? blip
+          : picProps?.src || ''
+    if (src) {
+      const attrs: string[] = [`src="${escapeAttr(String(src))}"`]
+      if (picProps.width) attrs.push(`width="${picProps.width}"`)
+      if (picProps.height) attrs.push(`height="${picProps.height}"`)
+      const isInline = tag === 'drawing.inline'
+      attrs.push(`data-display="${isInline ? 'inline' : 'block'}"`)
+      if (isInline) {
+        attrs.push('style="display: inline-block; vertical-align: bottom; max-width: 100%;"')
+      } else {
+        attrs.push('style="display: block; max-width: 100%; height: auto;"')
+      }
+      return `<img ${attrs.join(' ')} />`
+    }
+  }
+
   const attrText = attrsToText(props)
   if (voidTags.has(tag)) {
     return `<${tag}${attrText} />`
@@ -129,6 +160,41 @@ const parsePxValue = (value?: string): number | undefined => {
   }
   const num = parseFloat(raw)
   return Number.isNaN(num) ? undefined : num
+}
+
+const findPictureInChildren = (node: DocxTreeNode): DocxTreeNode | null => {
+  for (const child of node.children || []) {
+    if (!child || typeof child !== 'object') continue
+    const el = child as DocxTreeNode
+    if (el.type?.toLowerCase() === 'picture') return el
+    const found = findPictureInChildren(el)
+    if (found) return found
+  }
+  return null
+}
+
+const extractSrcFromPictureProps = (picProps: Record<string, any>): string => {
+  const blip = picProps?.blipFill?.blip
+  if (blip) {
+    if (typeof blip === 'string') return blip
+    if (typeof blip === 'object' && blip.url) return String(blip.url)
+  }
+  if (picProps?.src) return String(picProps.src)
+  return ''
+}
+
+const extractImageFromDrawingNode = (
+  drawingNode: DocxTreeNode,
+  pictureNode: DocxTreeNode | null
+): { src: string; width?: number; height?: number } | null => {
+  const picProps = pictureNode?.props || {}
+  const drawProps = drawingNode.props || {}
+  const src = extractSrcFromPictureProps(picProps)
+  if (!src) return null
+  const extent = drawProps.extent
+  const width = extent?.width || picProps.width || undefined
+  const height = extent?.height || picProps.height || undefined
+  return { src, width, height }
 }
 
 const parseParagraphStyleFromProps = (props?: Record<string, any>): ParagraphStyle | undefined => {
@@ -215,6 +281,53 @@ const mergeRunStyle = (base?: RunStyle, extra?: RunStyle): RunStyle | undefined 
   return { ...(base || {}), ...(extra || {}) }
 }
 
+const extractStyleFromRPr = (rPrNode: DocxTreeNode): RunStyle | undefined => {
+  const style: RunStyle = {}
+  const propsStyle = parseRunStyleFromProps(rPrNode.props)
+  if (propsStyle) Object.assign(style, propsStyle)
+
+  for (const child of rPrNode.children || []) {
+    if (!child || typeof child !== 'object') continue
+    const el = child as DocxTreeNode
+    const childTag = el.type?.toLowerCase()
+    if (!childTag) continue
+
+    if (childTag === 'b' || childTag === 'bold') style.bold = true
+    else if (childTag === 'i' || childTag === 'italic') style.italic = true
+    else if (childTag === 'u' || childTag === 'underline') style.underline = true
+    else if (childTag === 'strike' || childTag === 's') style.strike = true
+    else if (childTag === 'vertalign' || childTag === 'verticalalign') {
+      const val = el.props?.val || el.props?.['w:val']
+      if (val === 'superscript') style.superscript = true
+      if (val === 'subscript') style.subscript = true
+    } else if (childTag === 'color') {
+      const val = el.props?.val || el.props?.['w:val'] || el.props?.color
+      if (val && val !== 'auto') {
+        style.color = String(val).startsWith('#') ? String(val) : `#${val}`
+      }
+    } else if (childTag === 'sz' || childTag === 'szcs') {
+      const val = el.props?.val || el.props?.['w:val']
+      if (val) {
+        const halfPt = parseInt(String(val), 10)
+        if (!isNaN(halfPt)) style.fontSize = halfPt / 2
+      }
+    } else if (childTag === 'rfonts' || childTag === 'rfont') {
+      const fontName =
+        el.props?.ascii || el.props?.['w:ascii'] ||
+        el.props?.hAnsi || el.props?.['w:hAnsi'] ||
+        el.props?.eastAsia || el.props?.['w:eastAsia']
+      if (fontName) style.fontFamily = String(fontName)
+    } else if (childTag === 'highlight' || childTag === 'shd') {
+      const val = el.props?.val || el.props?.['w:val'] || el.props?.fill || el.props?.['w:fill']
+      if (val && val !== 'auto' && val !== 'none') {
+        style.backgroundColor = String(val).startsWith('#') ? String(val) : `#${val}`
+      }
+    }
+  }
+
+  return Object.keys(style).length ? style : undefined
+}
+
 const extractFootnoteRefId = (element: DocxTreeNode): number | undefined => {
   const candidates = [
     element.props?.['data-footnote-id'],
@@ -260,6 +373,56 @@ const collectRunsFromTree = (node: DocxTreeChild, inherited?: RunStyle): DocRun[
       inherited = mergeRunStyle(inherited, { link: String(href) })
     }
   }
+  if (tag === 'br') {
+    return [{ text: '\n', style: inherited }]
+  }
+  if (tag === 'img') {
+    const props = element.props || {}
+    const styleText = typeof props.style === 'string' ? props.style : styleToText(props.style)
+    const styleMap = styleText ? extractStyleMap(styleText) : {}
+    return [
+      {
+        text: '',
+        image: {
+          src: String(props.src || ''),
+          alt: props.alt ? String(props.alt) : undefined,
+          width: parsePxValue(props.width) || parsePxValue(styleMap['width']),
+          height: parsePxValue(props.height) || parsePxValue(styleMap['height'])
+        },
+        style: inherited
+      }
+    ]
+  }
+  if (tag === 'drawing.inline' || tag === 'drawing.anchor') {
+    const pictureNode = findPictureInChildren(element)
+    const img = extractImageFromDrawingNode(element, pictureNode)
+    if (img) {
+      return [
+        {
+          text: '',
+          image: { src: img.src, width: img.width, height: img.height },
+          style: inherited
+        }
+      ]
+    }
+  }
+  if (tag === 'picture') {
+    const picProps = element.props || {}
+    const src = extractSrcFromPictureProps(picProps)
+    if (src) {
+      return [
+        {
+          text: '',
+          image: {
+            src,
+            width: picProps.width || undefined,
+            height: picProps.height || undefined
+          },
+          style: inherited
+        }
+      ]
+    }
+  }
   if (tag === 'footnotereference' || tag === 'footnote-reference') {
     const id = extractFootnoteRefId(element)
     if (id !== undefined) return [{ text: '', footnoteId: id, style: inherited }]
@@ -294,6 +457,14 @@ const collectRunsFromTree = (node: DocxTreeChild, inherited?: RunStyle): DocRun[
   }
   nextStyle = mergeRunStyle(nextStyle, parseRunStyleFromProps(element.props))
   const children = element.children || []
+  for (const child of children) {
+    if (!child || typeof child !== 'object') continue
+    const childTag = (child as DocxTreeNode).type?.toLowerCase()
+    if (childTag === 'rpr' || childTag === 'r.rpr') {
+      nextStyle = mergeRunStyle(nextStyle, extractStyleFromRPr(child as DocxTreeNode))
+      break
+    }
+  }
   return children.flatMap((child) => collectRunsFromTree(child, nextStyle))
 }
 
@@ -411,7 +582,7 @@ const parseImageFromTree = (node: DocxTreeNode): DocImageBlock => {
   const style = alignValue ? { align: alignValue } : undefined
   return {
     type: 'image',
-    src: String(props.src || ''),
+    src: extractSrcFromPictureProps(props) || String(props.src || ''),
     alt: props.alt ? String(props.alt) : undefined,
     width,
     height,
@@ -448,14 +619,54 @@ const parseBlocksFromTree = (nodes: DocxTreeChild[]): DocBlock[] => {
     }
     const element = child as DocxTreeNode
     const tag = element.type.toLowerCase()
-    if (tag === 'p') blocks.push(parseParagraphFromTree(element))
+    if (tag === 'p') {
+      const para = parseParagraphFromTree(element)
+      const imgRuns = para.runs.filter(r => r.image)
+      const textRuns = para.runs.filter(r => r.text?.trim())
+      if (imgRuns.length === 1 && textRuns.length === 0) {
+        const img = imgRuns[0].image!
+        blocks.push({
+          type: 'image',
+          src: img.src,
+          originSrc: img.originSrc,
+          alt: img.alt,
+          width: img.width,
+          height: img.height,
+          style: para.style?.align && para.style.align !== 'justify'
+            ? { align: para.style.align as 'left' | 'center' | 'right' }
+            : undefined
+        })
+      } else {
+        blocks.push(para)
+      }
+    }
     else if (/^h[1-6]$/.test(tag)) blocks.push(parseHeadingFromTree(element))
     else if (tag === 'ul' || tag === 'ol') blocks.push(parseListFromTree(element))
     else if (tag === 'blockquote') blocks.push(parseBlockquoteFromTree(element))
     else if (tag === 'pre' || tag === 'code') blocks.push(parseCodeFromTree(element))
     else if (tag === 'table') blocks.push(parseTableFromTree(element))
     else if (tag === 'img') blocks.push(parseImageFromTree(element))
-    else if (tag === 'hr') blocks.push({ type: 'pageBreak' })
+    else if (tag === 'drawing.anchor' || tag === 'drawing.inline') {
+      const pictureNode = findPictureInChildren(element)
+      const img = extractImageFromDrawingNode(element, pictureNode)
+      if (img)
+        blocks.push({
+          type: 'image',
+          src: img.src,
+          width: img.width,
+          height: img.height
+        })
+    } else if (tag === 'picture') {
+      const picProps = element.props || {}
+      const src = extractSrcFromPictureProps(picProps)
+      if (src)
+        blocks.push({
+          type: 'image',
+          src,
+          width: picProps.width || undefined,
+          height: picProps.height || undefined
+        })
+    } else if (tag === 'hr') blocks.push({ type: 'pageBreak' })
     else if (element.children?.length) blocks.push(...parseBlocksFromTree(element.children))
   })
   return blocks

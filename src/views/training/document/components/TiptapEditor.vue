@@ -247,6 +247,7 @@ import { Superscript } from '@tiptap/extension-superscript'
 import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
 import { PageBreak } from './toolbar/extensions/PageBreak'
 import { ColoredHorizontalRule } from './toolbar/extensions/ColoredHorizontalRule'
+import { HardBreakMarker } from './toolbar/extensions/HardBreakMarker'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { Icon } from '@/components/Icon'
@@ -459,7 +460,7 @@ const editor = useEditor({
     }),
     // 可调整大小的图片
     ResizableImage.configure({
-      inline: false,
+      inline: true,
       allowBase64: true,
       HTMLAttributes: {
         class: 'editor-image'
@@ -500,7 +501,9 @@ const editor = useEditor({
       HTMLAttributes: {
         class: 'page-break'
       }
-    })
+    }),
+    // 软回车（Shift+Enter）视觉标记 ↓
+    HardBreakMarker
   ],
   onUpdate: ({ editor }) => {
     // 防止组件销毁后触发回调
@@ -1170,10 +1173,8 @@ defineExpose({
       color: #374151;
       position: relative;
       margin: 0;
-      // 使用较小的段落间距，更接近 Word 默认效果
       margin-bottom: 0.25em;
 
-      // 段落末尾换行符标记 - 参考 hhf-style1.jpg 样式
       &::after {
         content: '↵';
         color: #1a73e8;
@@ -1183,6 +1184,40 @@ defineExpose({
         user-select: none;
         pointer-events: none;
       }
+
+      // 空段落：br 保留在布局流中（ProseMirror 需要它计算光标坐标），
+      // ::after 使用绝对定位叠加到第一行，避免产生第二行
+      &:has(> br.ProseMirror-trailingBreak:only-child)::after {
+        position: absolute;
+        top: 0;
+        left: 0;
+        margin-left: 0;
+      }
+
+      // 非空段落 + trailingBreak：隐藏 ↵ 避免被挤到额外的行
+      &:has(> br.ProseMirror-trailingBreak:last-child:not(:only-child))::after {
+        content: none;
+      }
+
+      // 含块图片的段落：隐藏 ↵
+      &:has(> .resizable-image-wrapper:not(.is-inline))::after {
+        content: none;
+      }
+
+      // 含块图片的段落：隐藏 trailingBreak，避免多出一行
+      // 安全：块图片 atom 节点提供光标坐标，br 非 only-child 不影响定位
+      &:has(> .resizable-image-wrapper:not(.is-inline)) > br.ProseMirror-trailingBreak {
+        display: none;
+      }
+    }
+
+    // 软回车（Shift+Enter）↓ 标记样式
+    .hard-break-marker {
+      color: #1a73e8;
+      font-size: 0.85em;
+      opacity: 0.6;
+      user-select: none;
+      pointer-events: none;
     }
 
     h1 {
@@ -1528,6 +1563,18 @@ defineExpose({
     height: auto;
     display: block;
   }
+  :deep(img[data-align='center']) {
+    margin-left: auto;
+    margin-right: auto;
+  }
+  :deep(img[data-align='left']) {
+    margin-right: auto;
+    margin-left: 0;
+  }
+  :deep(img[data-align='right']) {
+    margin-left: auto;
+    margin-right: 0;
+  }
   :deep(mark) {
     background: #fef08a;
   }
@@ -1610,6 +1657,21 @@ defineExpose({
   :deep(img) {
     max-width: 100%;
     height: auto;
+  }
+  :deep(img[data-align='center']) {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  :deep(img[data-align='left']) {
+    display: block;
+    margin-right: auto;
+    margin-left: 0;
+  }
+  :deep(img[data-align='right']) {
+    display: block;
+    margin-left: auto;
+    margin-right: 0;
   }
 }
 
@@ -1706,8 +1768,8 @@ defineExpose({
   }
 }
 
-// 拖动中的元素样式
-:deep(.ProseMirror-selectednode) {
+// 拖动中的元素样式（图片节点除外，图片使用自身的 resize handle 边框）
+:deep(.ProseMirror-selectednode:not(.resizable-image-wrapper)) {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
   border-radius: 4px;

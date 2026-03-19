@@ -72,11 +72,20 @@ export interface DocCodeBlock {
   language?: string
 }
 
+export interface DocInlineImage {
+  src: string
+  originSrc?: string
+  alt?: string
+  width?: number
+  height?: number
+}
+
 export interface DocRun {
   text: string
   style?: RunStyle
   footnoteId?: number
   endnoteId?: number
+  image?: DocInlineImage
 }
 
 export interface DocTableBlock {

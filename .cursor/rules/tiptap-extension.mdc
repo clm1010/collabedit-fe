@@ -1,0 +1,53 @@
+---
+description: Tiptap 扩展开发规范。创建或修改 Tiptap 扩展文件时自动加载。
+globs: src/**/extensions/**
+---
+
+# Tiptap 扩展开发规范
+
+## 文件命名
+
+- 扩展定义：`{Name}.ts`（如 `ResizableImage.ts`、`PageBreak.ts`）
+- Vue 节点视图（如需自定义渲染）：`{Name}Component.vue`（如 `ResizableImageComponent.vue`）
+
+## 扩展结构
+
+```typescript
+// 1. 声明命令类型
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    extensionName: {
+      commandName: () => ReturnType
+    }
+  }
+}
+
+// 2. 创建扩展
+export const MyExtension = Node.create<MyExtensionOptions>({
+  name: 'myExtension',
+  group: 'block',       // 或 'inline'
+  atom: true,            // 是否为原子节点
+  selectable: true,
+  draggable: true,
+
+  addOptions() { return { HTMLAttributes: {} } },
+  addAttributes() { /* 节点属性 */ },
+  parseHTML() { /* HTML -> 节点 */ },
+  renderHTML({ HTMLAttributes }) { /* 节点 -> HTML */ },
+  addCommands() { /* 编辑器命令 */ },
+  addNodeView() { return VueNodeViewRenderer(MyComponent) },  // 可选
+  addKeyboardShortcuts() { /* 快捷键 */ },
+})
+```
+
+## 注册
+
+- 演训编辑器：在 `TiptapEditor.vue` 的 extensions 数组中注册
+- 模板编辑器：在 `MarkdownEditor.vue` 的 extensions 数组中注册
+- 工具栏入口在对应的 `*Toolbar.vue` 中添加
+
+## 关键 API
+
+- 自定义渲染用 `VueNodeViewRenderer(Component)`
+- 合并 HTML 属性用 `mergeAttributes()`
+- 全局属性扩展用 `addGlobalAttributes()`

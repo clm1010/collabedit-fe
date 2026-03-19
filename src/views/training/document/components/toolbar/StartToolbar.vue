@@ -1510,7 +1510,7 @@ const cleanWordHtml = (html: string): string => {
   const MAX_IMAGE_WIDTH = 540 // 编辑器可用宽度（A4 页面 794px - 边距 240px - 一些余量）
 
   html = html.replace(/<img([^>]*)style="([^"]*)"/gi, (match, attrs, style) => {
-    // 提取宽度和高度
+    const isInline = /data-display\s*=\s*["']inline["']/i.test(attrs)
     const widthMatch = style.match(/width:\s*([^;]+)/i)
     const heightMatch = style.match(/height:\s*([^;]+)/i)
 
@@ -1519,17 +1519,16 @@ const cleanWordHtml = (html: string): string => {
 
     if (widthMatch) {
       const widthStr = widthMatch[1].trim()
-      // 转换各种单位为像素
       if (widthStr.endsWith('pt')) {
-        width = parseFloat(widthStr) * 1.33 // pt 转 px
+        width = parseFloat(widthStr) * 1.33
       } else if (widthStr.endsWith('in')) {
-        width = parseFloat(widthStr) * 96 // in 转 px
+        width = parseFloat(widthStr) * 96
       } else if (widthStr.endsWith('cm')) {
-        width = parseFloat(widthStr) * 37.8 // cm 转 px
+        width = parseFloat(widthStr) * 37.8
       } else if (widthStr.endsWith('mm')) {
-        width = parseFloat(widthStr) * 3.78 // mm 转 px
+        width = parseFloat(widthStr) * 3.78
       } else if (widthStr.endsWith('%')) {
-        width = 0 // 百分比不处理，让浏览器自动计算
+        width = 0
       } else {
         width = parseFloat(widthStr) || 0
       }
@@ -1552,17 +1551,19 @@ const cleanWordHtml = (html: string): string => {
       }
     }
 
-    // 限制最大宽度，确保不会溢出容器
     if (width > MAX_IMAGE_WIDTH) {
       const ratio = height / width
       width = MAX_IMAGE_WIDTH
       height = width * ratio
     }
 
-    // 始终添加 max-width: 100% 确保响应式
-    let newStyle = 'max-width: 100%; height: auto; display: block;'
+    const displayStyle = isInline
+      ? 'display: inline-block; vertical-align: bottom;'
+      : 'display: block;'
+
+    let newStyle = `max-width: 100%; height: auto; ${displayStyle}`
     if (width > 0) {
-      newStyle = `width: ${Math.round(width)}px; max-width: 100%; height: auto; display: block;`
+      newStyle = `width: ${Math.round(width)}px; max-width: 100%; height: auto; ${displayStyle}`
     }
 
     return `<img${attrs}style="${newStyle}"`
@@ -1571,13 +1572,19 @@ const cleanWordHtml = (html: string): string => {
   // 处理没有 style 属性的图片 - 确保所有图片都有响应式样式
   html = html.replace(
     /<img(?![^>]*style=)([^>]*)>/gi,
-    '<img$1 style="max-width: 100%; height: auto; display: block;">'
+    (_match, attrs) => {
+      const isInline = /data-display\s*=\s*["']inline["']/i.test(attrs)
+      const displayStyle = isInline
+        ? 'display: inline-block; vertical-align: bottom;'
+        : 'display: block;'
+      return `<img${attrs} style="max-width: 100%; height: auto; ${displayStyle}">`
+    }
   )
 
   // 处理 width/height 属性的图片（Word 经常使用这种方式）
   html = html.replace(
     /<img([^>]*)\s+width\s*=\s*["']?(\d+)["']?([^>]*)\s+height\s*=\s*["']?(\d+)["']?([^>]*)>/gi,
-    (match, before, w, mid, h, after) => {
+    (_match, before, w, mid, h, after) => {
       const imgWidth = parseInt(w)
       const imgHeight = parseInt(h)
       let finalWidth = imgWidth
@@ -1589,18 +1596,19 @@ const cleanWordHtml = (html: string): string => {
         finalHeight = Math.round(finalWidth * ratio)
       }
 
-      // 移除 width/height 属性，使用 style 代替
-      const cleanBefore = before
-        .replace(/width\s*=\s*["']?\d+["']?/gi, '')
-        .replace(/height\s*=\s*["']?\d+["']?/gi, '')
-      const cleanMid = mid
-        .replace(/width\s*=\s*["']?\d+["']?/gi, '')
-        .replace(/height\s*=\s*["']?\d+["']?/gi, '')
-      const cleanAfter = after
-        .replace(/width\s*=\s*["']?\d+["']?/gi, '')
-        .replace(/height\s*=\s*["']?\d+["']?/gi, '')
+      const fullAttrs = `${before}${mid}${after}`
+      const isInline = /data-display\s*=\s*["']inline["']/i.test(fullAttrs)
+      const displayStyle = isInline
+        ? 'display: inline-block; vertical-align: bottom;'
+        : 'display: block;'
 
-      return `<img${cleanBefore}${cleanMid}${cleanAfter} style="width: ${finalWidth}px; max-width: 100%; height: auto; display: block;">`
+      // 移除 width/height 属性和已有的 style 属性，统一用新 style 替换
+      const cleanAttrs = fullAttrs
+        .replace(/width\s*=\s*["']?\d+["']?/gi, '')
+        .replace(/height\s*=\s*["']?\d+["']?/gi, '')
+        .replace(/style\s*=\s*"[^"]*"/gi, '')
+
+      return `<img${cleanAttrs} style="width: ${finalWidth}px; max-width: 100%; height: auto; ${displayStyle}">`
     }
   )
 

@@ -1,0 +1,23 @@
+---
+description: 双编辑器架构总览。修改编辑器相关功能时自动加载，确保改对目标编辑器。
+globs: src/views/training/**, src/views/template/**
+---
+
+# 双编辑器架构
+
+本项目有两套完全独立的富文本编辑器：
+
+| 维度 | 演训编辑器 (TiptapEditor) | 模板编辑器 (MarkdownEditor) |
+|------|--------------------------|---------------------------|
+| 路径 | `src/views/training/document/` | `src/views/template/editor/` |
+| 保存格式 | DOCX（通过 DocModel 管线） | Markdown |
+| WebSocket | `/collaboration` | `/markdown` |
+| 扩展目录 | `toolbar/extensions/` | `extensions/` |
+| 功能完整度 | 丰富（字体/图片/格式刷/分页/查找替换等） | 基础（文本+表格+颜色） |
+
+## 关键规则
+
+- 修改编辑器功能时，**必须先确认影响的是哪套编辑器**，避免改错目标
+- 两套编辑器共用同一个中间件（collaborative-middleware），通过不同 WebSocket path 区分
+- 规划中有共享扩展目录 `src/shared/extensions/`（尚未创建），未来公共扩展应提取到此处
+- 演训编辑器的扩展注册在 `TiptapEditor.vue`，模板编辑器的扩展注册在 `MarkdownEditor.vue`

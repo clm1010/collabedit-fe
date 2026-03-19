@@ -65,9 +65,30 @@ const pxToHalfPoints = (px?: number): number | undefined => {
 const ENDNOTE_TOKEN_PREFIX = '__ENDNOTE_REF_'
 const ENDNOTE_TOKEN_SUFFIX = '__'
 
-type ParagraphChild = TextRun | FootnoteReferenceRun | ExternalHyperlink
+type ParagraphChild = TextRun | FootnoteReferenceRun | ExternalHyperlink | ImageRun
+
+let _inlineImageCache: Map<string, { data: Uint8Array; type: 'png' | 'jpg' | 'gif' | 'bmp' }> =
+  new Map()
 
 const mapRunToRuns = (run: DocRun): ParagraphChild[] => {
+  if (run.image) {
+    const cached = _inlineImageCache.get(run.image.src)
+    if (!cached) return []
+    let width = run.image.width || 200
+    let height = run.image.height || 150
+    if (width > 300) {
+      const r = 300 / width
+      width = 300
+      height = Math.round(height * r)
+    }
+    return [
+      new ImageRun({
+        data: cached.data,
+        type: cached.type,
+        transformation: { width, height }
+      })
+    ]
+  }
   if (run.footnoteId) {
     return [new FootnoteReferenceRun(run.footnoteId)]
   }
@@ -75,43 +96,54 @@ const mapRunToRuns = (run: DocRun): ParagraphChild[] => {
     const token = `${ENDNOTE_TOKEN_PREFIX}${run.endnoteId}${ENDNOTE_TOKEN_SUFFIX}`
     return [new TextRun({ text: token })]
   }
-  const options: any = { text: run.text || '' }
+
+  const styleOptions: any = {}
   const style = run.style
   if (style) {
-    if (style.bold) options.bold = true
-    if (style.italic) options.italics = true
-    if (style.underline) options.underline = { type: UnderlineType.SINGLE }
-    if (style.strike) options.strike = true
+    if (style.bold) styleOptions.bold = true
+    if (style.italic) styleOptions.italics = true
+    if (style.underline) styleOptions.underline = { type: UnderlineType.SINGLE }
+    if (style.strike) styleOptions.strike = true
     const color = parseColor(style.color)
-    if (color) options.color = color
+    if (color) styleOptions.color = color
     const bg = parseColor(style.backgroundColor)
     if (bg) {
-      options.shading = {
+      styleOptions.shading = {
         type: ShadingType.SOLID,
         color: bg
       }
     }
     const size = pxToHalfPoints(style.fontSize)
-    if (size) options.size = size
-    if (style.fontFamily) options.font = style.fontFamily
-    if (style.superscript) options.superScript = true
-    if (style.subscript) options.subScript = true
+    if (size) styleOptions.size = size
+    if (style.fontFamily) styleOptions.font = style.fontFamily
+    if (style.superscript) styleOptions.superScript = true
+    if (style.subscript) styleOptions.subScript = true
   }
+
+  const buildTextRuns = (text: string): TextRun[] => {
+    const parts = text.split('\n')
+    return parts.map((part, idx) => {
+      const opts: any = { ...styleOptions, text: part }
+      if (idx > 0) opts.break = 1
+      return new TextRun(opts)
+    })
+  }
+
   if (style?.link) {
     if (!style.color) {
-      options.color = '0563C1' // Word 默认超链接蓝色
+      styleOptions.color = '0563C1'
     }
     if (!style.underline) {
-      options.underline = { type: UnderlineType.SINGLE }
+      styleOptions.underline = { type: UnderlineType.SINGLE }
     }
     return [
       new ExternalHyperlink({
         link: style.link,
-        children: [new TextRun(options)]
+        children: buildTextRuns(run.text || '')
       })
     ]
   }
-  return [new TextRun(options)]
+  return buildTextRuns(run.text || '')
 }
 
 const paragraphAlignment = (align?: string) => {
@@ -187,7 +219,20 @@ const buildHeading = (block: DocHeadingBlock): Paragraph => {
     5: HeadingLevel.HEADING_5,
     6: HeadingLevel.HEADING_6
   }
-  return createParagraph(block.runs, {
+  const headingColorMap: Record<number, string> = {
+    1: '#111827',
+    2: '#1f2937',
+    3: '#374151',
+    4: '#374151',
+    5: '#4b5563',
+    6: '#4b5563'
+  }
+  const defaultColor = headingColorMap[block.level] || '#111827'
+  const runs = block.runs.map((run) => {
+    if (run.style?.color) return run
+    return { ...run, style: { ...run.style, color: defaultColor } }
+  })
+  return createParagraph(runs, {
     align: block.style?.align,
     spacing: paragraphSpacing(block),
     indent: paragraphIndent(block),
@@ -289,7 +334,10 @@ const buildImageParagraph = async (block: DocImageBlock): Promise<Paragraph> => 
     type: imageData.type,
     transformation: { width, height }
   })
-  return new Paragraph({ children: [image] })
+  return new Paragraph({
+    children: [image],
+    alignment: paragraphAlignment(block.style?.align)
+  })
 }
 
 const buildBlockquote = (block: DocBlockquoteBlock): Paragraph[] => {
@@ -458,7 +506,37 @@ const blocksToParagraphs = (blocks: DocBlock[]): Paragraph[] => {
   return paragraphs
 }
 
+const preloadInlineImages = async (blocks: DocBlock[]) => {
+  const srcs = new Set<string>()
+  const collectFromBlocks = (list: DocBlock[]) => {
+    list.forEach((block) => {
+      if (block.type === 'paragraph' || block.type === 'heading') {
+        block.runs.forEach((run) => {
+          if (run.image) srcs.add(run.image.src)
+        })
+      }
+      if (block.type === 'blockquote') collectFromBlocks(block.blocks)
+      if (block.type === 'list') block.items.forEach((item) => collectFromBlocks(item.blocks))
+      if (block.type === 'table') {
+        block.rows.forEach((row) =>
+          row.cells.forEach((cell) => collectFromBlocks(cell.blocks))
+        )
+      }
+    })
+  }
+  collectFromBlocks(blocks)
+  const cache = new Map<string, { data: Uint8Array; type: 'png' | 'jpg' | 'gif' | 'bmp' }>()
+  await Promise.all(
+    [...srcs].map(async (src) => {
+      const data = await loadImageData(src)
+      if (data) cache.set(src, data)
+    })
+  )
+  return cache
+}
+
 const blocksToElements = async (blocks: DocBlock[]): Promise<(Paragraph | Table)[]> => {
+  _inlineImageCache = await preloadInlineImages(blocks)
   const elements: (Paragraph | Table)[] = []
   for (const block of blocks) {
     if (block.type === 'table') {
@@ -565,8 +643,15 @@ const runToEndnoteXml = (run: DocRun): string => {
     if (style.subscript) props.push('<w:vertAlign w:val="subscript"/>')
   }
   const rPr = props.length ? `<w:rPr>${props.join('')}</w:rPr>` : ''
-  const text = escapeXmlText(run.text || '')
-  return `<w:r>${rPr}<w:t xml:space="preserve">${text}</w:t></w:r>`
+  const text = run.text || ''
+  const parts = text.split('\n')
+  return parts
+    .map((part, idx) => {
+      const escapedPart = escapeXmlText(part)
+      const brTag = idx > 0 ? '<w:br/>' : ''
+      return `<w:r>${rPr}${brTag}<w:t xml:space="preserve">${escapedPart}</w:t></w:r>`
+    })
+    .join('')
 }
 
 const stripXmlTags = (value: string): string => value.replace(/<[^>]+>/g, '')

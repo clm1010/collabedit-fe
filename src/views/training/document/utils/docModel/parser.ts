@@ -112,6 +112,32 @@ export const parseDocxToDocModel = async (
     return false
   }
 
+  const hasAnyImages = (model: DocModel): boolean => {
+    const checkBlocks = (blocks?: DocBlock[]): boolean => {
+      if (!blocks) return false
+      return blocks.some((block) => {
+        if (block.type === 'image') return true
+        if (block.type === 'paragraph') {
+          return block.runs?.some((run) => !!run.image) || false
+        }
+        if (block.type === 'list') {
+          return block.items.some((item) => checkBlocks(item.blocks))
+        }
+        if (block.type === 'blockquote') return checkBlocks(block.blocks)
+        if (block.type === 'table') {
+          return block.rows.some((row) => row.cells.some((cell) => checkBlocks(cell.blocks)))
+        }
+        return false
+      })
+    }
+    if (checkBlocks(model.blocks)) return true
+    if (model.headers?.some((section) => checkBlocks(section.blocks))) return true
+    if (model.footers?.some((section) => checkBlocks(section.blocks))) return true
+    if (model.footnotes?.some((note) => checkBlocks(note.blocks))) return true
+    if (model.endnotes?.some((note) => checkBlocks(note.blocks))) return true
+    return false
+  }
+
   onProgress?.(20, '正在解析文档...')
   try {
     if (validation.hasAltChunk || (await isRedHeadDocument(arrayBuffer))) {
@@ -152,7 +178,7 @@ export const parseDocxToDocModel = async (
       try {
         const model = await parseDocxWithDocx4jsToDocModel(arrayBuffer, metadata, onProgress)
         if (model.blocks.length > 0) {
-          if (hasAnyStyle(model) || !merged.useDocxPreview) {
+          if (hasAnyStyle(model) || hasAnyImages(model) || !merged.useDocxPreview) {
             metadata.method = method
             return model
           }

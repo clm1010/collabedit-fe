@@ -59,6 +59,17 @@ const renderTextWithBreaks = (text: string): string => {
 }
 
 const serializeRun = (run: DocRun): string => {
+  if (run.image) {
+    const img = run.image
+    const resolvedSrc = img.originSrc || img.src
+    const attrs: string[] = [`src="${escapeAttr(resolvedSrc)}"`, 'class="editor-image"', 'data-display="inline"']
+    if (img.originSrc) attrs.push(`data-origin-src="${escapeAttr(img.originSrc)}"`)
+    if (img.alt) attrs.push(`alt="${escapeHtml(img.alt)}"`)
+    if (img.width) attrs.push(`width="${img.width}"`)
+    if (img.height) attrs.push(`height="${img.height}"`)
+    attrs.push('style="display: inline-block; vertical-align: bottom;"')
+    return `<img ${attrs.join(' ')} />`
+  }
   if (run.footnoteId) {
     const id = run.footnoteId
     return `<sup data-docx-footnote="${id}">${id}</sup>`
@@ -154,24 +165,28 @@ const serializeBlock = (block: DocBlock): string => {
   }
   if (block.type === 'image') {
     const resolvedSrc = block.originSrc || block.src
-    const attrs: string[] = [`src="${resolvedSrc}"`, 'class="editor-image"']
+    const attrs: string[] = [`src="${escapeAttr(resolvedSrc)}"`, 'class="editor-image"', 'data-display="block"']
     if (block.originSrc && block.originSrc !== resolvedSrc) {
       attrs.push(`data-origin-src="${escapeAttr(block.originSrc)}"`)
     }
     if (block.alt) attrs.push(`alt="${escapeHtml(block.alt)}"`)
     if (block.width) attrs.push(`width="${block.width}"`)
     if (block.height) attrs.push(`height="${block.height}"`)
-    if (block.style?.align) attrs.push(`data-align="${block.style.align}"`)
-    const styleParts: string[] = []
-    if (block.style?.marginLeft !== undefined)
-      styleParts.push(`margin-left: ${block.style.marginLeft}px`)
-    if (block.style?.marginRight !== undefined)
-      styleParts.push(`margin-right: ${block.style.marginRight}px`)
+    const align = block.style?.align || 'center'
+    attrs.push(`data-align="${align}"`)
+    const styleParts: string[] = ['display: block']
+    if (align === 'center') {
+      styleParts.push('margin-left: auto', 'margin-right: auto')
+    } else if (align === 'right') {
+      styleParts.push('margin-left: auto', 'margin-right: 0')
+    } else {
+      styleParts.push('margin-right: auto', 'margin-left: 0')
+    }
     if (block.style?.marginTop !== undefined)
       styleParts.push(`margin-top: ${block.style.marginTop}px`)
     if (block.style?.marginBottom !== undefined)
       styleParts.push(`margin-bottom: ${block.style.marginBottom}px`)
-    if (styleParts.length) attrs.push(`style="${styleParts.join('; ')}"`)
+    attrs.push(`style="${styleParts.join('; ')}"`)
     return `<img ${attrs.join(' ')} />`
   }
   if (block.type === 'table') {

@@ -4,6 +4,7 @@
  */
 import { Image } from '@tiptap/extension-image'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
+import { Plugin } from '@tiptap/pm/state'
 import ResizableImageComponent from './ResizableImageComponent.vue'
 
 export interface ResizableImageOptions {
@@ -24,6 +25,7 @@ declare module '@tiptap/core' {
         title?: string
         width?: string | number
         height?: string | number
+        display?: 'block' | 'inline'
       }) => ReturnType
     }
   }
@@ -32,10 +34,14 @@ declare module '@tiptap/core' {
 export const ResizableImage = Image.extend<ResizableImageOptions>({
   name: 'image',
 
+  atom: true,
+  selectable: true,
+  draggable: true,
+
   addOptions() {
     return {
       ...this.parent?.(),
-      inline: false,
+      inline: true,
       allowBase64: true,
       HTMLAttributes: {}
     }
@@ -105,13 +111,27 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
           return element.getAttribute('data-align') || element.style.textAlign || 'center'
         },
         renderHTML: (attributes) => {
-          return {
-            'data-align': attributes.align
+          const align = attributes.align || 'center'
+          if (attributes.display === 'inline') {
+            return { 'data-align': align }
           }
+          let style = 'display: block;'
+          if (align === 'center') style += ' margin-left: auto; margin-right: auto;'
+          else if (align === 'right') style += ' margin-left: auto; margin-right: 0;'
+          else style += ' margin-right: auto; margin-left: 0;'
+          return { 'data-align': align, style }
         }
       },
-      draggable: {
-        default: true
+      display: {
+        default: 'block',
+        parseHTML: (element) => element.getAttribute('data-display') || 'block',
+        renderHTML: (attributes) => {
+          const display = attributes.display || 'block'
+          if (display === 'inline') {
+            return { 'data-display': 'inline', style: 'display: inline-block; vertical-align: bottom;' }
+          }
+          return { 'data-display': display }
+        }
       },
       // 保留原始 data URL，用于 blob URL 失效时恢复 + 保存时还原图片数据
       'data-origin-src': {
@@ -127,6 +147,75 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
 
   addNodeView() {
     return VueNodeViewRenderer(ResizableImageComponent)
+  },
+
+  addProseMirrorPlugins() {
+    const SPLIT_META = 'blockImageAutoSplit'
+    return [
+      new Plugin({
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some((t) => t.docChanged)) return null
+          if (transactions.some((t) => t.getMeta(SPLIT_META))) return null
+
+          const { tr } = newState
+          let modified = false
+          const replacements: { from: number; to: number; content: any[] }[] = []
+
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name !== 'paragraph') return
+
+            let hasBlockImage = false
+            let hasOtherContent = false
+            node.forEach((child) => {
+              if (child.type.name === 'image' && child.attrs.display !== 'inline') {
+                hasBlockImage = true
+              } else {
+                hasOtherContent = true
+              }
+            })
+            if (!hasBlockImage || !hasOtherContent) return
+
+            const schema = newState.schema
+            const newNodes: any[] = []
+            let currentChildren: any[] = []
+
+            const flush = () => {
+              if (currentChildren.length > 0) {
+                newNodes.push(schema.nodes.paragraph.create(node.attrs, currentChildren))
+                currentChildren = []
+              }
+            }
+
+            node.forEach((child) => {
+              if (child.type.name === 'image' && child.attrs.display !== 'inline') {
+                flush()
+                newNodes.push(schema.nodes.paragraph.create(null, child))
+              } else {
+                currentChildren.push(child)
+              }
+            })
+            flush()
+
+            if (newNodes.length > 1) {
+              replacements.push({ from: pos, to: pos + node.nodeSize, content: newNodes })
+            }
+          })
+
+          replacements.sort((a, b) => b.from - a.from)
+          for (const { from, to, content } of replacements) {
+            const mFrom = tr.mapping.map(from)
+            const mTo = tr.mapping.map(to)
+            tr.replaceWith(mFrom, mTo, content)
+            modified = true
+          }
+
+          if (modified) {
+            tr.setMeta(SPLIT_META, true)
+          }
+          return modified ? tr : null
+        }
+      })
+    ]
   }
 })
 
