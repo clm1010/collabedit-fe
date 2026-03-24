@@ -103,6 +103,9 @@ export interface DocTableCell {
   blocks: DocBlock[]
   colspan?: number
   rowspan?: number
+  backgroundColor?: string
+  textAlign?: string
+  verticalAlign?: string
 }
 
 export interface DocImageBlock {

@@ -831,7 +831,7 @@ export async function parseOoxmlDocument(
 
 /**
  * 转换表格为 HTML
- * 优化：防止表格溢出，添加响应式样式
+ * 支持合并单元格（colspan/rowspan）、列宽、段落保留
  */
 function convertTableToHtml(
   table: any,
@@ -844,85 +844,193 @@ function convertTableToHtml(
   const rows = table['w:tr']
   if (!rows) return ''
 
+  const dxaToPx = (dxa: number) => Math.round(dxa * 96 / 1440)
   const rowsList = Array.isArray(rows) ? rows : [rows]
-  let html =
-    '<table style="border-collapse: collapse; width: 100%; max-width: 100%; table-layout: auto; margin: 1em 0;">'
+
+  // 提取 w:tblGrid 列宽
+  const gridCols: number[] = []
+  const tblGrid = table['w:tblGrid']
+  if (tblGrid) {
+    const gridColList = tblGrid['w:gridCol']
+    if (gridColList) {
+      const cols = Array.isArray(gridColList) ? gridColList : [gridColList]
+      for (const col of cols) {
+        const w = parseInt(col['@_w:w'] || '0', 10)
+        gridCols.push(w > 0 ? dxaToPx(w) : 0)
+      }
+    }
+  }
+
+  // 收集单元格元数据用于 vMerge 预扫描
+  interface CellMetaBasic {
+    cell: any
+    gridSpan: number
+    vMerge?: 'restart' | 'continue'
+  }
+  const rowMetas: CellMetaBasic[][] = []
 
   for (const row of rowsList) {
-    html += '<tr>'
     const cells = row['w:tc']
-    if (cells) {
-      const cellsList = Array.isArray(cells) ? cells : [cells]
-      for (const cell of cellsList) {
-        const cellStyle: string[] = [
-          'border: 1px solid #ddd',
-          'padding: 8px',
-          'word-wrap: break-word',
-          'overflow-wrap: break-word'
-        ]
-
-        const tcPr = cell['w:tcPr']
-        if (tcPr) {
-          const vAlign = tcPr['w:vAlign']
-          if (vAlign) {
-            const val = vAlign['@_w:val']
-            if (val) {
-              cellStyle.push(`vertical-align: ${val}`)
-            }
-          }
-
-          const shd = tcPr['w:shd']
-          if (shd) {
-            const fill = shd['@_w:fill']
-            if (fill && fill !== 'auto') {
-              cellStyle.push(`background-color: #${fill}`)
-            }
-          }
+    if (!cells) { rowMetas.push([]); continue }
+    const cellsList = Array.isArray(cells) ? cells : [cells]
+    const meta: CellMetaBasic[] = []
+    for (const cell of cellsList) {
+      const tcPr = cell['w:tcPr']
+      let gridSpan = 1
+      let vMerge: 'restart' | 'continue' | undefined
+      if (tcPr) {
+        const gs = tcPr['w:gridSpan']
+        if (gs) gridSpan = parseInt(gs['@_w:val'] || '1', 10)
+        if (tcPr['w:vMerge'] !== undefined) {
+          const vm = tcPr['w:vMerge']
+          const vmVal = typeof vm === 'object' && vm !== null ? vm['@_w:val'] : undefined
+          vMerge = vmVal === 'restart' ? 'restart' : 'continue'
         }
-
-        let cellContent = ''
-        const cellParas = cell['w:p']
-        if (cellParas) {
-          const parasList = Array.isArray(cellParas) ? cellParas : [cellParas]
-          for (const para of parasList) {
-            const runs = para['w:r']
-            if (runs) {
-              const runsList = Array.isArray(runs) ? runs : [runs]
-              for (const run of runsList) {
-                cellContent += convertRunToHtml(run, stylesMap, imageMap)
-              }
-            }
-            const hyperlink = para['w:hyperlink']
-            if (hyperlink) {
-              const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
-              for (const linkItem of hyperlinkList) {
-                const hyperlinkRuns = linkItem?.['w:r']
-                if (!hyperlinkRuns) continue
-                const linkRuns = Array.isArray(hyperlinkRuns) ? hyperlinkRuns : [hyperlinkRuns]
-                let linkContent = ''
-                for (const run of linkRuns) {
-                  linkContent += convertRunToHtml(run, stylesMap, imageMap)
-                }
-                const linkId = linkItem?.['@_r:id']
-                const anchor = linkItem?.['@_w:anchor']
-                const href = linkId ? hyperlinkMap?.get(linkId) : anchor ? `#${anchor}` : ''
-                if (href) {
-                  cellContent += `<a href="${href}">${linkContent}</a>`
-                } else {
-                  cellContent += linkContent
-                }
-              }
-            }
-          }
-        }
-
-        html += `<td style="${cellStyle.join('; ')}">${cellContent || '&nbsp;'}</td>`
       }
+      meta.push({ cell, gridSpan, vMerge })
+    }
+    rowMetas.push(meta)
+  }
+
+  // 构建列起始位置映射
+  const cellColPos: number[][] = []
+  for (const meta of rowMetas) {
+    const positions: number[] = []
+    let colPos = 0
+    for (const c of meta) {
+      positions.push(colPos)
+      colPos += c.gridSpan
+    }
+    cellColPos.push(positions)
+  }
+
+  // 预扫描 vMerge 计算 rowspan
+  const rowspanMap = new Map<string, number>()
+  const skipSet = new Set<string>()
+
+  for (let ri = 0; ri < rowMetas.length; ri++) {
+    for (let ci = 0; ci < rowMetas[ri].length; ci++) {
+      if (rowMetas[ri][ci].vMerge !== 'restart') continue
+      const startColPos = cellColPos[ri][ci]
+      let rowspan = 1
+      for (let nextRow = ri + 1; nextRow < rowMetas.length; nextRow++) {
+        let found = false
+        for (let nci = 0; nci < rowMetas[nextRow].length; nci++) {
+          if (cellColPos[nextRow][nci] === startColPos && rowMetas[nextRow][nci].vMerge === 'continue') {
+            rowspan++
+            skipSet.add(`${nextRow}-${nci}`)
+            found = true
+            break
+          }
+        }
+        if (!found) break
+      }
+      if (rowspan > 1) rowspanMap.set(`${ri}-${ci}`, rowspan)
+    }
+  }
+
+  // 生成 HTML
+  const hasColWidths = gridCols.length > 0 && gridCols.some(w => w > 0)
+  const tableStyle = `border-collapse: collapse; width: 100%; max-width: 100%; margin: 1em 0;${hasColWidths ? ' table-layout: fixed;' : ''}`
+  let html = `<table style="${tableStyle}">`
+
+  if (hasColWidths) {
+    html += '<colgroup>'
+    for (const w of gridCols) {
+      html += w > 0 ? `<col style="width: ${w}px" width="${w}">` : '<col>'
+    }
+    html += '</colgroup>'
+  }
+
+  html += '<tbody>'
+
+  for (let ri = 0; ri < rowMetas.length; ri++) {
+    html += '<tr>'
+    for (let ci = 0; ci < rowMetas[ri].length; ci++) {
+      if (skipSet.has(`${ri}-${ci}`)) continue
+
+      const meta = rowMetas[ri][ci]
+      const cell = meta.cell
+      const rowspan = rowspanMap.get(`${ri}-${ci}`)
+
+      const cellStyle: string[] = [
+        'border: 1px solid #ddd',
+        'padding: 8px',
+        'word-wrap: break-word',
+        'overflow-wrap: break-word'
+      ]
+      const tcPr = cell['w:tcPr']
+      if (tcPr) {
+        const vAlign = tcPr['w:vAlign']
+        if (vAlign) {
+          const val = vAlign['@_w:val']
+          if (val) cellStyle.push(`vertical-align: ${val}`)
+        }
+        const shd = tcPr['w:shd']
+        if (shd) {
+          const fill = shd['@_w:fill']
+          if (fill && fill !== 'auto') cellStyle.push(`background-color: #${fill}`)
+        }
+      }
+
+      let cellContent = ''
+      const cellParas = cell['w:p']
+      if (cellParas) {
+        const parasList = Array.isArray(cellParas) ? cellParas : [cellParas]
+        for (const para of parasList) {
+          let paraInner = ''
+          const runs = para['w:r']
+          if (runs) {
+            const runsList = Array.isArray(runs) ? runs : [runs]
+            for (const run of runsList) {
+              paraInner += convertRunToHtml(run, stylesMap, imageMap)
+            }
+          }
+          const hyperlink = para['w:hyperlink']
+          if (hyperlink) {
+            const hyperlinkList = Array.isArray(hyperlink) ? hyperlink : [hyperlink]
+            for (const linkItem of hyperlinkList) {
+              const hyperlinkRuns = linkItem?.['w:r']
+              if (!hyperlinkRuns) continue
+              const linkRuns = Array.isArray(hyperlinkRuns) ? hyperlinkRuns : [hyperlinkRuns]
+              let linkContent = ''
+              for (const run of linkRuns) {
+                linkContent += convertRunToHtml(run, stylesMap, imageMap)
+              }
+              const linkId = linkItem?.['@_r:id']
+              const anchor = linkItem?.['@_w:anchor']
+              const href = linkId ? hyperlinkMap?.get(linkId) : anchor ? `#${anchor}` : ''
+              if (href) {
+                paraInner += `<a href="${href}">${linkContent}</a>`
+              } else {
+                paraInner += linkContent
+              }
+            }
+          }
+          cellContent += `<p>${paraInner || ''}</p>`
+        }
+      }
+
+      if (!cellContent) cellContent = '<p></p>'
+
+      const attrs: string[] = []
+      if (meta.gridSpan > 1) attrs.push(`colspan="${meta.gridSpan}"`)
+      if (rowspan && rowspan > 1) attrs.push(`rowspan="${rowspan}"`)
+      if (hasColWidths) {
+        const colPos = cellColPos[ri][ci]
+        const widths: number[] = []
+        for (let i = 0; i < meta.gridSpan; i++) {
+          widths.push(gridCols[colPos + i] || 0)
+        }
+        if (widths.some(w => w > 0)) attrs.push(`colwidth="${widths.join(',')}"`)
+      }
+      attrs.push(`style="${cellStyle.join('; ')}"`)
+      html += `<td ${attrs.join(' ')}>${cellContent}</td>`
     }
     html += '</tr>'
   }
 
-  html += '</table>'
+  html += '</tbody></table>'
   return html
 }
 
@@ -1145,6 +1253,21 @@ async function parseStylesXmlEnhanced(zip: any): Promise<Record<string, any>> {
 }
 
 /**
+ * 从 zip 中读取 rels 并解析超链接关系映射
+ */
+async function processHyperlinksFromZip(zip: any): Promise<Map<string, string>> {
+  try {
+    const relsFile = zip.file('word/_rels/document.xml.rels')
+    if (!relsFile) return new Map()
+    const relsContent = await relsFile.async('string')
+    return processHyperlinks(relsContent)
+  } catch (e) {
+    console.warn('处理超链接映射失败:', e)
+    return new Map()
+  }
+}
+
+/**
  * 处理所有图片资源
  */
 async function processAllImages(zip: any): Promise<Map<string, string>> {
@@ -1231,6 +1354,8 @@ export async function parseOoxmlDocumentEnhanced(
   onProgress?.(50, '正在处理图片...')
   const imageMap = await processAllImages(zip)
 
+  const hyperlinkMap = await processHyperlinksFromZip(zip)
+
   onProgress?.(60, '正在解析文档内容...')
   const documentXml = await zip.file('word/document.xml')?.async('string')
   if (!documentXml) {
@@ -1253,7 +1378,8 @@ export async function parseOoxmlDocumentEnhanced(
     numbering: numberingMap,
     fonts: fontMap,
     themes: themeMap,
-    images: imageMap
+    images: imageMap,
+    hyperlinks: hyperlinkMap
   })
 
   onProgress?.(100, '解析完成')
@@ -1273,6 +1399,7 @@ function convertDocumentToHtmlEnhanced(
     fonts: Map<string, string>
     themes?: Record<string, string>
     images: Map<string, string>
+    hyperlinks?: Map<string, string>
   }
 ): string {
   const elements: string[] = []
@@ -1323,6 +1450,7 @@ function convertParagraphEnhanced(
     fonts: Map<string, string>
     themes?: Record<string, string>
     images: Map<string, string>
+    hyperlinks?: Map<string, string>
   }
 ): string {
   const styleArr: string[] = []
@@ -1507,6 +1635,25 @@ function convertParagraphEnhanced(
     } else if (item['w:r']) {
       const runHtml = convertRunEnhanced(item['w:r'], baseRPr, context)
       content += runHtml
+    } else if (item['w:hyperlink'] !== undefined) {
+      const rId = item[':@']?.['@_r:id']
+      const anchor = item[':@']?.['@_w:anchor']
+      const href = rId ? context.hyperlinks?.get(rId) : anchor ? `#${anchor}` : ''
+      let linkContent = ''
+      for (const linkItem of item['w:hyperlink']) {
+        if (linkItem['w:r']) {
+          linkContent += convertRunEnhanced(linkItem['w:r'], baseRPr, context)
+        }
+      }
+      if (href && linkContent) {
+        if (!linkContent.includes('color:')) {
+          content += `<a href="${href}"><span style="color: #0563C1">${linkContent}</span></a>`
+        } else {
+          content += `<a href="${href}">${linkContent}</a>`
+        }
+      } else {
+        content += linkContent
+      }
     }
   }
 
@@ -1534,6 +1681,7 @@ function convertRunEnhanced(
     fonts: Map<string, string>
     themes?: Record<string, string>
     images: Map<string, string>
+    hyperlinks?: Map<string, string>
   }
 ): string {
   let text = ''
@@ -1821,6 +1969,7 @@ function extractImageFromElementEnhanced(
 
 /**
  * 增强的表格转换
+ * 支持合并单元格（colspan/rowspan）、列宽、段落保留
  */
 function convertTableEnhanced(
   tableItems: any[],
@@ -1829,31 +1978,142 @@ function convertTableEnhanced(
     numbering: Map<string, NumberingLevel[]>
     fonts: Map<string, string>
     images: Map<string, string>
+    hyperlinks?: Map<string, string>
   }
 ): string {
-  let html =
-    '<table style="border-collapse: collapse; width: 100%; max-width: 100%; table-layout: auto; margin: 1em 0;">'
+  const dxaToPx = (dxa: number) => Math.round(dxa * 96 / 1440)
 
+  // 提取 w:tblGrid 列宽
+  const gridCols: number[] = []
   for (const item of tableItems) {
-    if (item['w:tr']) {
-      html += '<tr>'
-      const rowItems = item['w:tr']
-      for (const cellItem of rowItems) {
-        if (cellItem['w:tc']) {
-          const cellHtml = convertTableCellEnhanced(cellItem['w:tc'], context)
-          html += cellHtml
+    if (item['w:tblGrid']) {
+      for (const gridItem of item['w:tblGrid']) {
+        if (gridItem['w:gridCol'] !== undefined) {
+          const w = parseInt(gridItem[':@']?.['@_w:w'] || '0', 10)
+          gridCols.push(w > 0 ? dxaToPx(w) : 0)
         }
       }
-      html += '</tr>'
     }
   }
 
-  html += '</table>'
+  // 收集行及单元格元数据（gridSpan / vMerge）
+  interface CellMeta {
+    cellItems: any[]
+    gridSpan: number
+    vMerge?: 'restart' | 'continue'
+  }
+  const rows: { cells: CellMeta[] }[] = []
+
+  for (const item of tableItems) {
+    if (item['w:tr']) {
+      const cells: CellMeta[] = []
+      for (const cellItem of item['w:tr']) {
+        if (cellItem['w:tc']) {
+          let gridSpan = 1
+          let vMerge: 'restart' | 'continue' | undefined
+          for (const ci of cellItem['w:tc']) {
+            if (ci['w:tcPr']) {
+              for (const prop of ci['w:tcPr']) {
+                if (prop['w:gridSpan'] !== undefined) {
+                  gridSpan = parseInt(prop[':@']?.['@_w:val'] || '1', 10)
+                }
+                if (prop['w:vMerge'] !== undefined) {
+                  const val = prop[':@']?.['@_w:val']
+                  vMerge = val === 'restart' ? 'restart' : 'continue'
+                }
+              }
+            }
+          }
+          cells.push({ cellItems: cellItem['w:tc'], gridSpan, vMerge })
+        }
+      }
+      rows.push({ cells })
+    }
+  }
+
+  // 构建每个单元格的列起始位置
+  const cellColPos: number[][] = []
+  for (const row of rows) {
+    const positions: number[] = []
+    let colPos = 0
+    for (const cell of row.cells) {
+      positions.push(colPos)
+      colPos += cell.gridSpan
+    }
+    cellColPos.push(positions)
+  }
+
+  // 预扫描 vMerge，计算 rowspan 并标记需要跳过的 continue 单元格
+  const rowspanMap = new Map<string, number>()
+  const skipSet = new Set<string>()
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    for (let ci = 0; ci < rows[ri].cells.length; ci++) {
+      if (rows[ri].cells[ci].vMerge !== 'restart') continue
+      const startColPos = cellColPos[ri][ci]
+      let rowspan = 1
+      for (let nextRow = ri + 1; nextRow < rows.length; nextRow++) {
+        let found = false
+        for (let nci = 0; nci < rows[nextRow].cells.length; nci++) {
+          if (cellColPos[nextRow][nci] === startColPos && rows[nextRow].cells[nci].vMerge === 'continue') {
+            rowspan++
+            skipSet.add(`${nextRow}-${nci}`)
+            found = true
+            break
+          }
+        }
+        if (!found) break
+      }
+      if (rowspan > 1) rowspanMap.set(`${ri}-${ci}`, rowspan)
+    }
+  }
+
+  // 生成 HTML
+  const hasColWidths = gridCols.length > 0 && gridCols.some(w => w > 0)
+  const tableStyle = `border-collapse: collapse; width: 100%; max-width: 100%; margin: 1em 0;${hasColWidths ? ' table-layout: fixed;' : ''}`
+  let html = `<table style="${tableStyle}">`
+
+  if (hasColWidths) {
+    html += '<colgroup>'
+    for (const w of gridCols) {
+      html += w > 0 ? `<col style="width: ${w}px" width="${w}">` : '<col>'
+    }
+    html += '</colgroup>'
+  }
+
+  html += '<tbody>'
+  for (let ri = 0; ri < rows.length; ri++) {
+    html += '<tr>'
+    for (let ci = 0; ci < rows[ri].cells.length; ci++) {
+      if (skipSet.has(`${ri}-${ci}`)) continue
+
+      const cell = rows[ri].cells[ci]
+      const rowspan = rowspanMap.get(`${ri}-${ci}`)
+      const cellResult = convertTableCellEnhanced(cell.cellItems, context)
+
+      const attrs: string[] = []
+      if (cell.gridSpan > 1) attrs.push(`colspan="${cell.gridSpan}"`)
+      if (rowspan && rowspan > 1) attrs.push(`rowspan="${rowspan}"`)
+      if (hasColWidths) {
+        const colPos = cellColPos[ri][ci]
+        const widths: number[] = []
+        for (let i = 0; i < cell.gridSpan; i++) {
+          widths.push(gridCols[colPos + i] || 0)
+        }
+        if (widths.some(w => w > 0)) attrs.push(`colwidth="${widths.join(',')}"`)
+      }
+      attrs.push(`style="${cellResult.style}"`)
+      html += `<td ${attrs.join(' ')}>${cellResult.content}</td>`
+    }
+    html += '</tr>'
+  }
+  html += '</tbody></table>'
   return html
 }
 
 /**
- * 转换表格单元格
+ * 转换表格单元格（增强版）
+ * 保留段落结构，确保 Tiptap 兼容
  */
 function convertTableCellEnhanced(
   cellItems: any[],
@@ -1862,8 +2122,9 @@ function convertTableCellEnhanced(
     numbering: Map<string, NumberingLevel[]>
     fonts: Map<string, string>
     images: Map<string, string>
+    hyperlinks?: Map<string, string>
   }
-): string {
+): { content: string; style: string } {
   const cellStyle: string[] = [
     'border: 1px solid #ddd',
     'padding: 8px',
@@ -1874,8 +2135,7 @@ function convertTableCellEnhanced(
 
   for (const item of cellItems) {
     if (item['w:tcPr']) {
-      const tcPr = item['w:tcPr']
-      for (const prop of tcPr) {
+      for (const prop of item['w:tcPr']) {
         if (prop['w:vAlign']) {
           const val = prop[':@']?.['@_w:val']
           if (val) cellStyle.push(`vertical-align: ${val}`)
@@ -1889,10 +2149,11 @@ function convertTableCellEnhanced(
       }
     } else if (item['w:p']) {
       const paraContent = convertParagraphEnhanced(item['w:p'], context)
-      const innerContent = paraContent.replace(/<\/?p[^>]*>/g, '')
-      if (innerContent) content += innerContent + ' '
+      if (paraContent) content += paraContent
     }
   }
 
-  return `<td style="${cellStyle.join('; ')}">${content.trim() || '&nbsp;'}</td>`
+  if (!content) content = '<p></p>'
+
+  return { content, style: cellStyle.join('; ') }
 }

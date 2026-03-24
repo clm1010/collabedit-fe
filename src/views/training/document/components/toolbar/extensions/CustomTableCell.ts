@@ -34,6 +34,19 @@ export const CustomTableCell = TableCell.extend({
             style: `background-color: ${attributes.backgroundColor}`
           }
         }
+      },
+      // 垂直对齐属性
+      verticalAlign: {
+        default: null,
+        parseHTML: (element) => element.style.verticalAlign || null,
+        renderHTML: (attributes) => {
+          if (!attributes.verticalAlign) {
+            return {}
+          }
+          return {
+            style: `vertical-align: ${attributes.verticalAlign}`
+          }
+        }
       }
     }
   }

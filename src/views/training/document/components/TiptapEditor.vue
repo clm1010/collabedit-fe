@@ -48,8 +48,10 @@
             </DragHandle>
             <editor-content :editor="editor" class="tiptap-content" />
 
+            <!-- 表格泡泡菜单 -->
+            <TableBubbleMenu v-if="editor && editable" :editor="editor" :editable="editable" />
+
             <!-- 气泡菜单 - 参考 https://tiptap.dev/docs/editor/extensions/functionality/bubble-menu -->
-            <!-- 只读模式下隐藏气泡菜单 -->
             <div ref="bubbleMenuRef" class="bubble-menu" v-show="editor && editable">
               <div class="bubble-menu-container">
                 <button
@@ -242,6 +244,8 @@ import { TextStyle, FontSize } from '@tiptap/extension-text-style'
 import { FontFamily } from '@tiptap/extension-font-family'
 import { Color } from '@tiptap/extension-color'
 import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu'
+import { CellSelection } from '@tiptap/pm/tables'
+import TableBubbleMenu from './toolbar/TableBubbleMenu.vue'
 import { Subscript } from '@tiptap/extension-subscript'
 import { Superscript } from '@tiptap/extension-superscript'
 import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
@@ -468,7 +472,8 @@ const editor = useEditor({
     }),
     // 表格 - 使用自定义扩展支持对齐和背景色
     Table.configure({
-      resizable: true
+      resizable: true,
+      allowTableNodeSelection: true
     }),
     TableRow,
     CustomTableCell,
@@ -685,13 +690,11 @@ const registerBubbleMenu = () => {
     editor: editor.value,
     element: bubbleMenuRef.value,
     shouldShow: ({ state }) => {
-      // 只读模式下不显示泡泡菜单
       if (!props.editable) return false
-
-      const { empty } = state.selection
-      if (empty) return false
-      // 检查是否在文本块中
-      const isTextSelection = state.selection.$from.parent.isTextblock
+      const { selection } = state
+      if (selection.empty) return false
+      if (selection instanceof CellSelection) return false
+      const isTextSelection = selection.$from.parent.isTextblock
       return isTextSelection
     },
     options: {
@@ -1369,36 +1372,63 @@ defineExpose({
       margin: 0;
     }
 
-    // 表格样式
+    // 表格容器（Tiptap resizable 模式自动生成）
+    .tableWrapper {
+      overflow-x: auto;
+      max-width: 100%;
+      margin: 1em 0;
+    }
+
+    // 表格样式（参考 Umo Editor）
     table {
       border-collapse: collapse;
+      table-layout: fixed;
       width: 100%;
-      margin: 1em 0;
+      margin: 0;
       overflow: hidden;
-      border-radius: 8px;
-      border: 1px solid #e5e7eb;
 
       th,
       td {
-        border: 1px solid #e5e7eb;
-        padding: 8px 12px;
-        text-align: left;
-        min-width: 100px;
+        border: 1px solid #dee2e6;
+        padding: 6px 10px;
+        min-width: 1em;
+        vertical-align: middle;
+        box-sizing: border-box;
+        position: relative;
       }
 
       th {
-        background: #f9fafb;
+        background: #f1f3f5;
         font-weight: 600;
-        color: #374151;
       }
 
-      td {
-        background: #fff;
+      // 选中单元格高亮（ProseMirror 表格插件自动添加 .selectedCell 类）
+      .selectedCell::after {
+        z-index: 2;
+        position: absolute;
+        content: '';
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        background: rgba(200, 200, 255, 0.4);
+        pointer-events: none;
       }
 
-      tr:hover td {
-        background: #f9fafb;
+      // 列宽调整拉动条
+      .column-resize-handle {
+        position: absolute;
+        right: -1px;
+        top: 0;
+        bottom: -1px;
+        width: 3px;
+        background-color: #409eff;
+        pointer-events: none;
       }
+    }
+
+    &.resize-cursor {
+      cursor: col-resize;
     }
 
     // 任务列表样式
@@ -1541,12 +1571,17 @@ defineExpose({
     border-radius: 8px;
     overflow-x: auto;
   }
+  :deep(.tableWrapper) {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 1em 0;
+  }
   :deep(table) {
     border-collapse: collapse;
     width: 100%;
     max-width: 100%;
     table-layout: auto;
-    margin: 1em 0;
+    margin: 0;
   }
   :deep(th),
   :deep(td) {
@@ -1641,11 +1676,17 @@ defineExpose({
     padding-left: 1em;
     color: #666;
   }
+  :deep(.tableWrapper) {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 1em 0;
+  }
   :deep(table) {
     border-collapse: collapse;
     width: 100%;
     max-width: 100%;
     table-layout: auto;
+    margin: 0;
   }
   :deep(th),
   :deep(td) {

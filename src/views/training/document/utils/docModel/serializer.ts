@@ -79,7 +79,11 @@ const serializeRun = (run: DocRun): string => {
     return `<sup data-docx-endnote="${id}">${id}</sup>`
   }
   const text = renderTextWithBreaks(run.text || '')
-  const styleText = styleToCssText(run.style)
+  let effectiveStyle = run.style
+  if (run.style?.link && !run.style?.color) {
+    effectiveStyle = { ...run.style, color: '#0563C1' }
+  }
+  const styleText = styleToCssText(effectiveStyle)
   const content = styleText ? `<span style="${styleText}">${text}</span>` : text
   if (run.style?.link) {
     return `<a href="${escapeAttr(run.style.link)}">${content}</a>`
@@ -194,27 +198,41 @@ const serializeBlock = (block: DocBlock): string => {
     const colgroup =
       block.colWidths && block.colWidths.length
         ? `<colgroup>${block.colWidths
-            .map((width) => `<col style="min-width: ${width}px;">`)
+            .map((width) => `<col style="width: ${width}px" width="${width}">`)
             .join('')}</colgroup>`
         : ''
+    let colIdx = 0
     const rows = block.rows
       .map((row) => {
+        colIdx = 0
         const cells = row.cells
           .map((cell) => {
-            const cellHtml = cell.blocks.map(serializeBlock).join('')
-            const spanAttrs = [
-              cell.colspan ? `colspan="${cell.colspan}"` : '',
-              cell.rowspan ? `rowspan="${cell.rowspan}"` : ''
-            ]
-              .filter(Boolean)
-              .join(' ')
-            return `<td ${spanAttrs}>${cellHtml}</td>`
+            const cellHtml = cell.blocks.map(serializeBlock).join('') || '<p></p>'
+            const attrs: string[] = []
+            if (cell.colspan) attrs.push(`colspan="${cell.colspan}"`)
+            if (cell.rowspan) attrs.push(`rowspan="${cell.rowspan}"`)
+            if (block.colWidths && block.colWidths.length) {
+              const span = cell.colspan || 1
+              const widths: number[] = []
+              for (let i = 0; i < span; i++) {
+                widths.push(block.colWidths[colIdx + i] || 0)
+              }
+              if (widths.some(w => w > 0)) attrs.push(`colwidth="${widths.join(',')}"`)
+              colIdx += span
+            }
+            const styleParts: string[] = []
+            if (cell.backgroundColor) styleParts.push(`background-color: ${cell.backgroundColor}`)
+            if (cell.textAlign) styleParts.push(`text-align: ${cell.textAlign}`)
+            if (cell.verticalAlign) styleParts.push(`vertical-align: ${cell.verticalAlign}`)
+            if (styleParts.length) attrs.push(`style="${styleParts.join('; ')}"`)
+            const attrStr = attrs.length ? ' ' + attrs.join(' ') : ''
+            return `<td${attrStr}>${cellHtml}</td>`
           })
           .join('')
         return `<tr>${cells}</tr>`
       })
       .join('')
-    return `<table${tableStyle}>${colgroup}${rows}</table>`
+    return `<table${tableStyle}>${colgroup}<tbody>${rows}</tbody></table>`
   }
   return ''
 }

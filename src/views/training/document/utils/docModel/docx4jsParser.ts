@@ -542,27 +542,154 @@ const parseListFromTree = (node: DocxTreeNode): DocListBlock => {
   return rootList
 }
 
+const getCellColspan = (props: any): number | undefined => {
+  const val = props?.colspan ?? props?.colSpan ?? props?.gridSpan
+  return val ? parseInt(String(val), 10) || undefined : undefined
+}
+
+const getCellRowspan = (props: any): number | undefined => {
+  const val = props?.rowspan ?? props?.rowSpan
+  return val ? parseInt(String(val), 10) || undefined : undefined
+}
+
+const getCellStyles = (cellNode: DocxTreeNode): {
+  backgroundColor?: string
+  textAlign?: string
+  verticalAlign?: string
+} => {
+  const props = cellNode.props || {}
+  const raw = props.style
+  const styleText = typeof raw === 'string' ? raw : styleToText(raw)
+  const styleMap = styleText ? extractStyleMap(styleText) : {}
+  return {
+    backgroundColor: props.backgroundColor || props['background-color'] || styleMap['background-color'] || undefined,
+    textAlign: props.textAlign || props['text-align'] || styleMap['text-align'] || undefined,
+    verticalAlign: props.verticalAlign || props['vertical-align'] || styleMap['vertical-align'] || undefined
+  }
+}
+
+const getCellVMerge = (props: any): 'restart' | 'continue' | undefined => {
+  const val = props?.vMerge ?? props?.vmerge ?? props?.['v-merge']
+  if (!val) return undefined
+  const s = String(val).toLowerCase()
+  if (s === 'restart') return 'restart'
+  return 'continue'
+}
+
 const parseTableFromTree = (node: DocxTreeNode): DocTableBlock => {
   const rows: DocTableRow[] = []
-  const children = node.children || []
-  children.forEach((child) => {
-    if (!child || typeof child !== 'object') return
-    const rowNode = child as DocxTreeNode
-    if (rowNode.type.toLowerCase() !== 'tr') return
-    const cells: DocTableCell[] = []
-    ;(rowNode.children || []).forEach((cellChild) => {
-      if (!cellChild || typeof cellChild !== 'object') return
-      const cellNode = cellChild as DocxTreeNode
-      const tag = cellNode.type.toLowerCase()
-      if (tag !== 'td' && tag !== 'th') return
-      cells.push({
-        blocks: parseBlocksFromTree(cellNode.children || []),
-        colspan: cellNode.props?.colspan ? parseInt(cellNode.props.colspan, 10) : undefined,
-        rowspan: cellNode.props?.rowspan ? parseInt(cellNode.props.rowspan, 10) : undefined
+
+  interface RawCell {
+    blocks: DocBlock[]
+    colspan?: number
+    rowspan?: number
+    backgroundColor?: string
+    textAlign?: string
+    verticalAlign?: string
+    vMerge?: 'restart' | 'continue'
+  }
+  const rawRows: RawCell[][] = []
+
+  const collectRows = (children: (DocxTreeNode | string)[]) => {
+    children.forEach((child) => {
+      if (!child || typeof child !== 'object') return
+      const rowNode = child as DocxTreeNode
+      const tag = rowNode.type.toLowerCase()
+      if (tag === 'tbody' || tag === 'thead' || tag === 'tfoot') {
+        collectRows(rowNode.children || [])
+        return
+      }
+      if (tag !== 'tr') return
+      const cells: RawCell[] = []
+      ;(rowNode.children || []).forEach((cellChild) => {
+        if (!cellChild || typeof cellChild !== 'object') return
+        const cellNode = cellChild as DocxTreeNode
+        const cellTag = cellNode.type.toLowerCase()
+        if (cellTag !== 'td' && cellTag !== 'th') return
+        const props = cellNode.props || {}
+        const cellStyles = getCellStyles(cellNode)
+        cells.push({
+          blocks: parseBlocksFromTree(cellNode.children || []),
+          colspan: getCellColspan(props),
+          rowspan: getCellRowspan(props),
+          ...cellStyles,
+          vMerge: getCellVMerge(props)
+        })
       })
+      if (cells.length > 0) rawRows.push(cells)
     })
-    rows.push({ cells })
-  })
+  }
+
+  collectRows(node.children || [])
+
+  const hasVMerge = rawRows.some(row => row.some(c => c.vMerge !== undefined))
+  const hasRowspan = rawRows.some(row => row.some(c => c.rowspan && c.rowspan > 1))
+
+  if (hasVMerge && !hasRowspan) {
+    const totalCols = Math.max(...rawRows.map(row =>
+      row.reduce((sum, c) => sum + (c.colspan || 1), 0)
+    ), 0)
+
+    const grid: (RawCell | null)[][] = rawRows.map(row => {
+      const expanded: (RawCell | null)[] = []
+      row.forEach(c => {
+        const span = c.colspan || 1
+        expanded.push(c)
+        for (let i = 1; i < span; i++) expanded.push(null)
+      })
+      while (expanded.length < totalCols) expanded.push(null)
+      return expanded
+    })
+
+    for (let col = 0; col < totalCols; col++) {
+      let mergeStart = -1
+      for (let row = 0; row < grid.length; row++) {
+        const cell = grid[row][col]
+        if (!cell) continue
+        if (cell.vMerge === 'restart') {
+          mergeStart = row
+        } else if (cell.vMerge === 'continue' && mergeStart >= 0) {
+          const startCell = grid[mergeStart][col]
+          if (startCell) {
+            startCell.rowspan = (startCell.rowspan || 1) + 1
+          }
+          cell.vMerge = undefined
+          cell.rowspan = 0
+        } else {
+          mergeStart = -1
+        }
+      }
+    }
+
+    rawRows.forEach(rawRow => {
+      const cells: DocTableCell[] = rawRow
+        .filter(c => c.rowspan !== 0)
+        .map(({ vMerge, ...rest }) => {
+          const cell: DocTableCell = { blocks: rest.blocks }
+          if (rest.colspan && rest.colspan > 1) cell.colspan = rest.colspan
+          if (rest.rowspan && rest.rowspan > 1) cell.rowspan = rest.rowspan
+          if (rest.backgroundColor) cell.backgroundColor = rest.backgroundColor
+          if (rest.textAlign) cell.textAlign = rest.textAlign
+          if (rest.verticalAlign) cell.verticalAlign = rest.verticalAlign
+          return cell
+        })
+      if (cells.length > 0) rows.push({ cells })
+    })
+  } else {
+    rawRows.forEach(rawRow => {
+      const cells: DocTableCell[] = rawRow.map(({ vMerge, ...rest }) => {
+        const cell: DocTableCell = { blocks: rest.blocks }
+        if (rest.colspan && rest.colspan > 1) cell.colspan = rest.colspan
+        if (rest.rowspan && rest.rowspan > 1) cell.rowspan = rest.rowspan
+        if (rest.backgroundColor) cell.backgroundColor = rest.backgroundColor
+        if (rest.textAlign) cell.textAlign = rest.textAlign
+        if (rest.verticalAlign) cell.verticalAlign = rest.verticalAlign
+        return cell
+      })
+      if (cells.length > 0) rows.push({ cells })
+    })
+  }
+
   return { type: 'table', rows }
 }
 

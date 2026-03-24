@@ -179,6 +179,36 @@ export const parseDocxToDocModel = async (
         const model = await parseDocxWithDocx4jsToDocModel(arrayBuffer, metadata, onProgress)
         if (model.blocks.length > 0) {
           if (hasAnyStyle(model) || hasAnyImages(model) || !merged.useDocxPreview) {
+            const needsMergeCheck = model.blocks.some(b =>
+              b.type === 'table' && b.rows.length > 1 && !b.rows.some(r =>
+                r.cells.some(c => (c.colspan && c.colspan > 1) || (c.rowspan && c.rowspan > 1))
+              )
+            )
+            if (needsMergeCheck) {
+              try {
+                const ooxmlHtml = await parseOoxmlDocumentEnhanced(arrayBuffer)
+                if (ooxmlHtml && /colspan|rowspan/i.test(ooxmlHtml)) {
+                  const ooxmlModel = parseHtmlToDocModel(ooxmlHtml, { ...metadata, source: 'ooxml' })
+                  const ooxmlTables = ooxmlModel.blocks.filter(b => b.type === 'table')
+                  let tableIdx = 0
+                  model.blocks = model.blocks.map(b => {
+                    if (b.type === 'table' && tableIdx < ooxmlTables.length) {
+                      const ooxmlTable = ooxmlTables[tableIdx++]
+                      if (ooxmlTable.type === 'table') {
+                        const hasMerge = ooxmlTable.rows.some(r =>
+                          r.cells.some(c => (c.colspan && c.colspan > 1) || (c.rowspan && c.rowspan > 1))
+                        )
+                        if (hasMerge) return ooxmlTable
+                      }
+                    } else if (b.type === 'table') {
+                      tableIdx++
+                    }
+                    return b
+                  })
+                  metadata.warnings = [...(metadata.warnings || []), 'docx4js 合并单元格信息不完整，表格回退 OOXML Enhanced']
+                }
+              } catch (_) { /* OOXML fallback failed, use docx4js result as-is */ }
+            }
             metadata.method = method
             return model
           }

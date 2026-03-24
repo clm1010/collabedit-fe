@@ -19,6 +19,7 @@ import {
   TableRow,
   TextRun,
   UnderlineType,
+  VerticalAlign,
   WidthType,
   convertInchesToTwip
 } from 'docx'
@@ -457,11 +458,20 @@ const buildList = (block: DocListBlock, level = 0): Paragraph[] => {
   return paragraphs
 }
 
+const mapVerticalAlign = (va?: string): VerticalAlign | undefined => {
+  if (!va) return undefined
+  const v = va.toLowerCase()
+  if (v === 'middle' || v === 'center') return VerticalAlign.CENTER
+  if (v === 'bottom') return VerticalAlign.BOTTOM
+  if (v === 'top') return VerticalAlign.TOP
+  return undefined
+}
+
 const buildTable = (block: DocTableBlock): Table => {
   const rows = block.rows.map((row) => {
     let colIndex = 0
     const cells = row.cells.map((cell) => {
-      const paragraphs = blocksToParagraphs(cell.blocks)
+      const paragraphs = blocksToParagraphs(cell.blocks, cell.textAlign)
       const span = cell.colspan || 1
       let cellWidth: number | undefined
       if (block.colWidths && block.colWidths.length) {
@@ -470,11 +480,16 @@ const buildTable = (block: DocTableBlock): Table => {
           .reduce((sum, width) => sum + (width || 0), 0)
       }
       colIndex += span
+      const bgColor = cell.backgroundColor?.replace(/^#/, '')
       return new TableCell({
         children: paragraphs.length ? paragraphs : [new Paragraph({ children: [] })],
         columnSpan: cell.colspan,
         rowSpan: cell.rowspan,
-        width: cellWidth ? { size: pxToTwip(cellWidth), type: WidthType.DXA } : undefined
+        width: cellWidth ? { size: pxToTwip(cellWidth), type: WidthType.DXA } : undefined,
+        shading: bgColor
+          ? { type: ShadingType.CLEAR, fill: bgColor, color: 'auto' }
+          : undefined,
+        verticalAlign: mapVerticalAlign(cell.verticalAlign)
       })
     })
     return new TableRow({ children: cells })
@@ -486,13 +501,19 @@ const buildTable = (block: DocTableBlock): Table => {
   })
 }
 
-const blocksToParagraphs = (blocks: DocBlock[]): Paragraph[] => {
+const blocksToParagraphs = (blocks: DocBlock[], defaultAlign?: string): Paragraph[] => {
   const paragraphs: Paragraph[] = []
   blocks.forEach((block) => {
     if (block.type === 'paragraph') {
-      paragraphs.push(buildParagraph(block))
+      const effectiveBlock = (!block.style?.align && defaultAlign)
+        ? { ...block, style: { ...block.style, align: defaultAlign as any } }
+        : block
+      paragraphs.push(buildParagraph(effectiveBlock))
     } else if (block.type === 'heading') {
-      paragraphs.push(buildHeading(block))
+      const effectiveBlock = (!block.style?.align && defaultAlign)
+        ? { ...block, style: { ...block.style, align: defaultAlign as any } }
+        : block
+      paragraphs.push(buildHeading(effectiveBlock))
     } else if (block.type === 'list') {
       paragraphs.push(...buildList(block))
     } else if (block.type === 'blockquote') {

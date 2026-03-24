@@ -186,6 +186,11 @@ const collectRuns = (node: Node, inheritedStyle?: RunStyle): DocRun[] => {
     const href = element.getAttribute('href') || undefined
     if (href) {
       currentStyle = mergeRunStyle(currentStyle, { link: href })
+      const hasInlineColor = (element.getAttribute('style') || '').includes('color')
+      const childHasColor = element.querySelector('[style*="color"]')
+      if (!hasInlineColor && !childHasColor && !currentStyle?.color) {
+        currentStyle = mergeRunStyle(currentStyle, { color: '#0563C1' })
+      }
     }
   }
 
@@ -396,7 +401,9 @@ const parseTable = (element: Element): DocTableBlock => {
         .filter((value): value is number => typeof value === 'number')
     : undefined
   const rows: DocTableRow[] = []
-  const trNodes = Array.from(element.querySelectorAll('tr'))
+  const trNodes = Array.from(
+    element.querySelectorAll(':scope > tr, :scope > thead > tr, :scope > tbody > tr, :scope > tfoot > tr')
+  )
   trNodes.forEach((tr) => {
     const cells: DocTableCell[] = []
     Array.from(tr.children).forEach((cell) => {
@@ -404,11 +411,16 @@ const parseTable = (element: Element): DocTableBlock => {
       if (!['TD', 'TH'].includes(cell.tagName)) return
       const colspan = parseInt(cell.getAttribute('colspan') || '', 10)
       const rowspan = parseInt(cell.getAttribute('rowspan') || '', 10)
+      const cellStyleText = cell.getAttribute('style') || ''
+      const cellStyleMap = cellStyleText ? extractStyleMap(cellStyleText) : {}
       const blocks = parseBlocksFromContainer(cell)
       cells.push({
         blocks,
         colspan: Number.isNaN(colspan) ? undefined : colspan,
-        rowspan: Number.isNaN(rowspan) ? undefined : rowspan
+        rowspan: Number.isNaN(rowspan) ? undefined : rowspan,
+        backgroundColor: cellStyleMap['background-color'] || undefined,
+        textAlign: cellStyleMap['text-align'] || undefined,
+        verticalAlign: cellStyleMap['vertical-align'] || undefined
       })
     })
     if (cells.length > 0) rows.push({ cells })
