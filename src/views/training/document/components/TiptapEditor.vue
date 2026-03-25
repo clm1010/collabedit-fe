@@ -34,14 +34,26 @@
             <DragHandle
               v-if="editor && editable"
               :editor="editor"
+              :nested="true"
               :compute-position-config="{ placement: 'left-start', strategy: 'absolute' }"
               @node-change="handleDragNodeChange"
+              :on-element-drag-start="handleElementDragStart"
             >
               <div class="drag-handle-container">
-                <button class="drag-handle-plus" @click="addParagraphAfter" title="添加新段落">
+                <button
+                  class="drag-handle-plus"
+                  @click="addParagraphAfter"
+                  title="添加新段落"
+                  draggable="false"
+                >
                   <Icon icon="mdi:plus" />
                 </button>
-                <div class="drag-handle-grip" title="拖动移动段落">
+                <div
+                  class="drag-handle-grip"
+                  title="拖动移动段落"
+                  role="button"
+                  aria-label="拖动移动段落"
+                >
                   <Icon icon="mdi:drag" />
                 </div>
               </div>
@@ -245,10 +257,12 @@ import { FontFamily } from '@tiptap/extension-font-family'
 import { Color } from '@tiptap/extension-color'
 import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu'
 import { CellSelection } from '@tiptap/pm/tables'
+import { NodeSelection } from '@tiptap/pm/state'
 import TableBubbleMenu from './toolbar/TableBubbleMenu.vue'
 import { Subscript } from '@tiptap/extension-subscript'
 import { Superscript } from '@tiptap/extension-superscript'
 import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
+import NodeRange from '@tiptap/extension-node-range'
 import { PageBreak } from './toolbar/extensions/PageBreak'
 import { ColoredHorizontalRule } from './toolbar/extensions/ColoredHorizontalRule'
 import { HardBreakMarker } from './toolbar/extensions/HardBreakMarker'
@@ -508,7 +522,9 @@ const editor = useEditor({
       }
     }),
     // 软回车（Shift+Enter）视觉标记 ↓
-    HardBreakMarker
+    HardBreakMarker,
+    // DragHandle 依赖的 NodeRange 扩展（提供 NodeRangeSelection 和拖拽视觉反馈）
+    NodeRange
   ],
   onUpdate: ({ editor }) => {
     // 防止组件销毁后触发回调
@@ -540,15 +556,68 @@ const addParagraphAfter = () => {
   if (isNil(editor.value) || isNil(currentDragNode.value)) return
 
   const { pos, node } = currentDragNode.value
-  if (!node || typeof node.nodeSize !== 'number') {
-    if (import.meta.env.DEV) {
-      console.warn('[编辑器] DragHandle 节点无效，跳过插入')
-    }
-    return
-  }
+  if (!node || typeof node.nodeSize !== 'number') return
   const endPos = pos + node.nodeSize
 
   editor.value.chain().focus().insertContentAt(endPos, { type: 'paragraph' }).run()
+}
+
+const globalDragStartHandler = (evt: Event) => {
+  const el = evt.target as HTMLElement
+  if (!el?.closest?.('.drag-handle')) return
+  if (!editor.value || editor.value.isDestroyed) return
+  handleElementDragStart(evt as DragEvent)
+}
+
+const handleElementDragStart = (e: DragEvent) => {
+  const dataTransfer = e.dataTransfer
+  if (!dataTransfer || !editor.value) return
+
+  const { view, state } = editor.value
+
+  dataTransfer.setData('text/plain', ' ')
+  dataTransfer.effectAllowed = 'move'
+
+  // 设置 view.dragging：dragHandler 若成功会覆写；若插件监听器未触发则此为唯一来源
+  if (currentDragNode.value?.node && currentDragNode.value.pos >= 0) {
+    try {
+      const { pos, node } = currentDragNode.value
+      view.dragging = {
+        slice: state.doc.slice(pos, pos + node.nodeSize),
+        move: true
+      }
+    } catch { /* 位置越界等边界情况，忽略 */ }
+  }
+
+  // 阻止 dragHandler 内部 clearData() 清空 DataTransfer
+  try {
+    Object.defineProperty(dataTransfer, 'clearData', {
+      value() { /* blocked */ },
+      writable: true,
+      configurable: true
+    })
+  } catch { /* 部分浏览器不支持 defineProperty on DataTransfer */ }
+
+  // dragstart 事件结束后补全 view.dragging.node，使 ProseMirror drop 能精确删除源节点
+  queueMicrotask(() => {
+    if (!editor.value) return
+    const { view: v, state: s } = editor.value
+
+    try { delete (dataTransfer as any).clearData } catch {}
+
+    if (!v.dragging?.slice) return
+
+    let sel: InstanceType<typeof NodeSelection> | null = null
+    if (s.selection instanceof NodeSelection) {
+      sel = s.selection
+    } else if (currentDragNode.value?.pos != null && currentDragNode.value.pos >= 0) {
+      try { sel = NodeSelection.create(s.doc, currentDragNode.value.pos) } catch {}
+    }
+
+    if (sel) {
+      v.dragging = { ...v.dragging, node: sel }
+    }
+  })
 }
 
 // ==================== BubbleMenu 相关 ====================
@@ -558,6 +627,10 @@ onMounted(() => {
   if (!isNil(editor.value) && !isNil(bubbleMenuRef.value)) {
     registerBubbleMenu()
   }
+
+  // 全局 dragstart 捕获：DragHandle 插件内部 addEventListener 可能因 DOM 移动而失效，
+  // 通过全局捕获阶段监听器直接驱动拖拽逻辑，确保 handleElementDragStart 始终被调用
+  document.addEventListener('dragstart', globalDragStartHandler, true)
 })
 
 // 处理编辑器点击事件（用于点击链接时打开 LinkPopover）
@@ -694,6 +767,7 @@ const registerBubbleMenu = () => {
       const { selection } = state
       if (selection.empty) return false
       if (selection instanceof CellSelection) return false
+      if (selection instanceof NodeSelection) return false
       const isTextSelection = selection.$from.parent.isTextblock
       return isTextSelection
     },
@@ -936,6 +1010,9 @@ watch(
 onBeforeUnmount(() => {
   // 标记组件已销毁
   isComponentDestroyed = true
+
+  // 移除全局 dragstart 捕获监听器
+  document.removeEventListener('dragstart', globalDragStartHandler, true)
 
   // 移除链接点击事件监听
   removeLinkClickListener(editor.value)
@@ -1200,6 +1277,12 @@ defineExpose({
       // 非空段落 + trailingBreak：隐藏 ↵ 避免被挤到额外的行
       &:has(> br.ProseMirror-trailingBreak:last-child:not(:only-child))::after {
         content: none;
+      }
+
+      // 含块图片的段落：折叠 ProseMirror-separator 产生的行盒
+      &:has(> .resizable-image-wrapper:not(.is-inline)) {
+        line-height: 0;
+        font-size: 0;
       }
 
       // 含块图片的段落：隐藏 ↵
@@ -1814,6 +1897,21 @@ defineExpose({
   outline: 2px solid #2563eb;
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+// NodeRange 拖拽选区高亮
+:deep(.ProseMirror-selectednoderange) {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: rgba(37, 99, 235, 0.08);
+    border: 2px solid rgba(37, 99, 235, 0.3);
+    border-radius: 4px;
+    pointer-events: none;
+  }
 }
 
 // 块级元素悬停时的样式

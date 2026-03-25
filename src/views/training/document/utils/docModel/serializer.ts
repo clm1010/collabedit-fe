@@ -196,7 +196,7 @@ const serializeBlock = (block: DocBlock): string => {
   if (block.type === 'table') {
     const tableStyle = block.minWidth ? ` style="min-width: ${block.minWidth}px;"` : ''
     const colgroup =
-      block.colWidths && block.colWidths.length
+      block.colWidths?.length && block.colWidths.some(w => w > 0)
         ? `<colgroup>${block.colWidths
             .map((width) => `<col style="width: ${width}px" width="${width}">`)
             .join('')}</colgroup>`
@@ -229,7 +229,8 @@ const serializeBlock = (block: DocBlock): string => {
             return `<td${attrStr}>${cellHtml}</td>`
           })
           .join('')
-        return `<tr>${cells}</tr>`
+        const trStyle = row.height ? ` style="height: ${row.height}px"` : ''
+        return `<tr${trStyle}>${cells}</tr>`
       })
       .join('')
     return `<table${tableStyle}>${colgroup}<tbody>${rows}</tbody></table>`

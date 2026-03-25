@@ -29,26 +29,12 @@
       </el-popover>
 
       <!-- 背景颜色 -->
-      <el-popover placement="bottom" :width="220" trigger="click" :teleported="false">
-        <template #reference>
-          <button class="tb-btn" :disabled="!isInTable" title="背景颜色">
-            <Icon icon="mdi:format-color-fill" />
-            <Icon icon="mdi:chevron-down" class="tb-arrow" />
-          </button>
-        </template>
-        <div class="tb-color-panel">
-          <div class="tb-color-grid">
-            <button
-              v-for="color in cellColors"
-              :key="color"
-              class="tb-color-item"
-              :style="{ backgroundColor: color }"
-              @click="setCellBg(color)"
-            ></button>
-          </div>
-          <button class="tb-color-clear" @click="setCellBg('')">清除背景</button>
-        </div>
-      </el-popover>
+      <ColorPicker
+        v-model="currentCellBg"
+        icon="mdi:format-color-fill"
+        title="背景颜色"
+        @change="setCellBg"
+      />
 
       <span class="tb-divider"></span>
 
@@ -103,10 +89,11 @@
 
 <script setup lang="ts">
 // @ts-nocheck
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { BubbleMenu } from '@tiptap/vue-3/menus'
 import { CellSelection } from '@tiptap/pm/tables'
 import { Icon } from '@/components/Icon'
+import ColorPicker from './ColorPicker.vue'
 import type { Editor } from '@tiptap/core'
 
 const props = defineProps<{
@@ -141,7 +128,10 @@ const setCellAlign = (align: string) => {
   props.editor?.chain().focus().setCellAttribute('textAlign', align).run()
 }
 
+const currentCellBg = ref('')
+
 const setCellBg = (color: string) => {
+  currentCellBg.value = color
   props.editor?.chain().focus().setCellAttribute('backgroundColor', color || null).run()
 }
 
@@ -149,17 +139,6 @@ const alignOptions = [
   { label: '左对齐', value: 'left', icon: 'mdi:format-align-left' },
   { label: '居中', value: 'center', icon: 'mdi:format-align-center' },
   { label: '右对齐', value: 'right', icon: 'mdi:format-align-right' }
-]
-
-const cellColors = [
-  '#FFFFFF', '#F5F5F5', '#E0E0E0', '#BDBDBD', '#9E9E9E',
-  '#FFF3E0', '#FFE0B2', '#FFCC80', '#FFB74D', '#FFA726',
-  '#E3F2FD', '#BBDEFB', '#90CAF9', '#64B5F6', '#42A5F5',
-  '#E8F5E9', '#C8E6C9', '#A5D6A7', '#81C784', '#66BB6A',
-  '#FCE4EC', '#F8BBD9', '#F48FB1', '#F06292', '#EC407A',
-  '#F3E5F5', '#E1BEE7', '#CE93D8', '#BA68C8', '#AB47BC',
-  '#FFF8E1', '#FFECB3', '#FFE082', '#FFD54F', '#FFCA28',
-  '#E8EAF6', '#C5CAE9', '#9FA8DA', '#7986CB', '#5C6BC0'
 ]
 </script>
 

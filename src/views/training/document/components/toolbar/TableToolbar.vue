@@ -69,34 +69,12 @@
     </div>
 
     <div class="toolbar-group">
-      <el-popover placement="bottom" :width="280" trigger="click">
-        <template #reference>
-          <span>
-            <el-tooltip content="背景颜色" placement="bottom" :show-after="500">
-              <button class="toolbar-btn-large" :disabled="!isInTable">
-                <Icon icon="mdi:format-color-fill" class="btn-icon-large" />
-                <span class="btn-text">背景颜色</span>
-              </button>
-            </el-tooltip>
-          </span>
-        </template>
-        <div class="color-panel">
-          <div class="color-grid">
-            <button
-              v-for="color in cellColors"
-              :key="color"
-              class="color-item"
-              :style="{ backgroundColor: color }"
-              @click="setCellBackground(color)"
-            >
-              <Icon v-if="color === currentCellBg" icon="ep:check" class="check-icon" />
-            </button>
-          </div>
-          <div class="color-actions">
-            <el-button text size="small" @click="setCellBackground('')">清除背景</el-button>
-          </div>
-        </div>
-      </el-popover>
+      <ColorPicker
+        v-model="currentCellBg"
+        icon="mdi:format-color-fill"
+        title="背景颜色"
+        @change="setCellBackground"
+      />
     </div>
 
     <div class="toolbar-divider"></div>
@@ -219,6 +197,7 @@
 // @ts-nocheck - 忽略 Tiptap 扩展类型问题
 import { ref, computed } from 'vue'
 import { Icon } from '@/components/Icon'
+import ColorPicker from './ColorPicker.vue'
 import { useEditor } from './useEditor'
 
 const editor = useEditor()
@@ -232,49 +211,6 @@ const alignOptions = [
   { label: '左对齐', value: 'left', icon: 'mdi:format-align-left' },
   { label: '居中', value: 'center', icon: 'mdi:format-align-center' },
   { label: '右对齐', value: 'right', icon: 'mdi:format-align-right' }
-]
-
-const cellColors = [
-  '#FFFFFF',
-  '#F5F5F5',
-  '#E0E0E0',
-  '#BDBDBD',
-  '#9E9E9E',
-  '#FFF3E0',
-  '#FFE0B2',
-  '#FFCC80',
-  '#FFB74D',
-  '#FFA726',
-  '#E3F2FD',
-  '#BBDEFB',
-  '#90CAF9',
-  '#64B5F6',
-  '#42A5F5',
-  '#E8F5E9',
-  '#C8E6C9',
-  '#A5D6A7',
-  '#81C784',
-  '#66BB6A',
-  '#FCE4EC',
-  '#F8BBD9',
-  '#F48FB1',
-  '#F06292',
-  '#EC407A',
-  '#F3E5F5',
-  '#E1BEE7',
-  '#CE93D8',
-  '#BA68C8',
-  '#AB47BC',
-  '#FFF8E1',
-  '#FFECB3',
-  '#FFE082',
-  '#FFD54F',
-  '#FFCA28',
-  '#E8EAF6',
-  '#C5CAE9',
-  '#9FA8DA',
-  '#7986CB',
-  '#5C6BC0'
 ]
 
 const isInTable = computed(() => {

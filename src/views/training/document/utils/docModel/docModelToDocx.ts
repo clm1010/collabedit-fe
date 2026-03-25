@@ -7,6 +7,7 @@ import {
   FootnoteReferenceRun,
   Header,
   HeadingLevel,
+  HeightRule,
   ImageRun,
   LevelFormat,
   Packer,
@@ -102,7 +103,7 @@ const mapRunToRuns = (run: DocRun): ParagraphChild[] => {
   const style = run.style
   if (style) {
     if (style.bold) styleOptions.bold = true
-    if (style.italic) styleOptions.italics = true
+    styleOptions.italics = !!style.italic
     if (style.underline) styleOptions.underline = { type: UnderlineType.SINGLE }
     if (style.strike) styleOptions.strike = true
     const color = parseColor(style.color)
@@ -348,7 +349,7 @@ const buildBlockquote = (block: DocBlockquoteBlock): Paragraph[] => {
       const runs = inner.runs.map((run) => {
         const nextStyle = {
           ...run.style,
-          italic: run.style?.italic ?? true,
+          italic: run.style?.italic,
           color: run.style?.color ?? '#666666'
         }
         return { ...run, style: nextStyle }
@@ -468,9 +469,20 @@ const mapVerticalAlign = (va?: string): VerticalAlign | undefined => {
 }
 
 const buildTable = (block: DocTableBlock): Table => {
+  const CELL_MIN_WIDTH = 25
+  const hasColWidths = block.colWidths?.length
+    && block.colWidths.every((w) => w > 0)
+    && block.colWidths.some((w) => w > CELL_MIN_WIDTH)
+  const columnCount = block.colWidths?.length || 0
+  const rowspanTracker: number[] = new Array(columnCount).fill(0)
+
   const rows = block.rows.map((row) => {
     let colIndex = 0
     const cells = row.cells.map((cell) => {
+      while (colIndex < rowspanTracker.length && rowspanTracker[colIndex] > 0) {
+        rowspanTracker[colIndex]--
+        colIndex++
+      }
       const paragraphs = blocksToParagraphs(cell.blocks, cell.textAlign)
       const span = cell.colspan || 1
       let cellWidth: number | undefined
@@ -479,8 +491,14 @@ const buildTable = (block: DocTableBlock): Table => {
           .slice(colIndex, colIndex + span)
           .reduce((sum, width) => sum + (width || 0), 0)
       }
+      if (cell.rowspan && cell.rowspan > 1) {
+        for (let i = 0; i < span; i++) {
+          if (colIndex + i < rowspanTracker.length)
+            rowspanTracker[colIndex + i] = cell.rowspan - 1
+        }
+      }
       colIndex += span
-      const bgColor = cell.backgroundColor?.replace(/^#/, '')
+      const bgColor = parseColor(cell.backgroundColor)
       return new TableCell({
         children: paragraphs.length ? paragraphs : [new Paragraph({ children: [] })],
         columnSpan: cell.colspan,
@@ -492,11 +510,29 @@ const buildTable = (block: DocTableBlock): Table => {
         verticalAlign: mapVerticalAlign(cell.verticalAlign)
       })
     })
-    return new TableRow({ children: cells })
+    while (colIndex < rowspanTracker.length) {
+      if (rowspanTracker[colIndex] > 0) rowspanTracker[colIndex]--
+      colIndex++
+    }
+    const rowOptions: any = { children: cells }
+    if (row.height) {
+      rowOptions.height = { value: pxToTwip(row.height), rule: HeightRule.ATLEAST }
+    }
+    return new TableRow(rowOptions)
   })
+
+  let tableWidth: { size: number; type: (typeof WidthType)[keyof typeof WidthType] }
+  if (hasColWidths) {
+    const totalTwips = block.colWidths!.reduce((sum, w) => sum + pxToTwip(w), 0)
+    tableWidth = { size: totalTwips, type: WidthType.DXA }
+  } else {
+    tableWidth = { size: 100, type: WidthType.PERCENTAGE }
+  }
+
   return new Table({
     rows,
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: tableWidth,
+    columnWidths: hasColWidths ? block.colWidths!.map((w) => pxToTwip(w)) : undefined,
     layout: TableLayoutType.FIXED
   })
 }
@@ -855,10 +891,19 @@ const buildEndnoteTableXml = (
     1,
     ...table.rows.map((row) => row.cells.reduce((sum, cell) => sum + (cell.colspan || 1), 0))
   )
-  const gridWidth = Math.max(1, Math.round(9000 / columnCount))
-  const grid = Array.from({ length: columnCount })
-    .map(() => `<w:gridCol w:w="${gridWidth}"/>`)
-    .join('')
+  const CELL_MIN_WIDTH = 25
+  const useColWidths =
+    table.colWidths?.length === columnCount
+    && table.colWidths.every((w) => w > 0)
+    && table.colWidths.some((w) => w > CELL_MIN_WIDTH)
+  const fallbackGridWidth = Math.max(1, Math.round(9000 / columnCount))
+  const colTwips = useColWidths
+    ? table.colWidths!.map((w) => pxToTwip(w))
+    : Array.from({ length: columnCount }, () => fallbackGridWidth)
+  const grid = colTwips.map((tw) => `<w:gridCol w:w="${tw}"/>`).join('')
+  const tblWXml = useColWidths
+    ? `<w:tblW w:w="${colTwips.reduce((a, b) => a + b, 0)}" w:type="dxa"/>`
+    : '<w:tblW w:w="0" w:type="auto"/>'
 
   const applyCellAlignment = (xml: string, align?: string): string => {
     if (!align) return xml
@@ -913,7 +958,8 @@ const buildEndnoteTableXml = (
       if (colspan > 1) tcPrParts.push(`<w:gridSpan w:val="${colspan}"/>`)
       if (rowspan > 1) tcPrParts.push(`<w:vMerge w:val="restart"/>`)
       tcPrParts.push('<w:vAlign w:val="center"/>')
-      tcPrParts.push(`<w:tcW w:w="${gridWidth * colspan}" w:type="dxa"/>`)
+      const cellWidthTwips = colTwips.slice(colIndex, colIndex + colspan).reduce((s, v) => s + v, 0)
+      tcPrParts.push(`<w:tcW w:w="${cellWidthTwips}" w:type="dxa"/>`)
       tcPrParts.push(
         '<w:tcMar>' +
           '<w:top w:w="80" w:type="dxa"/>' +
@@ -947,11 +993,14 @@ const buildEndnoteTableXml = (
       }
     }
 
-    rowsXml.push(`<w:tr>${cellsXml.join('')}</w:tr>`)
+    const trPr = row.height
+      ? `<w:trPr><w:trHeight w:val="${pxToTwip(row.height)}" w:hRule="atLeast"/></w:trPr>`
+      : ''
+    rowsXml.push(`<w:tr>${trPr}${cellsXml.join('')}</w:tr>`)
   })
 
   const tblPr =
-    '<w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/><w:tblBorders>' +
+    `<w:tblPr>${tblWXml}<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/><w:tblBorders>` +
     '<w:top w:val="single" w:sz="8" w:space="0" w:color="CCCCCC"/>' +
     '<w:left w:val="single" w:sz="8" w:space="0" w:color="CCCCCC"/>' +
     '<w:bottom w:val="single" w:sz="8" w:space="0" w:color="CCCCCC"/>' +
@@ -1125,6 +1174,13 @@ export const docModelToDocx = async (model: DocModel, title?: string): Promise<B
     title: title || '文档',
     creator: '协同编辑系统',
     description: '由协同编辑系统导出',
+    styles: {
+      default: {
+        heading4: {
+          run: { italics: false }
+        }
+      }
+    },
     footnotes,
     numbering: {
       config: [

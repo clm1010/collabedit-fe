@@ -97,6 +97,7 @@ export interface DocTableBlock {
 
 export interface DocTableRow {
   cells: DocTableCell[]
+  height?: number
 }
 
 export interface DocTableCell {

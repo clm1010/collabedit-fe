@@ -36,7 +36,7 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
 
   atom: true,
   selectable: true,
-  draggable: true,
+  draggable: false,
 
   addOptions() {
     return {
@@ -108,7 +108,10 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
       align: {
         default: 'center',
         parseHTML: (element) => {
-          return element.getAttribute('data-align') || element.style.textAlign || 'center'
+          return element.getAttribute('data-align')
+            || element.style.textAlign
+            || element.parentElement?.style?.textAlign
+            || 'center'
         },
         renderHTML: (attributes) => {
           const align = attributes.align || 'center'

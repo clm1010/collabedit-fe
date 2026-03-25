@@ -67,14 +67,6 @@
         ></div>
       </template>
 
-      <div
-        v-if="selected && editor?.isEditable && !imageError"
-        class="image-drag-handle"
-        data-drag-handle
-        title="拖动移动图片"
-        @mousedown.stop
-      >⠿</div>
-
       <div v-if="isResizing" class="size-tooltip">
         {{ Math.round(currentWidth) }} × {{ Math.round(currentHeight) }}
       </div>
@@ -93,8 +85,7 @@
           </svg>
         </button>
         <span class="toolbar-divider"></span>
-        <template v-if="!isInline">
-          <button
+        <button
             class="toolbar-btn"
             :class="{ active: currentAlign === 'left' }"
             @click.stop="alignImage('left')"
@@ -125,7 +116,6 @@
             </svg>
           </button>
           <span class="toolbar-divider"></span>
-        </template>
         <button class="toolbar-btn" @click.stop="previewImage" title="预览">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path
@@ -432,7 +422,11 @@ const handleDoubleClick = () => {
 }
 
 const alignImage = (align: string) => {
-  props.updateAttributes({ align })
+  if (isInline.value) {
+    props.updateAttributes({ display: 'block', align })
+  } else {
+    props.updateAttributes({ align })
+  }
 }
 
 const resetSize = () => {
@@ -709,38 +703,6 @@ onBeforeUnmount(() => {
     margin: 0 4px;
     vertical-align: bottom;
     line-height: 1;
-  }
-}
-
-.image-drag-handle {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  cursor: grab;
-  font-size: 14px;
-  color: #6b7280;
-  z-index: 10;
-  user-select: none;
-  transition: all 0.15s ease;
-  line-height: 1;
-
-  &:hover {
-    background: #f3f4f6;
-    color: #374151;
-    border-color: #9ca3af;
-  }
-
-  &:active {
-    cursor: grabbing;
-    background: #e5e7eb;
   }
 }
 

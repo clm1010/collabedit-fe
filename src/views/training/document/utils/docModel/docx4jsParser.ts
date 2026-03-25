@@ -18,6 +18,7 @@ import type {
   RunStyle
 } from './types'
 import { normalizeDocMetadata } from './model'
+import { normalizeColor } from '../wordParser.shared'
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
@@ -562,7 +563,7 @@ const getCellStyles = (cellNode: DocxTreeNode): {
   const styleText = typeof raw === 'string' ? raw : styleToText(raw)
   const styleMap = styleText ? extractStyleMap(styleText) : {}
   return {
-    backgroundColor: props.backgroundColor || props['background-color'] || styleMap['background-color'] || undefined,
+    backgroundColor: normalizeColor(props.backgroundColor || props['background-color'] || styleMap['background-color'] || '') || undefined,
     textAlign: props.textAlign || props['text-align'] || styleMap['text-align'] || undefined,
     verticalAlign: props.verticalAlign || props['vertical-align'] || styleMap['vertical-align'] || undefined
   }

@@ -194,7 +194,27 @@ const collectRuns = (node: Node, inheritedStyle?: RunStyle): DocRun[] => {
     }
   }
 
-  if (element.tagName.toLowerCase() === 'mark') {
+  const tag = element.tagName.toLowerCase()
+  const semanticStyle: RunStyle = {}
+  if (tag === 'strong' || tag === 'b') semanticStyle.bold = true
+  if (tag === 'em' || tag === 'i') semanticStyle.italic = true
+  if (tag === 'u') semanticStyle.underline = true
+  if (tag === 's' || tag === 'del') semanticStyle.strike = true
+  if (tag === 'sub') semanticStyle.subscript = true
+  if (
+    tag === 'sup' &&
+    !element.getAttribute('data-docx-footnote') &&
+    !element.getAttribute('data-docx-endnote') &&
+    !element.getAttribute('data-footnote-id') &&
+    !element.getAttribute('data-endnote-id')
+  ) {
+    semanticStyle.superscript = true
+  }
+  if (Object.keys(semanticStyle).length) {
+    currentStyle = mergeRunStyle(currentStyle, semanticStyle)
+  }
+
+  if (tag === 'mark') {
     const markStyle = parseRunStyle(element) || {}
     const markColor = element.getAttribute('data-color') || markStyle.backgroundColor
     if (markColor) markStyle.backgroundColor = markColor
@@ -248,6 +268,15 @@ const parseParagraphWithInlineImages = (element: Element): DocBlock[] => {
     return false
   })
 
+  const inheritParagraphAlign = (imgBlock: DocImageBlock) => {
+    if (!imgBlock.style?.align && style?.align) {
+      const a = style.align
+      if (a === 'left' || a === 'center' || a === 'right') {
+        imgBlock.style = { ...imgBlock.style, align: a }
+      }
+    }
+  }
+
   const pushInlineImage = (el: Element) => {
     const rawOriginSrc = el.getAttribute('data-origin-src') || undefined
     const rawSrc = rawOriginSrc || el.getAttribute('src') || ''
@@ -277,12 +306,16 @@ const parseParagraphWithInlineImages = (element: Element): DocBlock[] => {
         const isSoleImage = !hasTextContent
         if (isSoleImage) {
           flushParagraph()
-          blocks.push(parseImage(el))
+          const imgBlock = parseImage(el)
+          inheritParagraphAlign(imgBlock)
+          blocks.push(imgBlock)
         } else if (display === 'inline' || hasInlineStyle || display !== 'block') {
           pushInlineImage(el)
         } else {
           flushParagraph()
-          blocks.push(parseImage(el))
+          const imgBlock = parseImage(el)
+          inheritParagraphAlign(imgBlock)
+          blocks.push(imgBlock)
         }
         return
       }
@@ -390,21 +423,27 @@ const parseTable = (element: Element): DocTableBlock => {
   const styleMap = styleText ? extractStyleMap(styleText) : {}
   const minWidth = parsePxValue(styleMap['min-width'])
   const colgroup = element.querySelector('colgroup')
-  const colWidths = colgroup
+  const CELL_MIN_WIDTH = 25
+  const rawColWidths = colgroup
     ? Array.from(colgroup.querySelectorAll('col'))
         .map((col) => {
           const colStyle = col.getAttribute('style') || ''
           const colMap = colStyle ? extractStyleMap(colStyle) : {}
           const width = parsePxValue(col.getAttribute('width') || undefined)
-          return width || parsePxValue(colMap['min-width']) || parsePxValue(colMap['width'])
+          return width || parsePxValue(colMap['width']) || 0
         })
-        .filter((value): value is number => typeof value === 'number')
+    : undefined
+  const colWidths = rawColWidths?.length && rawColWidths.some((w) => w > CELL_MIN_WIDTH)
+    ? rawColWidths
     : undefined
   const rows: DocTableRow[] = []
   const trNodes = Array.from(
     element.querySelectorAll(':scope > tr, :scope > thead > tr, :scope > tbody > tr, :scope > tfoot > tr')
   )
   trNodes.forEach((tr) => {
+    const trStyle = (tr as HTMLElement).getAttribute('style') || ''
+    const trMap = trStyle ? extractStyleMap(trStyle) : {}
+    const rowHeight = parsePxValue(trMap['height'])
     const cells: DocTableCell[] = []
     Array.from(tr.children).forEach((cell) => {
       if (!(cell instanceof HTMLElement)) return
@@ -418,12 +457,12 @@ const parseTable = (element: Element): DocTableBlock => {
         blocks,
         colspan: Number.isNaN(colspan) ? undefined : colspan,
         rowspan: Number.isNaN(rowspan) ? undefined : rowspan,
-        backgroundColor: cellStyleMap['background-color'] || undefined,
+        backgroundColor: cellStyleMap['background-color'] ? normalizeColor(cellStyleMap['background-color']) || undefined : undefined,
         textAlign: cellStyleMap['text-align'] || undefined,
         verticalAlign: cellStyleMap['vertical-align'] || undefined
       })
     })
-    if (cells.length > 0) rows.push({ cells })
+    if (cells.length > 0) rows.push({ cells, height: rowHeight })
   })
   return { type: 'table', rows, colWidths, minWidth }
 }
