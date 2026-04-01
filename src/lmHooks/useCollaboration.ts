@@ -19,7 +19,12 @@ const registerYjsErrorHandler = () => {
   if (globalErrorHandlerRefCount === 0) {
     originalOnError = window.onerror
     window.onerror = (message, source, lineno, colno, error) => {
-      const messageStr = String(message)
+      let messageStr: string
+      try {
+        messageStr = String(message)
+      } catch {
+        messageStr = ''
+      }
       const isYjsError =
         messageStr.includes('nodeSize') ||
         messageStr.includes('relativePositionToAbsolutePosition') ||

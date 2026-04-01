@@ -194,32 +194,51 @@ const serializeBlock = (block: DocBlock): string => {
     return `<img ${attrs.join(' ')} />`
   }
   if (block.type === 'table') {
-    const tableStyle = block.minWidth ? ` style="min-width: ${block.minWidth}px;"` : ''
+    const tableWidth = block.tableWidth || block.minWidth
+    const styleParts: string[] = []
+    if (tableWidth) {
+      styleParts.push(`width: ${tableWidth}px`, `min-width: ${tableWidth}px`)
+    } else if (block.minWidth) {
+      styleParts.push(`min-width: ${block.minWidth}px`)
+    }
+    const tableStyle = styleParts.length ? ` style="${styleParts.join('; ')};"` : ''
+    const tableWidthAttr = tableWidth ? ` data-table-width="${Math.round(tableWidth)}"` : ''
     const colgroup =
       block.colWidths?.length && block.colWidths.some(w => w > 0)
         ? `<colgroup>${block.colWidths
             .map((width) => `<col style="width: ${width}px" width="${width}">`)
             .join('')}</colgroup>`
         : ''
-    let colIdx = 0
+    const colCount = block.colWidths?.length || 0
+    const rowspanTracker: number[] = new Array(colCount).fill(0)
     const rows = block.rows
       .map((row) => {
-        colIdx = 0
+        let colIdx = 0
         const cells = row.cells
           .map((cell) => {
+            while (colIdx < rowspanTracker.length && rowspanTracker[colIdx] > 0) {
+              rowspanTracker[colIdx]--
+              colIdx++
+            }
             const cellHtml = cell.blocks.map(serializeBlock).join('') || '<p></p>'
             const attrs: string[] = []
             if (cell.colspan) attrs.push(`colspan="${cell.colspan}"`)
             if (cell.rowspan) attrs.push(`rowspan="${cell.rowspan}"`)
+            const span = cell.colspan || 1
             if (block.colWidths && block.colWidths.length) {
-              const span = cell.colspan || 1
               const widths: number[] = []
               for (let i = 0; i < span; i++) {
                 widths.push(block.colWidths[colIdx + i] || 0)
               }
               if (widths.some(w => w > 0)) attrs.push(`colwidth="${widths.join(',')}"`)
-              colIdx += span
             }
+            if (cell.rowspan && cell.rowspan > 1) {
+              for (let i = 0; i < span; i++) {
+                if (colIdx + i < rowspanTracker.length)
+                  rowspanTracker[colIdx + i] = cell.rowspan - 1
+              }
+            }
+            colIdx += span
             const styleParts: string[] = []
             if (cell.backgroundColor) styleParts.push(`background-color: ${cell.backgroundColor}`)
             if (cell.textAlign) styleParts.push(`text-align: ${cell.textAlign}`)
@@ -229,11 +248,15 @@ const serializeBlock = (block: DocBlock): string => {
             return `<td${attrStr}>${cellHtml}</td>`
           })
           .join('')
+        while (colIdx < rowspanTracker.length) {
+          if (rowspanTracker[colIdx] > 0) rowspanTracker[colIdx]--
+          colIdx++
+        }
         const trStyle = row.height ? ` style="height: ${row.height}px"` : ''
         return `<tr${trStyle}>${cells}</tr>`
       })
       .join('')
-    return `<table${tableStyle}>${colgroup}<tbody>${rows}</tbody></table>`
+    return `<table${tableWidthAttr}${tableStyle}>${colgroup}<tbody>${rows}</tbody></table>`
   }
   return ''
 }

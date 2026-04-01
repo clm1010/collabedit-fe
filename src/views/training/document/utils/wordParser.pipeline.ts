@@ -12,7 +12,8 @@ import { parseWithDocxPreview, postProcessDocxPreviewHtml } from './wordParser.p
 import {
   parseOoxmlDocument,
   parseOoxmlDocumentEnhanced,
-  validateDocxFile
+  validateDocxFile,
+  extractTableGridWidths
 } from './wordParser.ooxml'
 import { isRedHeadDocument, parseRedHeadDocument } from './wordParser.redhead'
 import { parseDocxToDocModel } from './docModel/parser'
@@ -135,6 +136,56 @@ export const parseFileContent = async (
         useMammothFallback: true,
         useZipJs: true
       })
+
+      try {
+        const tableGridWidths = await extractTableGridWidths(data)
+        if (tableGridWidths.length > 0) {
+          let tblIdx = 0
+          const getExpectedCols = (tableBlock: any): number => {
+            if (!tableBlock?.rows?.length) return 0
+            return Math.max(
+              1,
+              ...tableBlock.rows.map((row: any) =>
+                (row.cells || []).reduce((sum: number, cell: any) => sum + (cell.colspan || 1), 0)
+              )
+            )
+          }
+          const injectColWidths = (blocks: any[]) => {
+            for (const b of blocks) {
+              if (b.type === 'table') {
+                if (!b.colWidths?.length && tblIdx < tableGridWidths.length) {
+                  const widths = tableGridWidths[tblIdx] || []
+                  const expectedCols = getExpectedCols(b)
+                  // 仅在列数可对齐时注入，避免导入首屏出现“缺块/错位”
+                  if (
+                    expectedCols > 0
+                    && widths.length === expectedCols
+                    && widths.some((w: number) => w > 0)
+                  ) {
+                    b.colWidths = widths.map((w: number) => Math.max(25, Math.round(w)))
+                    b.tableWidth = b.colWidths.reduce((sum: number, w: number) => sum + w, 0)
+                  } else if (expectedCols > 0 && widths.length > expectedCols) {
+                    const sliced = widths
+                      .slice(0, expectedCols)
+                      .map((w: number) => Math.max(25, Math.round(w)))
+                    if (sliced.some((w: number) => w > 0)) {
+                      b.colWidths = sliced
+                      b.tableWidth = sliced.reduce((sum: number, w: number) => sum + w, 0)
+                    }
+                  }
+                }
+                tblIdx++
+              } else if (b.type === 'list') {
+                for (const item of b.items) injectColWidths(item.blocks)
+              } else if (b.type === 'blockquote') {
+                injectColWidths(b.blocks)
+              }
+            }
+          }
+          injectColWidths(model.blocks)
+        }
+      } catch (_) { /* 静默失败，不影响主流程 */ }
+
       const html = serializeDocModelToHtml(model)
       const result = sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
       if (isValidParseResult(result)) {

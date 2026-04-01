@@ -468,13 +468,56 @@ const mapVerticalAlign = (va?: string): VerticalAlign | undefined => {
   return undefined
 }
 
+const TABLE_EXPORT_CELL_MIN_PX = 25
+
+/** 列宽按 px→twips 直通导出，可选用 tableWidthPx 纠正取整误差；不再强制铺满版心 */
+const colWidthsPxToTwips = (colWidthsPx: number[], tableWidthPx?: number): number[] => {
+  const twips = colWidthsPx.map((w) => pxToTwip(Math.max(0, w)))
+  const sum = twips.reduce((a, b) => a + b, 0)
+  if (tableWidthPx && tableWidthPx > 0) {
+    const target = pxToTwip(tableWidthPx)
+    const drift = target - sum
+    if (drift !== 0 && twips.length) {
+      twips[twips.length - 1] = Math.max(1, twips[twips.length - 1]! + drift)
+    }
+  }
+  return twips
+}
+
+const resolveTableWidthTwips = (
+  tableWidthPx: number | undefined,
+  columnTwips: number[] | undefined
+): number | undefined => {
+  if (tableWidthPx && tableWidthPx > 0) return pxToTwip(tableWidthPx)
+  if (columnTwips?.length) {
+    const s = columnTwips.reduce((a, b) => a + b, 0)
+    return s > 0 ? s : undefined
+  }
+  return undefined
+}
+
+const normalizeTableColWidthsForExport = (
+  colWidths: number[] | undefined,
+  cellMinPx: number
+): number[] | undefined => {
+  if (!colWidths?.length) return undefined
+  const normalized = colWidths.map((w) => (w > 0 ? w : cellMinPx))
+  if (!normalized.some((w) => w > cellMinPx)) return undefined
+  return normalized
+}
+
 const buildTable = (block: DocTableBlock): Table => {
-  const CELL_MIN_WIDTH = 25
-  const hasColWidths = block.colWidths?.length
-    && block.colWidths.every((w) => w > 0)
-    && block.colWidths.some((w) => w > CELL_MIN_WIDTH)
+  const CELL_MIN_WIDTH = TABLE_EXPORT_CELL_MIN_PX
+  const exportColWidths = normalizeTableColWidthsForExport(block.colWidths, CELL_MIN_WIDTH)
+  const hasColWidths = !!exportColWidths
   const columnCount = block.colWidths?.length || 0
   const rowspanTracker: number[] = new Array(columnCount).fill(0)
+
+  const columnTwips =
+    hasColWidths && exportColWidths
+      ? colWidthsPxToTwips(exportColWidths, block.tableWidth)
+      : undefined
+  const tableWidthTwipsFinal = resolveTableWidthTwips(block.tableWidth, columnTwips)
 
   const rows = block.rows.map((row) => {
     let colIndex = 0
@@ -485,11 +528,11 @@ const buildTable = (block: DocTableBlock): Table => {
       }
       const paragraphs = blocksToParagraphs(cell.blocks, cell.textAlign)
       const span = cell.colspan || 1
-      let cellWidth: number | undefined
-      if (block.colWidths && block.colWidths.length) {
-        cellWidth = block.colWidths
+      let cellWidthTwips: number | undefined
+      if (columnTwips) {
+        cellWidthTwips = columnTwips
           .slice(colIndex, colIndex + span)
-          .reduce((sum, width) => sum + (width || 0), 0)
+          .reduce((sum, w) => sum + w, 0)
       }
       if (cell.rowspan && cell.rowspan > 1) {
         for (let i = 0; i < span; i++) {
@@ -503,7 +546,7 @@ const buildTable = (block: DocTableBlock): Table => {
         children: paragraphs.length ? paragraphs : [new Paragraph({ children: [] })],
         columnSpan: cell.colspan,
         rowSpan: cell.rowspan,
-        width: cellWidth ? { size: pxToTwip(cellWidth), type: WidthType.DXA } : undefined,
+        width: cellWidthTwips ? { size: cellWidthTwips, type: WidthType.DXA } : undefined,
         shading: bgColor
           ? { type: ShadingType.CLEAR, fill: bgColor, color: 'auto' }
           : undefined,
@@ -521,18 +564,12 @@ const buildTable = (block: DocTableBlock): Table => {
     return new TableRow(rowOptions)
   })
 
-  let tableWidth: { size: number; type: (typeof WidthType)[keyof typeof WidthType] }
-  if (hasColWidths) {
-    const totalTwips = block.colWidths!.reduce((sum, w) => sum + pxToTwip(w), 0)
-    tableWidth = { size: totalTwips, type: WidthType.DXA }
-  } else {
-    tableWidth = { size: 100, type: WidthType.PERCENTAGE }
-  }
-
   return new Table({
     rows,
-    width: tableWidth,
-    columnWidths: hasColWidths ? block.colWidths!.map((w) => pxToTwip(w)) : undefined,
+    width: tableWidthTwipsFinal
+      ? { size: tableWidthTwipsFinal, type: WidthType.DXA }
+      : { size: 100, type: WidthType.PERCENTAGE },
+    columnWidths: columnTwips,
     layout: TableLayoutType.FIXED
   })
 }
@@ -891,18 +928,19 @@ const buildEndnoteTableXml = (
     1,
     ...table.rows.map((row) => row.cells.reduce((sum, cell) => sum + (cell.colspan || 1), 0))
   )
-  const CELL_MIN_WIDTH = 25
+  const CELL_MIN_WIDTH = TABLE_EXPORT_CELL_MIN_PX
+  const exportColWidths = normalizeTableColWidthsForExport(table.colWidths, CELL_MIN_WIDTH)
   const useColWidths =
-    table.colWidths?.length === columnCount
-    && table.colWidths.every((w) => w > 0)
-    && table.colWidths.some((w) => w > CELL_MIN_WIDTH)
+    !!exportColWidths
+    && table.colWidths?.length === columnCount
   const fallbackGridWidth = Math.max(1, Math.round(9000 / columnCount))
   const colTwips = useColWidths
-    ? table.colWidths!.map((w) => pxToTwip(w))
+    ? colWidthsPxToTwips(exportColWidths!, table.tableWidth)
     : Array.from({ length: columnCount }, () => fallbackGridWidth)
   const grid = colTwips.map((tw) => `<w:gridCol w:w="${tw}"/>`).join('')
+  const tblWTotal = colTwips.reduce((a, b) => a + b, 0)
   const tblWXml = useColWidths
-    ? `<w:tblW w:w="${colTwips.reduce((a, b) => a + b, 0)}" w:type="dxa"/>`
+    ? `<w:tblW w:w="${table.tableWidth ? pxToTwip(table.tableWidth) : tblWTotal}" w:type="dxa"/>`
     : '<w:tblW w:w="0" w:type="auto"/>'
 
   const applyCellAlignment = (xml: string, align?: string): string => {

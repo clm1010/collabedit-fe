@@ -535,6 +535,10 @@ import {
   ImageStore
 } from '../../utils/wordParser'
 import { normalizeColor } from '../../utils/wordParser.shared'
+import {
+  normalizeTableStructureForImport,
+  resolveEditorTableBodyWidth
+} from '../../utils/tableStructureNormalize'
 
 // 获取编辑器实例及撤销/重做响应式状态
 const { editor, canUndo, canRedo } = useEditorState()
@@ -1185,6 +1189,18 @@ const handleWordFileSelect = async (uploadFile: any) => {
       })
       html = serializeDocModelToHtml(docModel)
       console.log('DocModel 解析完成，原始HTML长度:', html?.length || 0)
+
+      // 与 OOXML 增强解析对比，优先选择表格有效内容更多的结果。
+      try {
+        const enhancedHtml = await parseOoxmlDocumentEnhanced(arrayBuffer, updateProgress)
+        const docModelScore = getTableContentScore(html)
+        const enhancedScore = getTableContentScore(enhancedHtml)
+        if (enhancedScore > docModelScore) {
+          html = enhancedHtml
+        }
+      } catch (enhancedError) {
+        console.warn('[import-compare] enhanced parse skipped:', enhancedError)
+      }
     } catch (e) {
       console.warn('DocModel 解析失败，尝试后备方案:', e)
       // 回退到原有的解析方案
@@ -1570,16 +1586,13 @@ const cleanWordHtml = (html: string): string => {
   })
 
   // 处理没有 style 属性的图片 - 确保所有图片都有响应式样式
-  html = html.replace(
-    /<img(?![^>]*style=)([^>]*)>/gi,
-    (_match, attrs) => {
-      const isInline = /data-display\s*=\s*["']inline["']/i.test(attrs)
-      const displayStyle = isInline
-        ? 'display: inline-block; vertical-align: bottom;'
-        : 'display: block;'
-      return `<img${attrs} style="max-width: 100%; height: auto; ${displayStyle}">`
-    }
-  )
+  html = html.replace(/<img(?![^>]*style=)([^>]*)>/gi, (_match, attrs) => {
+    const isInline = /data-display\s*=\s*["']inline["']/i.test(attrs)
+    const displayStyle = isInline
+      ? 'display: inline-block; vertical-align: bottom;'
+      : 'display: block;'
+    return `<img${attrs} style="max-width: 100%; height: auto; ${displayStyle}">`
+  })
 
   // 处理 width/height 属性的图片（Word 经常使用这种方式）
   html = html.replace(
@@ -1612,31 +1625,46 @@ const cleanWordHtml = (html: string): string => {
     }
   )
 
-  // 处理表格样式 - 防止溢出
-  // 1. 包装表格在一个可滚动的容器中，并设置表格自适应宽度
-  html = html.replace(/<table([^>]*)>/gi, (match, attrs) => {
-    // 移除原有的 width 样式，使用 max-width: 100% 防止溢出
-    let cleanAttrs = attrs.replace(/width\s*=\s*["'][^"']*["']/gi, '')
-    cleanAttrs = cleanAttrs.replace(
-      /style\s*=\s*["'][^"']*width[^"']*["']/gi,
-      (styleMatch: string) => {
-        return styleMatch.replace(/width:\s*[^;]+;?/gi, '')
-      }
-    )
-    return `<table${cleanAttrs} style="border-collapse: collapse; width: 100%; max-width: 100%; table-layout: auto;">`
+  // 处理表格样式 - 防止溢出，同时保留关键表格属性
+  html = html.replace(/<table([^>]*)>/gi, (_match, attrs: string) => {
+    // 仅移除独立的 HTML width 属性，保护 data-table-width
+    let cleanAttrs = attrs.replace(/(?<![a-zA-Z0-9-])width\s*=\s*["'][^"']*["']/gi, '')
+    // 移除旧 style 属性（避免产生重复 style），但先提取需要保留的声明
+    const styleMatch = cleanAttrs.match(/style\s*=\s*["']([^"']*)["']/i)
+    const oldStyle = styleMatch ? styleMatch[1] : ''
+    cleanAttrs = cleanAttrs.replace(/style\s*=\s*["'][^"']*["']/gi, '')
+    // 从旧 style 中保留非 width 相关声明（使用负向前瞻保护 min-width/max-width）
+    const preservedDecls = oldStyle
+      .split(';')
+      .map((d: string) => d.trim())
+      .filter((d: string) => {
+        if (!d) return false
+        if (/^width\s*:/i.test(d)) return false
+        if (/^min-width\s*:/i.test(d)) return false
+        if (/^table-layout\s*:/i.test(d)) return false
+        return true
+      })
+      .join('; ')
+    const baseParts = ['border-collapse: collapse', 'max-width: 100%']
+    if (preservedDecls) baseParts.push(preservedDecls)
+    baseParts.push('table-layout: fixed')
+    return `<table${cleanAttrs} style="${baseParts.join('; ')};">`
   })
 
-  // 2. 处理表格单元格样式
-  html = html.replace(/<td([^>]*)>/gi, (match, attrs) => {
-    // 移除固定宽度，让单元格自适应
-    let cleanAttrs = attrs.replace(/width\s*=\s*["'][^"']*["']/gi, '')
+  // 处理表格单元格样式 - 保护 colwidth/data-colwidth 属性
+  const cleanCellAttrs = (attrs: string): string => {
+    // 仅移除独立的 HTML width 属性，保护 colwidth 和 data-colwidth
+    return attrs.replace(/(?<![a-zA-Z0-9-])width\s*=\s*["'][^"']*["']/gi, '')
+  }
+  html = html.replace(/<td([^>]*)>/gi, (_match, attrs: string) => {
+    const cleanAttrs = cleanCellAttrs(attrs)
     if (cleanAttrs.includes('style=')) {
       return `<td${cleanAttrs.replace(/style="([^"]*)"/i, 'style="$1; border: 1px solid #ddd; padding: 8px; word-wrap: break-word; overflow-wrap: break-word;"')}>`
     }
     return `<td${cleanAttrs} style="border: 1px solid #ddd; padding: 8px; word-wrap: break-word; overflow-wrap: break-word;">`
   })
-  html = html.replace(/<th([^>]*)>/gi, (match, attrs) => {
-    let cleanAttrs = attrs.replace(/width\s*=\s*["'][^"']*["']/gi, '')
+  html = html.replace(/<th([^>]*)>/gi, (_match, attrs: string) => {
+    const cleanAttrs = cleanCellAttrs(attrs)
     if (cleanAttrs.includes('style=')) {
       return `<th${cleanAttrs.replace(/style="([^"]*)"/i, 'style="$1; border: 1px solid #ddd; padding: 8px; background: #f5f5f5; font-weight: bold; word-wrap: break-word; overflow-wrap: break-word;"')}>`
     }
@@ -1815,6 +1843,29 @@ const preprocessHtmlForTiptap = (html: string): string => {
   }
 }
 
+const hasTableInHtml = (html: string): boolean => /<table[\s>]/i.test(html || '')
+
+const getTableContentScore = (html: string): number => {
+  if (!html || !/<table[\s>]/i.test(html)) return 0
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="table-score-root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('table-score-root')
+    if (!root) return 0
+    let score = 0
+    root.querySelectorAll('table td, table th').forEach((cell) => {
+      const el = cell as HTMLElement
+      const text = (el.textContent || '').replace(/\s+/g, '').trim()
+      const hasImg = !!el.querySelector('img')
+      const hasShape = !!el.querySelector('svg, canvas, object, embed')
+      if (text.length > 0 || hasImg || hasShape) score += 1
+    })
+    return score
+  } catch {
+    return 0
+  }
+}
+
 const protectDataImages = (
   html: string
 ): { html: string; images: Array<{ key: string; src: string }> } => {
@@ -1882,8 +1933,6 @@ const confirmWordImport = async () => {
       return
     }
 
-    console.log('原始预览内容长度:', content.length)
-
     // 清理开头的空段落和空白 - 解决"总是空出一行"的问题
     // 但要小心不要删除所有内容
     // 增强版：匹配带任意属性的空段落（包括 style、class 等）
@@ -1910,8 +1959,13 @@ const confirmWordImport = async () => {
     const protectedImages = protectDataImages(content)
     content = protectedImages.html
 
+    const importTableBodyWidth = resolveEditorTableBodyWidth(
+      editor.value?.view?.dom as HTMLElement | undefined
+    )
     // 预处理 HTML，确保样式格式正确且能被 Tiptap 识别
+    content = normalizeTableStructureForImport(content, importTableBodyWidth)
     content = preprocessHtmlForTiptap(content)
+    content = normalizeTableStructureForImport(content, importTableBodyWidth)
 
     // 再次清理图片 base64，避免 data URL 损坏导致渲染报错
     content = validateAndFixImages(content)
@@ -1926,9 +1980,6 @@ const confirmWordImport = async () => {
     //   content = await replaceDataImages(content)
     // }
 
-    console.log('处理后内容长度:', content.length)
-    console.log('内容前100字符:', content.substring(0, 100))
-
     // 使用 setContent 设置内容，emitUpdate=false 避免触发不必要的更新
     try {
       // 先清空编辑器
@@ -1940,6 +1991,13 @@ const confirmWordImport = async () => {
         preserveWhitespace: 'full'
       })
       await nextTick()
+      if (!hasTableInHtml(content)) {
+        try {
+          editor.value.chain().fixTables().run()
+        } catch (e) {
+          console.warn('fixTables skipped:', e)
+        }
+      }
 
       // 等待 DOM 更新
       await new Promise((resolve) => setTimeout(resolve, 100))
@@ -1967,6 +2025,13 @@ const confirmWordImport = async () => {
         await nextTick()
         editor.value.commands.insertContent(content)
         await nextTick()
+        if (!hasTableInHtml(content)) {
+          try {
+            editor.value.chain().fixTables().run()
+          } catch (e) {
+            console.warn('fixTables skipped in fallback:', e)
+          }
+        }
       } catch (insertError) {
         console.error('insertContent 也失败:', insertError)
         throw insertError

@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, reactive, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isNil, isEmpty } from 'lodash-es'
@@ -170,7 +170,6 @@ import {
 import { getFilePage } from '@/api/training'
 import {
   docModelToDocx,
-  normalizeHtmlThroughDocModel,
   parseFileContent,
   parseHtmlToDocModel,
   ImageStore
@@ -179,6 +178,10 @@ import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { getFileStream as getFileStreamApi } from '@/api/training'
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
+import {
+  normalizeTableStructureForImport,
+  resolveEditorTableBodyWidth
+} from './utils/tableStructureNormalize'
 import { logger } from '@/views/utils/logger'
 import { copyHtmlToClipboard } from '@/views/utils/clipboard'
 
@@ -777,6 +780,104 @@ const isEditorContentEmpty = (html: string): boolean => {
   return stripped === ''
 }
 
+const normalizeTableStructureForRender = (html: string): string => {
+  if (!html || !/<table[\s>]/i.test(html)) return html
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="table-normalize-root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('table-normalize-root')
+  if (!root) return html
+
+  const tables = Array.from(root.querySelectorAll('table'))
+  tables.forEach((table) => {
+    const rows = Array.from(
+      table.querySelectorAll(':scope > tr, :scope > thead > tr, :scope > tbody > tr, :scope > tfoot > tr')
+    )
+    if (rows.length === 0) return
+
+    const countSpan = (value: string | null): number => {
+      const parsed = parseInt(value || '1', 10)
+      return Number.isNaN(parsed) || parsed <= 0 ? 1 : parsed
+    }
+
+    // pass1: 计算最大列数（考虑 rowspan/colspan 占位）
+    const carry1: number[] = []
+    let maxCols = 0
+    rows.forEach((tr) => {
+      const rowOcc: boolean[] = []
+      for (let i = 0; i < carry1.length; i++) {
+        if ((carry1[i] || 0) > 0) {
+          rowOcc[i] = true
+          carry1[i] -= 1
+        }
+      }
+      const cells = Array.from(tr.querySelectorAll(':scope > td, :scope > th'))
+      cells.forEach((cell) => {
+        let start = 0
+        while (rowOcc[start]) start++
+        const colspan = countSpan(cell.getAttribute('colspan'))
+        const rowspan = countSpan(cell.getAttribute('rowspan'))
+        for (let i = start; i < start + colspan; i++) {
+          rowOcc[i] = true
+          if (rowspan > 1) {
+            carry1[i] = Math.max(carry1[i] || 0, rowspan - 1)
+          }
+        }
+      })
+      maxCols = Math.max(maxCols, rowOcc.length, carry1.length)
+    })
+    if (maxCols <= 0) return
+
+    // pass2: 行补齐缺失单元格，避免首屏渲染出现“缺块”
+    const carry2: number[] = new Array(maxCols).fill(0)
+    rows.forEach((tr) => {
+      const rowOcc: boolean[] = new Array(maxCols).fill(false)
+      for (let i = 0; i < maxCols; i++) {
+        if (carry2[i] > 0) {
+          rowOcc[i] = true
+          carry2[i] -= 1
+        }
+      }
+      const cells = Array.from(tr.querySelectorAll(':scope > td, :scope > th'))
+      cells.forEach((cell) => {
+        let start = 0
+        while (start < maxCols && rowOcc[start]) start++
+        const colspan = countSpan(cell.getAttribute('colspan'))
+        const rowspan = countSpan(cell.getAttribute('rowspan'))
+        for (let i = start; i < Math.min(maxCols, start + colspan); i++) {
+          rowOcc[i] = true
+          if (rowspan > 1) {
+            carry2[i] = Math.max(carry2[i] || 0, rowspan - 1)
+          }
+        }
+      })
+      const missingCount = rowOcc.reduce((count, used) => count + (used ? 0 : 1), 0)
+      for (let i = 0; i < missingCount; i++) {
+        const td = doc.createElement('td')
+        td.innerHTML = '<p></p>'
+        tr.appendChild(td)
+      }
+    })
+
+    // pass3: 规范 colgroup 数量，避免列模型不一致
+    const colgroup = table.querySelector(':scope > colgroup')
+    if (colgroup) {
+      const cols = Array.from(colgroup.querySelectorAll(':scope > col'))
+      if (cols.length < maxCols) {
+        for (let i = cols.length; i < maxCols; i++) {
+          const col = doc.createElement('col')
+          colgroup.appendChild(col)
+        }
+      } else if (cols.length > maxCols) {
+        for (let i = maxCols; i < cols.length; i++) {
+          cols[i].remove()
+        }
+      }
+    }
+  })
+
+  return root.innerHTML
+}
+
 // 安全地将内容设置到编辑器（返回是否成功）
 const trySetContent = (html: string, emitUpdate = true): boolean => {
   const editor = editorInstance.value
@@ -825,6 +926,24 @@ const trySetContent = (html: string, emitUpdate = true): boolean => {
   }
 }
 
+/**
+ * 从 MinIO/Yjs 打开已有文档时：列宽未按正文区拉伸则右侧留白，与 Word 导入路径对齐做一次归一化。
+ */
+const normalizeExistingDocumentTablesToBodyWidth = async () => {
+  const ed = editorInstance.value
+  if (!ed || isUnmounted.value) return
+  if (!/<table[\s>]/i.test(ed.getHTML() || '')) return
+  await nextTick()
+  await sleep(150)
+  const bodyW = resolveEditorTableBodyWidth(ed.view.dom as HTMLElement)
+  if (!bodyW) return
+  const html = ed.getHTML()
+  const gridHtml = normalizeTableStructureForRender(html)
+  const next = normalizeTableStructureForImport(gridHtml, bodyW)
+  if (next === html) return
+  trySetContent(next, true)
+}
+
 // 防重入锁：防止多个触发源（handleEditorReady / onSynced / watch）同时调用 applyPreloadedContent
 const isApplyingContent = ref(false)
 
@@ -851,11 +970,14 @@ const applyPreloadedContent = async () => {
   const yjsHasContent = fragment.value && fragment.value.length > 1
 
   if (!isEditorContentEmpty(syncedHtml) || yjsHasContent) {
-    logger.debug('协同同步已有内容，跳过预加载（防止内容重复）',
-      { htmlEmpty: isEditorContentEmpty(syncedHtml), yjsLength: fragment.value?.length })
+    logger.debug('协同同步已有内容，跳过预加载（防止内容重复）', {
+      htmlEmpty: isEditorContentEmpty(syncedHtml),
+      yjsLength: fragment.value?.length
+    })
     preloadedApplied.value = true
     isFirstLoadWithContent.value = false
     void clearPreloadedCache()
+    void normalizeExistingDocumentTablesToBodyWidth()
     return
   }
 
@@ -864,9 +986,9 @@ const applyPreloadedContent = async () => {
   try {
     const content = preloadedContent.value.trim()
 
-    // 1. 规范化 + 图片清理
+    // 1. 规范化 + 图片清理（表格按正文宽度拉伸在 DOM 就绪后执行，见下方 sleep 后）
     const normalizedHtml = normalizePreloadedHtml(content)
-    const safeHtml = sanitizeImagesIfNeeded(normalizedHtml, 'preload')
+    const normalizedTableHtml = normalizeTableStructureForRender(normalizedHtml)
 
     // 2. 检查内容是否有实质（纯文本或图片）
     const strippedText = content
@@ -876,11 +998,11 @@ const applyPreloadedContent = async () => {
     const hasImages = /<img\b[^>]*src=/i.test(content)
     if (!strippedText && !hasImages) {
       logger.debug('预加载内容为空，跳过')
+      preloadedApplied.value = true
+      isFirstLoadWithContent.value = false
+      void clearPreloadedCache()
       return
     }
-
-    // 3. 直接使用 data:image（跳过 blob URL 转换，避免竞态错误）
-    const contentToApply = safeHtml
 
     // 4. 清除 Y.js fragment 中可能残留的 LevelDB 旧内容，防止与预加载内容合并导致重复
     const frag = fragment.value
@@ -896,7 +1018,14 @@ const applyPreloadedContent = async () => {
     // 5. 等待编辑器 DOM 稳定后再尝试
     await sleep(300)
 
-    // 5. 重试循环（最多 3 次）
+    const bodyW = resolveEditorTableBodyWidth(
+      editorInstance.value?.view?.dom as HTMLElement | undefined
+    )
+    const tableBodyHtml = normalizeTableStructureForImport(normalizedTableHtml, bodyW)
+    const safeHtml = sanitizeImagesIfNeeded(tableBodyHtml, 'preload')
+    const contentToApply = safeHtml
+
+    // 6. 重试循环（最多 3 次）
     let applied = false
     const maxRetries = 3
 
@@ -911,6 +1040,7 @@ const applyPreloadedContent = async () => {
       const yjsNowHasContent = fragment.value && fragment.value.length > 1
       if (yjsNowHasContent && !isEditorContentEmpty(currentHtml)) {
         logger.debug('重试期间检测到协同内容已就绪，跳过预加载')
+        void normalizeExistingDocumentTablesToBodyWidth()
         applied = true
         break
       }
@@ -923,6 +1053,7 @@ const applyPreloadedContent = async () => {
 
       if (!needsApply && !isEditorContentEmpty(currentHtml)) {
         logger.debug('编辑器已有实质内容，跳过预加载')
+        void normalizeExistingDocumentTablesToBodyWidth()
         applied = true
         break
       }
@@ -930,6 +1061,13 @@ const applyPreloadedContent = async () => {
       // 尝试设置内容
       const setOk = trySetContent(contentToApply)
       if (!setOk) continue
+
+      // 导入首屏兜底：强制修复表格网格，避免首帧出现缺格/缺块
+      try {
+        editorInstance.value?.chain().focus().fixTables().run()
+      } catch {
+        // fixTables 失败不阻断主流程
+      }
 
       // 等待渲染后验证
       await sleep(200)
@@ -952,7 +1090,7 @@ const applyPreloadedContent = async () => {
       applied = true
     }
 
-    // 6. 如果所有重试失败，尝试纯文本 fallback
+    // 7. 如果所有重试失败，尝试纯文本 fallback
     if (!applied && strippedText) {
       logger.warn('富文本应用失败，降级为纯文本')
       const fallbackHtml = strippedText
@@ -965,7 +1103,7 @@ const applyPreloadedContent = async () => {
       }
     }
 
-    // 7. 标记完成，清理缓存
+    // 8. 标记完成，清理缓存
     preloadedApplied.value = true
     isFirstLoadWithContent.value = false
     void clearPreloadedCache()
@@ -998,19 +1136,13 @@ const handleSave = async () => {
 
   isSaving.value = true
   try {
-    // 获取编辑器的 HTML 内容
     const content = editorInstance.value.getHTML()
     const restored = await restoreBlobImagesFromOriginAsync(content)
-    const normalizedHtml = normalizeHtmlThroughDocModel(restored, {
-      source: 'html',
-      method: 'tiptap-html'
-    })
-    const docModel = parseHtmlToDocModel(normalizedHtml, {
+    const docModel = parseHtmlToDocModel(restored, {
       source: 'html',
       method: 'tiptap-html'
     })
 
-    // 使用 DocModel 生成真实的 DOCX 文件
     const blob = await docModelToDocx(docModel, documentTitle.value)
     const filename = `${documentTitle.value}.docx`
     logger.debug(

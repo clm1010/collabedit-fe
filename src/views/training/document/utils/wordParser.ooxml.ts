@@ -945,7 +945,18 @@ function convertTableToHtml(
   html += '<tbody>'
 
   for (let ri = 0; ri < rowMetas.length; ri++) {
-    html += '<tr>'
+    const rowObj = rowsList[ri]
+    const trPr = rowObj?.['w:trPr']
+    const trStyle: string[] = []
+    if (trPr) {
+      const trHeight = trPr['w:trHeight']
+      if (trHeight) {
+        const val = parseInt(trHeight['@_w:val'] || '0', 10)
+        if (val > 0) trStyle.push(`height: ${dxaToPx(val)}px`)
+      }
+    }
+    const trStyleAttr = trStyle.length ? ` style="${trStyle.join('; ')}"` : ''
+    html += `<tr${trStyleAttr}>`
     for (let ci = 0; ci < rowMetas[ri].length; ci++) {
       if (skipSet.has(`${ri}-${ci}`)) continue
 
@@ -2002,12 +2013,21 @@ function convertTableEnhanced(
     gridSpan: number
     vMerge?: 'restart' | 'continue'
   }
-  const rows: { cells: CellMeta[] }[] = []
+  const rows: { cells: CellMeta[]; heightPx?: number }[] = []
 
   for (const item of tableItems) {
     if (item['w:tr']) {
       const cells: CellMeta[] = []
+      let heightPx: number | undefined
       for (const cellItem of item['w:tr']) {
+        if (cellItem['w:trPr']) {
+          for (const prop of cellItem['w:trPr']) {
+            if (prop['w:trHeight'] !== undefined) {
+              const val = parseInt(prop[':@']?.['@_w:val'] || '0', 10)
+              if (val > 0) heightPx = dxaToPx(val)
+            }
+          }
+        }
         if (cellItem['w:tc']) {
           let gridSpan = 1
           let vMerge: 'restart' | 'continue' | undefined
@@ -2027,7 +2047,7 @@ function convertTableEnhanced(
           cells.push({ cellItems: cellItem['w:tc'], gridSpan, vMerge })
         }
       }
-      rows.push({ cells })
+      rows.push({ cells, heightPx })
     }
   }
 
@@ -2083,7 +2103,9 @@ function convertTableEnhanced(
 
   html += '<tbody>'
   for (let ri = 0; ri < rows.length; ri++) {
-    html += '<tr>'
+    const rowH = rows[ri].heightPx
+    const trStyleAttr = rowH ? ` style="height: ${rowH}px"` : ''
+    html += `<tr${trStyleAttr}>`
     for (let ci = 0; ci < rows[ri].cells.length; ci++) {
       if (skipSet.has(`${ri}-${ci}`)) continue
 
@@ -2156,4 +2178,28 @@ function convertTableCellEnhanced(
   if (!content) content = '<p></p>'
 
   return { content, style: cellStyle.join('; ') }
+}
+
+export async function extractTableGridWidths(data: ArrayBuffer): Promise<number[][]> {
+  const JSZip = (await import('jszip')).default
+  const { XMLParser } = await import('fast-xml-parser')
+  const zip = await JSZip.loadAsync(data)
+  const docXml = await zip.file('word/document.xml')?.async('string')
+  if (!docXml) return []
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
+  const doc = parser.parse(docXml)
+  const body = doc?.['w:document']?.['w:body']
+  if (!body) return []
+  const dxaToPx = (dxa: number) => Math.round(dxa * 96 / 1440)
+  const rawTables = body['w:tbl']
+  const tables = Array.isArray(rawTables) ? rawTables : rawTables ? [rawTables] : []
+  return tables.map((tbl: any) => {
+    const gridCols = tbl?.['w:tblGrid']?.['w:gridCol']
+    if (!gridCols) return []
+    const cols = Array.isArray(gridCols) ? gridCols : [gridCols]
+    return cols.map((c: any) => {
+      const w = parseInt(c['@_w:w'] || '0', 10)
+      return w > 0 ? dxaToPx(w) : 0
+    })
+  })
 }

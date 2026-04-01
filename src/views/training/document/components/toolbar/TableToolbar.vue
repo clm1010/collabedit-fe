@@ -183,6 +183,45 @@
     <div class="toolbar-divider"></div>
 
     <div class="toolbar-group">
+      <el-popover placement="bottom" :width="160" trigger="click">
+        <template #reference>
+          <span>
+            <el-tooltip content="垂直对齐" placement="bottom" :show-after="500">
+              <button class="toolbar-btn-large" :disabled="!isInTable">
+                <Icon icon="mdi:align-vertical-center" class="btn-icon-large" />
+                <span class="btn-text">垂直对齐</span>
+              </button>
+            </el-tooltip>
+          </span>
+        </template>
+        <div class="align-panel">
+          <div
+            v-for="align in verticalAlignOptions"
+            :key="align.value"
+            class="align-item"
+            @click="setCellVerticalAlign(align.value)"
+          >
+            <Icon :icon="align.icon" class="align-icon" />
+            <span>{{ align.label }}</span>
+          </div>
+        </div>
+      </el-popover>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-group">
+      <el-tooltip content="自适应宽度" placement="bottom" :show-after="500">
+        <button class="toolbar-btn-large" :disabled="!isInTable" @click="fitToWidth">
+          <Icon icon="mdi:arrow-expand-horizontal" class="btn-icon-large" />
+          <span class="btn-text">自适应宽度</span>
+        </button>
+      </el-tooltip>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-group">
       <el-tooltip content="删除表格" placement="bottom" :show-after="500">
         <button class="toolbar-btn-large danger" :disabled="!isInTable" @click="deleteTable">
           <Icon icon="mdi:table-remove" class="btn-icon-large" />
@@ -324,6 +363,22 @@ const goToNextCell = () => {
 const goToPreviousCell = () => {
   if (!editor.value) return
   editor.value.chain().focus().goToPreviousCell().run()
+}
+
+const verticalAlignOptions = [
+  { label: '顶部', value: 'top', icon: 'mdi:align-vertical-top' },
+  { label: '居中', value: 'middle', icon: 'mdi:align-vertical-center' },
+  { label: '底部', value: 'bottom', icon: 'mdi:align-vertical-bottom' }
+]
+
+const setCellVerticalAlign = (align: string) => {
+  if (!editor.value) return
+  editor.value.chain().focus().setCellAttribute('verticalAlign', align).run()
+}
+
+const fitToWidth = () => {
+  if (!editor.value) return
+  ;(editor.value.chain().focus() as any).fitTableToWidth().run()
 }
 
 const deleteTable = () => {

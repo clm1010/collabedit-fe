@@ -92,6 +92,7 @@ export interface DocTableBlock {
   type: 'table'
   rows: DocTableRow[]
   colWidths?: number[]
+  tableWidth?: number
   minWidth?: number
 }
 

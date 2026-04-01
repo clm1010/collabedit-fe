@@ -421,6 +421,8 @@ const parseImage = (element: Element): DocImageBlock => {
 const parseTable = (element: Element): DocTableBlock => {
   const styleText = element.getAttribute('style') || ''
   const styleMap = styleText ? extractStyleMap(styleText) : {}
+  const dataWidth = parsePxValue(element.getAttribute('data-table-width') || undefined)
+  const tableWidth = dataWidth || parsePxValue(styleMap['width']) || undefined
   const minWidth = parsePxValue(styleMap['min-width'])
   const colgroup = element.querySelector('colgroup')
   const CELL_MIN_WIDTH = 25
@@ -430,16 +432,37 @@ const parseTable = (element: Element): DocTableBlock => {
           const colStyle = col.getAttribute('style') || ''
           const colMap = colStyle ? extractStyleMap(colStyle) : {}
           const width = parsePxValue(col.getAttribute('width') || undefined)
-          return width || parsePxValue(colMap['width']) || 0
+          return width
+            || parsePxValue(colMap['width'])
+            || parsePxValue(colMap['min-width'])
+            || 0
         })
     : undefined
-  const colWidths = rawColWidths?.length && rawColWidths.some((w) => w > CELL_MIN_WIDTH)
+  let colWidths: number[] | undefined = rawColWidths?.length && rawColWidths.some((w) => w > CELL_MIN_WIDTH)
     ? rawColWidths
     : undefined
   const rows: DocTableRow[] = []
   const trNodes = Array.from(
     element.querySelectorAll(':scope > tr, :scope > thead > tr, :scope > tbody > tr, :scope > tfoot > tr')
   )
+  if (!colWidths && trNodes.length > 0) {
+    const firstRow = trNodes[0]
+    const tdWidths: number[] = []
+    let hasAny = false
+    Array.from(firstRow.querySelectorAll(':scope > td, :scope > th')).forEach((cell) => {
+      const cw = cell.getAttribute('colwidth')
+      if (cw) {
+        hasAny = true
+        cw.split(',').forEach(v => tdWidths.push(parseInt(v, 10) || 0))
+      } else {
+        const cs = parseInt(cell.getAttribute('colspan') || '1', 10)
+        for (let i = 0; i < cs; i++) tdWidths.push(0)
+      }
+    })
+    if (hasAny && tdWidths.some(w => w > CELL_MIN_WIDTH)) {
+      colWidths = tdWidths
+    }
+  }
   trNodes.forEach((tr) => {
     const trStyle = (tr as HTMLElement).getAttribute('style') || ''
     const trMap = trStyle ? extractStyleMap(trStyle) : {}
@@ -464,7 +487,7 @@ const parseTable = (element: Element): DocTableBlock => {
     })
     if (cells.length > 0) rows.push({ cells, height: rowHeight })
   })
-  return { type: 'table', rows, colWidths, minWidth }
+  return { type: 'table', rows, colWidths, tableWidth, minWidth }
 }
 
 const parseBlocksFromContainer = (container: Element): DocBlock[] => {

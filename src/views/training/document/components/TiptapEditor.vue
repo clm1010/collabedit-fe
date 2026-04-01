@@ -247,9 +247,11 @@ import { Placeholder } from '@tiptap/extensions'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Highlight } from '@tiptap/extension-highlight'
 import { Link } from '@tiptap/extension-link'
-import { Table, TableRow } from '@tiptap/extension-table'
 import { CustomTableCell } from './toolbar/extensions/CustomTableCell'
 import { CustomTableHeader } from './toolbar/extensions/CustomTableHeader'
+import { CustomTableRow } from './toolbar/extensions/CustomTableRow'
+import { RowResizing } from './toolbar/extensions/rowResizing'
+import { CustomTable } from './toolbar/extensions/CustomTable'
 import { ResizableImage } from './toolbar/extensions/ResizableImage'
 import { TaskList, TaskItem } from '@tiptap/extension-list'
 import { TextStyle, FontSize } from '@tiptap/extension-text-style'
@@ -484,14 +486,12 @@ const editor = useEditor({
         class: 'editor-image'
       }
     }),
-    // 表格 - 使用自定义扩展支持对齐和背景色
-    Table.configure({
-      resizable: true,
-      allowTableNodeSelection: true
-    }),
-    TableRow,
+    // 表格 - 使用自定义扩展支持整体缩放、对齐和背景色
+    CustomTable,
+    CustomTableRow,
     CustomTableCell,
     CustomTableHeader,
+    RowResizing,
     // 任务列表
     TaskList,
     TaskItem.configure({
@@ -1081,7 +1081,7 @@ defineExpose({
   position: relative;
   flex: 1;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
   background: #e8eaed;
 
   // 自定义滚动条样式 - 参考 Umo Editor
@@ -1457,35 +1457,57 @@ defineExpose({
 
     // 表格容器（Tiptap resizable 模式自动生成）
     .tableWrapper {
+      position: relative;
       overflow-x: auto;
+      overflow-y: visible;
       max-width: 100%;
       margin: 1em 0;
+
+      .row-resize-handle {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background-color: #2383e2;
+        pointer-events: none;
+        z-index: 10;
+      }
     }
 
     // 表格样式（参考 Umo Editor）
     table {
       border-collapse: collapse;
       table-layout: fixed;
-      width: 100%;
+      width: auto;
       margin: 0;
-      overflow: hidden;
+      min-width: 0;
+      max-width: 100%;
 
       th,
       td {
-        border: 1px solid #dee2e6;
+        border: 1px solid #d0d5dd;
         padding: 6px 10px;
         min-width: 1em;
         vertical-align: middle;
         box-sizing: border-box;
         position: relative;
+        word-break: break-word;
+        transition: background-color 0.15s ease;
+
+        > * + * {
+          margin-top: 0;
+        }
+
+        p {
+          margin: 0;
+        }
       }
 
       th {
-        background: #f1f3f5;
+        background: #f8f9fa;
         font-weight: 600;
       }
 
-      // 选中单元格高亮（ProseMirror 表格插件自动添加 .selectedCell 类）
       .selectedCell::after {
         z-index: 2;
         position: absolute;
@@ -1494,24 +1516,126 @@ defineExpose({
         right: 0;
         top: 0;
         bottom: 0;
-        background: rgba(200, 200, 255, 0.4);
+        background: rgba(35, 131, 226, 0.14);
         pointer-events: none;
       }
 
-      // 列宽调整拉动条
       .column-resize-handle {
         position: absolute;
-        right: -1px;
+        right: -2px;
         top: 0;
-        bottom: -1px;
-        width: 3px;
-        background-color: #409eff;
+        bottom: -2px;
+        width: 4px;
+        background-color: #2383e2;
         pointer-events: none;
+        z-index: 10;
       }
+    }
+
+    // 导入表格稳定渲染：避免空单元格/边框在某些浏览器下出现视觉“缺块”
+    table[data-imported-table='true'] {
+      border-collapse: collapse !important;
+
+      td[data-imported-cell='true'],
+      th[data-imported-cell='true'] {
+        border: 1px solid #dee2e6 !important;
+        min-height: 28px;
+        background-clip: padding-box;
+      }
+
+      td[data-imported-cell='true']:empty::before,
+      th[data-imported-cell='true']:empty::before {
+        content: '\00a0';
+      }
+    }
+
+    .table-scale-handle {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      right: -1px;
+      bottom: -1px;
+      border-radius: 1px;
+      background:
+        linear-gradient(135deg, transparent 40%, #2383e2 40%, #2383e2 50%, transparent 50%),
+        linear-gradient(135deg, transparent 15%, #2383e2 15%, #2383e2 25%, transparent 25%);
+      cursor: nwse-resize;
+      z-index: 6;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .custom-table-view:hover .table-scale-handle {
+      opacity: 0.7;
+    }
+
+    .custom-table-view.is-table-scaling .table-scale-handle {
+      opacity: 1;
     }
 
     &.resize-cursor {
       cursor: col-resize;
+    }
+
+    // 行列操作手柄（tableHandles 插件）
+    .custom-table-view {
+      position: relative;
+    }
+
+    .table-handles-overlay {
+      .table-col-handles {
+        background: #f8f9fb;
+        border: 1px solid #e5e7eb;
+        border-bottom: none;
+        border-radius: 4px 4px 0 0;
+      }
+
+      .table-row-handles {
+        background: #f8f9fb;
+        border: 1px solid #e5e7eb;
+        border-right: none;
+        border-radius: 4px 0 0 4px;
+      }
+
+      .table-col-grip:hover,
+      .table-row-grip:hover {
+        background: rgba(35, 131, 226, 0.08);
+      }
+
+      .table-add-col-btn,
+      .table-add-row-btn {
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        z-index: 10;
+
+        &:hover {
+          background: #2383e2 !important;
+          color: #fff !important;
+          border-color: #2383e2 !important;
+          opacity: 1 !important;
+        }
+      }
+    }
+
+    .custom-table-view:hover .table-add-col-btn,
+    .custom-table-view:hover .table-add-row-btn {
+      opacity: 0.5;
+    }
+
+    // 行高拖拽：tr 底部热区（纯辅助，光标由 JS 插件控制）
+    table tr {
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -2px;
+        height: 4px;
+        pointer-events: none;
+        z-index: 3;
+      }
     }
 
     // 任务列表样式
@@ -1823,6 +1947,27 @@ defineExpose({
 
   :global(.page-break-container) {
     display: none;
+  }
+
+  .ProseMirror {
+    table {
+      page-break-inside: auto;
+    }
+
+    table tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+
+    .tableWrapper {
+      overflow: visible;
+    }
+
+    .table-scale-handle,
+    .column-resize-handle,
+    .row-resize-handle {
+      display: none !important;
+    }
   }
 }
 

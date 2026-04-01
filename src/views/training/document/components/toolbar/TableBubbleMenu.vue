@@ -80,6 +80,33 @@
 
       <span class="tb-divider"></span>
 
+      <!-- 垂直对齐 -->
+      <el-popover placement="bottom" :width="120" trigger="click" :teleported="false">
+        <template #reference>
+          <button class="tb-btn" :disabled="!isInTable" title="垂直对齐">
+            <Icon icon="mdi:align-vertical-center" />
+            <Icon icon="mdi:chevron-down" class="tb-arrow" />
+          </button>
+        </template>
+        <div class="tb-align-panel">
+          <button
+            v-for="v in verticalAlignOptions"
+            :key="v.value"
+            class="tb-align-item"
+            @click="setCellVerticalAlign(v.value)"
+          >
+            <Icon :icon="v.icon" />
+            <span>{{ v.label }}</span>
+          </button>
+        </div>
+      </el-popover>
+
+      <span class="tb-divider"></span>
+
+      <button class="tb-btn" :disabled="!isInTable" title="自适应宽度" @click="fitToWidth">
+        <Icon icon="mdi:arrow-expand-horizontal" />
+      </button>
+
       <button class="tb-btn tb-btn-danger" :disabled="!isInTable" title="删除表格" @click="cmd('deleteTable')">
         <Icon icon="mdi:table-remove" />
       </button>
@@ -140,6 +167,20 @@ const alignOptions = [
   { label: '居中', value: 'center', icon: 'mdi:format-align-center' },
   { label: '右对齐', value: 'right', icon: 'mdi:format-align-right' }
 ]
+
+const verticalAlignOptions = [
+  { label: '顶部', value: 'top', icon: 'mdi:align-vertical-top' },
+  { label: '居中', value: 'middle', icon: 'mdi:align-vertical-center' },
+  { label: '底部', value: 'bottom', icon: 'mdi:align-vertical-bottom' }
+]
+
+const setCellVerticalAlign = (align: string) => {
+  props.editor?.chain().focus().setCellAttribute('verticalAlign', align).run()
+}
+
+const fitToWidth = () => {
+  ;(props.editor?.chain().focus() as any).fitTableToWidth().run()
+}
 </script>
 
 <style lang="scss" scoped>
