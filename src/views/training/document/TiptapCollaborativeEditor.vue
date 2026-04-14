@@ -17,6 +17,17 @@
       @review-reject="openReviewRejectDialog"
     />
 
+    <!-- 转换服务不可用提示 -->
+    <el-alert
+      v-if="converterUnavailable"
+      title="文档转换服务未就绪，导入导出将使用基础模式（格式保真度较低）"
+      type="warning"
+      :closable="true"
+      show-icon
+      class="converter-status-alert"
+      @close="converterAlertDismissed = true"
+    />
+
     <!-- 主内容区域 -->
     <div class="flex-1 flex overflow-hidden relative">
       <!-- 编辑器容器 -->
@@ -160,8 +171,6 @@ import { useCollaborationUserStore } from '@/store/modules/collaborationUser'
 import { useCollaboration } from '@/lmHooks'
 import { defaultCollaborationConfig } from './config/editorConfig'
 import {
-  saveDocumentFile,
-  resetCollaborationDoc,
   submitAudit,
   examApply,
   type DocumentInfo,
@@ -169,14 +178,10 @@ import {
 } from './api/documentApi'
 import { getFilePage } from '@/api/training'
 import {
-  docModelToDocx,
   parseFileContent,
-  parseHtmlToDocModel,
   ImageStore
 } from './utils/wordParser'
 import { useDocBufferStore } from '@/store/modules/docBuffer'
-import { getFileStream as getFileStreamApi } from '@/api/training'
-import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
 import {
   normalizeTableStructureForImport,
@@ -184,6 +189,9 @@ import {
 } from './utils/tableStructureNormalize'
 import { logger } from '@/views/utils/logger'
 import { copyHtmlToClipboard } from '@/views/utils/clipboard'
+import { checkConverterHealth } from '@/api/converter'
+import { useDocMetadataStore } from '@/store/modules/docMetadata'
+import { javaRequest } from '@/config/axios/javaService'
 
 // ==================== IndexedDB 文档解析缓存工具 ====================
 // 使用浏览器原生 IndexedDB 缓存成功解析的带样式 HTML，关闭浏览器后仍保留
@@ -323,6 +331,13 @@ const collaborationUserStore = useCollaborationUserStore()
 // 获取文档 ID - 优先使用路由参数 id，其次使用 props.docId
 const documentId = computed(() => {
   return (route.params.id as string) || props.docId
+})
+
+// 转换服务状态
+const converterAlertDismissed = ref(false)
+const converterUnavailable = computed(() => {
+  const store = useDocMetadataStore()
+  return !store.converterAvailable && !converterAlertDismissed.value
 })
 
 // 获取协作用户信息（从 sessionStorage 中获取，确保刷新时用户一致）
@@ -984,6 +999,32 @@ const applyPreloadedContent = async () => {
   isApplyingContent.value = true
 
   try {
+    // JSON 格式直接 setContent（无需 HTML 解析管线）
+    if (preloadedContent.value === '__JSON__') {
+      const json = (window as any).__docJsonContent
+      delete (window as any).__docJsonContent
+
+      if (json && editorInstance.value) {
+        // 清除 Y.js fragment 中可能残留的旧内容
+        const frag = fragment.value
+        if (ydoc.value && frag && frag.length > 0) {
+          ydoc.value.transact(() => {
+            while (frag.length > 0) {
+              frag.delete(0, 1)
+            }
+          })
+        }
+
+        await sleep(300)
+        editorInstance.value.commands.setContent(json)
+        preloadedApplied.value = true
+        isFirstLoadWithContent.value = false
+        void clearPreloadedCache()
+        ElMessage.success('文档内容已加载')
+        return
+      }
+    }
+
     const content = preloadedContent.value.trim()
 
     // 1. 规范化 + 图片清理（表格按正文宽度拉伸在 DOM 就绪后执行，见下方 sleep 后）
@@ -1127,7 +1168,7 @@ const handleEditorReady = async (editor: any) => {
   tryApplyPreloadedContent()
 }
 
-// 保存文档 - 使用真实 DOCX 格式
+// 保存文档 - 使用 JSON 格式（快速无损保存）
 const handleSave = async () => {
   if (isNil(editorInstance.value)) {
     ElMessage.warning('编辑器未就绪')
@@ -1136,15 +1177,10 @@ const handleSave = async () => {
 
   isSaving.value = true
   try {
-    const content = editorInstance.value.getHTML()
-    const restored = await restoreBlobImagesFromOriginAsync(content)
-    const docModel = parseHtmlToDocModel(restored, {
-      source: 'html',
-      method: 'tiptap-html'
-    })
-
-    const blob = await docModelToDocx(docModel, documentTitle.value)
-    const filename = `${documentTitle.value}.docx`
+    const json = editorInstance.value.getJSON()
+    const jsonStr = JSON.stringify(json)
+    const blob = new Blob([jsonStr], { type: 'application/json' })
+    const filename = `${documentTitle.value}.json`
     logger.debug(
       '保存文件，文档ID:',
       documentId.value,
@@ -1153,23 +1189,28 @@ const handleSave = async () => {
       '文件大小:',
       blob.size,
       'bytes',
-      '(真实 DOCX 格式)'
+      '(JSON 格式)'
     )
 
-    // 调用保存文档接口
-    const result = await saveDocumentFile(documentId.value, blob, filename)
+    // 调用保存文档接口，saveAs=content 存到 contentFileId
+    const formData = new FormData()
+    formData.append('id', documentId.value)
+    formData.append('file', blob, filename)
+    formData.append('saveAs', 'content')
 
-    if (result.code === 200 || result.code === 0 || result.status === 200) {
+    const result = await javaRequest.upload<any>('/getPlan/saveFile', formData)
+
+    if (result?.code === 200 || result?.code === 0 || result?.data?.fileId) {
       ElMessage.success('文档已保存')
       hasUnsavedChanges.value = false
       void deleteDocCache(documentId.value)
-      void resetCollaborationDoc(documentId.value)
+      // 不再调用 resetCollaborationDoc，避免打断其他协同用户
 
       if (documentInfo.value) {
         documentInfo.value.updateTime = new Date().toISOString()
       }
     } else {
-      throw new Error(result.msg || '保存失败')
+      throw new Error(result?.msg || '保存失败')
     }
   } catch (error) {
     console.error('保存文档失败:', error)
@@ -1262,18 +1303,67 @@ watch(
 
 // 组件挂载
 onMounted(async () => {
+  // 初始化 docMetadata store 并检查转换服务状态
+  const docMetaStore = useDocMetadataStore()
+  docMetaStore.clear()
+  docMetaStore.docId = documentId.value
+
+  // 异步检查转换服务状态（不阻塞主流程）
+  checkConverterHealth().then((health) => {
+    docMetaStore.setConverterStatus(health.available)
+    if (!health.available) {
+      logger.warn('[converter] 转换服务不可用，导入导出将使用基础模式')
+    }
+  }).catch(() => {
+    docMetaStore.setConverterStatus(false)
+  })
+
+  // 异步加载文档元数据（不阻塞主流程）
+  docMetaStore.loadMetadata(documentId.value).catch(() => {})
+
   // 从 Pinia 内存 Store 获取文件 ArrayBuffer，如果为空（页面刷新）则从后端重新获取
   const docBufferStore = useDocBufferStore()
   let arrayBuffer: ArrayBuffer | null = docBufferStore.getBuffer(documentId.value)
   preloadedCacheCleared.value = false
+  let isJsonContent = false
 
   if (!arrayBuffer) {
     logger.debug('内存中无缓存，从后端获取文件流, id:', documentId.value)
     try {
-      const blob = await getFileStreamApi(documentId.value)
-      if (blob && blob.size > 0) {
-        arrayBuffer = await blob.arrayBuffer()
-        logger.debug('从后端获取文件流成功, size:', arrayBuffer.byteLength)
+      // 优先获取 JSON 格式（新保存格式）
+      const res = await javaRequest.download('/getPlan/getFileStream', {
+        id: documentId.value,
+        prefer: 'content'
+      })
+
+      if (res instanceof Blob && res.size > 0) {
+        // 根据 Content-Type 判断格式
+        if (res.type === 'application/json' || res.type.includes('json')) {
+          // 新格式：JSON，直接解析为 Tiptap JSON
+          const text = await res.text()
+          try {
+            const json = JSON.parse(text)
+            // 如果是标准的 { code, data } 包装，检查是否为错误响应
+            if (json.code !== undefined && json.data === null) {
+              // 后端返回了错误响应，不是真正的 JSON 内容
+              logger.debug('后端返回非文件 JSON 响应，视为空文档')
+            } else {
+              // 真正的 Tiptap JSON 内容
+              isJsonContent = true
+              preloadedContent.value = '__JSON__'
+              // 存储 JSON 以便后续直接 setContent
+              ;(window as any).__docJsonContent = json
+              logger.debug('从后端获取 JSON 内容成功')
+            }
+          } catch {
+            // 不是有效 JSON，按二进制处理
+            arrayBuffer = await res.arrayBuffer()
+          }
+        } else {
+          // 旧格式：DOCX，走解析管线
+          arrayBuffer = await res.arrayBuffer()
+          logger.debug('从后端获取 DOCX 文件流成功, size:', arrayBuffer.byteLength)
+        }
       }
     } catch (error) {
       logger.warn('从后端获取文件流失败，将依赖协同同步:', error)
@@ -1282,8 +1372,12 @@ onMounted(async () => {
     logger.debug('从内存 Store 获取文件流成功, size:', arrayBuffer.byteLength)
   }
 
+  // JSON 格式直接应用（无需解析管线）
+  if (isJsonContent) {
+    isFirstLoadWithContent.value = true
+  }
   // 解析文件内容（仅解析暂存，不立即应用到编辑器，等协同同步完成后再决策）
-  if (arrayBuffer) {
+  else if (arrayBuffer) {
     try {
       logger.debug('开始解析文件内容, 大小:', arrayBuffer.byteLength)
       const parsedContent = await parseFileContent(arrayBuffer)
@@ -1368,6 +1462,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" scoped>
+.converter-status-alert {
+  flex-shrink: 0;
+  border-radius: 0;
+  :deep(.el-alert__content) {
+    font-size: 12px;
+  }
+}
+
 // 抽屉动画
 :deep(.material-drawer) {
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);

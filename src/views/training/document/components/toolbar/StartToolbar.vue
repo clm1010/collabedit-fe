@@ -539,6 +539,9 @@ import {
   normalizeTableStructureForImport,
   resolveEditorTableBodyWidth
 } from '../../utils/tableStructureNormalize'
+import { checkConverterHealth, importDocx } from '@/api/converter'
+import { useDocMetadataStore } from '@/store/modules/docMetadata'
+import { normalizeImportedHtml, convertInlineStylesToTiptap } from '../../utils/wordParser.postprocess'
 
 // 获取编辑器实例及撤销/重做响应式状态
 const { editor, canUndo, canRedo } = useEditorState()
@@ -1171,11 +1174,47 @@ const handleWordFileSelect = async (uploadFile: any) => {
     // 2. 保存 ArrayBuffer 供后续使用
     wordArrayBuffer.value = arrayBuffer
 
-    // 3. 使用智能策略选择最佳解析方案
+    // 3. 优先尝试 LO 转换服务
     importProgress.value = 20
     importProgressText.value = '正在解析文档...'
 
     let html: string
+    let usedLoConverter = false
+
+    try {
+      const health = await checkConverterHealth()
+      if (health.available) {
+        importProgressText.value = '正在使用转换服务解析...'
+        importProgress.value = 30
+        const result = await importDocx(arrayBuffer)
+        if (result.html && result.html.trim().length > 20) {
+          html = normalizeImportedHtml(result.html, 'lo', result.metadata)
+          usedLoConverter = true
+          console.log('LO 转换服务解析成功，HTML长度:', html.length)
+
+          // 异步保存元数据和原始文件（不阻塞 UI）
+          if (result.metadata) {
+            try {
+              const metaStore = useDocMetadataStore()
+              if (metaStore.docId) {
+                metaStore.setMetadata(metaStore.docId, result.metadata)
+                metaStore.saveMetadata(metaStore.docId, result.metadata).catch(() => {})
+                metaStore.saveOriginalFile(metaStore.docId, file).catch(() => {})
+              }
+            } catch { /* store 可能未初始化 */ }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('LO 转换服务失败，降级到前端解析:', e)
+    }
+
+    // 4. 若 LO 未成功，走前端解析链路
+    if (!usedLoConverter) {
+      ElMessage.warning({
+        message: '转换服务暂不可用，已使用基础模式解析，格式可能有差异',
+        duration: 4000,
+      })
 
     try {
       const docModel = await parseDocxToDocModel(arrayBuffer, {
@@ -1235,6 +1274,10 @@ const handleWordFileSelect = async (uploadFile: any) => {
 
     // 验证和修复图片 base64 数据，解决 ERR_INVALID_URL 错误
     html = validateAndFixImages(html)
+
+    // 转换内联样式为 Tiptap 格式（与 parseFileContent 保持一致）
+    html = convertInlineStylesToTiptap(html)
+    } // end if (!usedLoConverter)
 
     wordImportNormalizedHtml.value = html
     wordImportRawHtml.value = html

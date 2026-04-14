@@ -143,6 +143,8 @@ import { docModelToDocx, normalizeHtmlThroughDocModel, parseHtmlToDocModel } fro
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 import { copyToClipboard } from '@/views/utils/clipboard'
+import { checkConverterHealth, exportDocx as loExportDocx, exportPdf as loExportPdf } from '@/api/converter'
+import { useDocMetadataStore } from '@/store/modules/docMetadata'
 
 const editor = useEditor()
 
@@ -199,6 +201,25 @@ const exportWord = async () => {
   try {
     const content = editor.value.getHTML()
     const restored = await restoreBlobImagesFromOriginAsync(content)
+
+    // 优先走 LO 转换服务
+    const health = await checkConverterHealth()
+    if (health.available) {
+      try {
+        const metaStore = useDocMetadataStore()
+        const blob = await loExportDocx(restored, metaStore.metadata ?? undefined)
+        downloadBlob(blob, '文档.docx')
+        ElMessage.success('Word 文档已导出')
+        return
+      } catch (err) {
+        console.warn('LO 导出 DOCX 失败，降级到前端导出:', err)
+        ElMessage.warning('转换服务导出失败，已使用基础模式导出')
+      }
+    } else {
+      ElMessage.warning('转换服务暂不可用，已使用基础模式导出，格式可能有差异')
+    }
+
+    // 降级走前端 docModel
     const normalizedHtml = normalizeHtmlThroughDocModel(restored, {
       source: 'html',
       method: 'tiptap-html'
@@ -219,6 +240,26 @@ const exportWord = async () => {
 const exportPdf = async () => {
   if (!editor.value) return
 
+  // 优先走 LO 转换服务
+  const health = await checkConverterHealth()
+  if (health.available) {
+    try {
+      const content = editor.value.getHTML()
+      const restored = await restoreBlobImagesFromOriginAsync(content)
+      const metaStore = useDocMetadataStore()
+      const blob = await loExportPdf(restored, metaStore.metadata ?? undefined)
+      downloadBlob(blob, '文档.pdf')
+      ElMessage.success('PDF 已导出')
+      return
+    } catch (err) {
+      console.warn('LO 导出 PDF 失败，降级到浏览器打印:', err)
+      ElMessage.warning('转换服务导出失败，已使用浏览器打印模式')
+    }
+  } else {
+    ElMessage.warning('转换服务暂不可用，已使用浏览器打印模式导出 PDF')
+  }
+
+  // 降级走浏览器打印
   const html = await generateFullHtml()
   const printWindow = window.open('', '_blank')
 

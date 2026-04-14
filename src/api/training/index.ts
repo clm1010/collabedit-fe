@@ -150,10 +150,13 @@ const javaApi = {
 
   /**
    * 获取文档文件流 - Java 后端
+   * 支持 prefer=content 参数优先返回 JSON 格式
    */
-  getFileStream: async (id: string): Promise<Blob | null> => {
+  getFileStream: async (id: string, prefer?: string): Promise<Blob | null> => {
     try {
-      const response = await javaRequest.download('/getPlan/getFileStream', { id })
+      const params: any = { id }
+      if (prefer) params.prefer = prefer
+      const response = await javaRequest.download('/getPlan/getFileStream', params)
       if (response instanceof Blob && response.size > 0) {
         if (response.type.includes('application/json')) {
           const text = await response.text()
@@ -163,7 +166,7 @@ const javaApi = {
               return null
             }
           } catch {
-            // 不是有效的 JSON，当作二进制数据处理
+            // 不是有效的 JSON 错误响应，当作正常 JSON 内容处理
           }
         }
         return response
@@ -327,7 +330,7 @@ const mockApi = {
     return checkWritePermission(data)
   },
 
-  getFileStream: async (id: string): Promise<Blob | null> => {
+  getFileStream: async (id: string, _prefer?: string): Promise<Blob | null> => {
     const { getFileStream } = await import('@/mock/training/performance')
     return getFileStream(id)
   },

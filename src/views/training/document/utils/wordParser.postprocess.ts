@@ -1,4 +1,5 @@
-import { formatPx, ptToPx } from './wordParser.shared'
+import { formatPx, ptToPx, sanitizeImagesIfNeeded } from './wordParser.shared'
+import type { DocMetadata } from '@/api/converter'
 
 /**
  * 保护 HTML 中的 base64 图片数据，防止全局正则替换破坏 base64 内容。
@@ -34,7 +35,7 @@ const protectBase64 = (html: string): { html: string; restore: (h: string) => st
  * @param html 原始 HTML
  * @returns 清理后的 HTML
  */
-export const cleanWordHtml = (html: string): string => {
+export const cleanWordHtml = (html: string, options?: { maxImageWidth?: number }): string => {
   // 保护 base64 图片数据，防止后续正则替换破坏
   const { html: safeHtml, restore } = protectBase64(html)
   html = safeHtml
@@ -71,9 +72,14 @@ export const cleanWordHtml = (html: string): string => {
     /<p[^>]*style="[^"]*page-break-after:\s*always[^"]*"[^>]*>(.*?)<\/p>/gi,
     '<p>$1</p><div class="page-break" data-type="page-break"></div>'
   )
+  // 兼容旧格式 <hr data-page-break="true">
+  html = html.replace(
+    /<hr[^>]*data-page-break[^>]*\/?>/gi,
+    '<div class="page-break" data-type="page-break"></div>'
+  )
 
-  // 处理图片宽度 - 限制最大宽度为编辑器可用宽度
-  const MAX_IMAGE_WIDTH = 540 // 编辑器可用宽度（A4 页面 794px - 边距 240px - 一些余量）
+  // 处理图片宽度 - 限制最大宽度为编辑器可用宽度（优先用文档元数据计算，默认 540px）
+  const MAX_IMAGE_WIDTH = options?.maxImageWidth ?? 540
 
   html = html.replace(/<img([^>]*)style="([^"]*)"/gi, (_match, attrs, style) => {
     const isInlineImg =
@@ -199,7 +205,11 @@ export const convertInlineStylesToTiptap = (html: string): string => {
     return `color: ${hex}`
   })
 
-  html = html.replace(/color:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/gi, (_, r, g, b) => {
+  html = html.replace(/color:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/gi, (_, r, g, b, a) => {
+    const alpha = parseFloat(a)
+    if (alpha < 1) {
+      return `color: rgba(${r}, ${g}, ${b}, ${a})`
+    }
     const hex =
       '#' +
       [r, g, b]
@@ -224,8 +234,12 @@ export const convertInlineStylesToTiptap = (html: string): string => {
   })
 
   html = html.replace(
-    /background-color:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/gi,
-    (_, r, g, b) => {
+    /background-color:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/gi,
+    (_, r, g, b, a) => {
+      const alpha = parseFloat(a)
+      if (alpha < 1) {
+        return `background-color: rgba(${r}, ${g}, ${b}, ${a})`
+      }
       const hex =
         '#' +
         [r, g, b]
@@ -483,4 +497,39 @@ export const convertLargeFontParagraphsToHeadings = (html: string): string => {
     console.warn('convertLargeFontParagraphsToHeadings 失败:', e)
     return html
   }
+}
+
+export type ImportSource = 'lo' | 'docmodel' | 'ooxml' | 'mammoth' | 'redhead'
+
+function computeMaxImageWidth(metadata?: DocMetadata | null): number {
+  const DEFAULT = 540
+  if (!metadata?.paperSize || !metadata?.margins) return DEFAULT
+  const { width: pw } = metadata.paperSize
+  const { left, right } = metadata.margins
+  if (!pw || pw <= 0) return DEFAULT
+  const contentWidth = Math.round(pw - (left || 0) - (right || 0))
+  return contentWidth > 100 ? contentWidth : DEFAULT
+}
+
+/**
+ * 统一的导入 HTML 后处理入口。
+ * parseFileContent 和 StartToolbar 都应调用此函数，保证一致的清洗逻辑。
+ */
+export const normalizeImportedHtml = (
+  html: string,
+  source: ImportSource,
+  metadata?: DocMetadata | null
+): string => {
+  if (!html) return html
+
+  const maxImageWidth = computeMaxImageWidth(metadata)
+
+  if (source !== 'lo') {
+    html = cleanWordHtml(html, { maxImageWidth })
+  }
+
+  html = convertInlineStylesToTiptap(html)
+  html = sanitizeImagesIfNeeded(html, source)
+
+  return html
 }

@@ -6,7 +6,7 @@ import {
   isZipFormat,
   sanitizeImagesIfNeeded
 } from './wordParser.shared'
-import { convertInlineStylesToTiptap } from './wordParser.postprocess'
+import { normalizeImportedHtml } from './wordParser.postprocess'
 import { parseWordDocument } from './wordParser.mammoth'
 import { parseWithDocxPreview, postProcessDocxPreviewHtml } from './wordParser.preview'
 import {
@@ -20,6 +20,8 @@ import { parseDocxToDocModel } from './docModel/parser'
 import { serializeDocModelToHtml } from './docModel/serializer'
 import { parseWithWorker } from './wordParser.worker'
 import { logger } from '@/views/utils/logger'
+import { checkConverterHealth, importDocx, type ImportResult } from '@/api/converter'
+import { useDocMetadataStore } from '@/store/modules/docMetadata'
 
 /**
  * 验证解析结果是否有效（非空、包含有效 HTML 内容）
@@ -105,13 +107,47 @@ export const parseFileContent = async (
 
     onProgress?.(25, '检测到 Word 文档，准备解析...')
 
+    // ── 策略 0：LO 转换服务（最高优先级） ──
+    let loError: string | null = null
+    try {
+      const health = await checkConverterHealth()
+      if (health.available) {
+        onProgress?.(30, '正在使用 LO 转换服务解析...')
+        const result: ImportResult = await importDocx(data)
+        if (result.html && isValidParseResult(result.html)) {
+          logger.info('[parseFileContent] parser=lo-converter, 成功')
+
+          // 存储元数据到 store（异步，不阻塞返回）
+          if (result.metadata) {
+            try {
+              const metaStore = useDocMetadataStore()
+              if (metaStore.docId) {
+                metaStore.setMetadata(metaStore.docId, result.metadata)
+              }
+            } catch {
+              // store 可能未初始化，忽略
+            }
+          }
+
+          const metaForProcess = result.metadata || undefined
+          return normalizeImportedHtml(result.html, 'lo', metaForProcess)
+        }
+        loError = 'LO 转换结果为空'
+      } else {
+        loError = '转换服务不可用'
+      }
+    } catch (e) {
+      loError = formatParseError(e)
+      logger.warn('[parseFileContent] LO 转换服务失败，降级到前端解析:', loError)
+    }
+
     // ── 策略 1：红头文件检测 ──
     let redHeadError: string | null = null
     try {
       const isRedHead = await isRedHeadDocument(data)
       if (isRedHead) {
         onProgress?.(30, '检测到红头文件，正在解析...')
-        const result = sanitizeImagesIfNeeded(
+        const result = normalizeImportedHtml(
           await parseRedHeadDocument(data, onProgress),
           'redhead'
         )
@@ -187,7 +223,7 @@ export const parseFileContent = async (
       } catch (_) { /* 静默失败，不影响主流程 */ }
 
       const html = serializeDocModelToHtml(model)
-      const result = sanitizeImagesIfNeeded(convertInlineStylesToTiptap(html), 'docmodel')
+      const result = normalizeImportedHtml(html, 'docmodel')
       if (isValidParseResult(result)) {
         // 检查是否包含样式信息：如果有样式，直接返回；否则暂存结果，尝试 OOXML Enhanced
         if (hasStyleHintsInHtml(result)) {
@@ -215,7 +251,7 @@ export const parseFileContent = async (
     try {
       onProgress?.(55, '正在使用增强解析器...')
       const ooxmlHtml = await parseOoxmlDocumentEnhanced(data, onProgress)
-      const result = sanitizeImagesIfNeeded(convertInlineStylesToTiptap(ooxmlHtml), 'ooxml-enhanced')
+      const result = normalizeImportedHtml(ooxmlHtml, 'ooxml')
       if (isValidParseResult(result) && hasStyleHintsInHtml(result)) {
         logger.info('[parseFileContent] parser=ooxml-enhanced, 成功（含样式）')
         return result
@@ -244,7 +280,7 @@ export const parseFileContent = async (
 
     // ── 策略 3：Mammoth fallback（最终兜底） ──
     try {
-      const result = sanitizeImagesIfNeeded(
+      const result = normalizeImportedHtml(
         await parseWordDocument(data, onProgress),
         'mammoth'
       )

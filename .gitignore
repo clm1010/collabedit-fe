@@ -7,3 +7,55 @@ pnpm-debug
 auto-*.d.ts
 .idea
 .history
+
+.env
+.env.dev
+.env.prod
+.env.local
+.env.*.local
+
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+bun.lockb
+
+.pnp.js
+.pnp
+.pnp.caches
+.pnp.lock
+.pnp.lock.yaml
+.pnp.lock.json
+.pnp.lock.lock
+.pnp.lock.lock.yaml
+.pnp.lock.lock.json
+
+bun.lockb
+bun.lock
+bun.lock.yaml
+bun.lock.json
+bun.lock.lock
+bun.lock.lock.yaml
+bun.lock.lock.json
+bun.lock.lock.lock
+bun.lock.lock.lock.yaml
+bun.lock.lock.lock.json
+
+.vscode
+.vscode/*
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+
+nginx.conf nginx.conf.backup
+
+DEPLOY.md DEPLOY.md.backup
+DEPLOYMENT.md DEPLOYMENT.md.backup
+
+.cursor .cursor/*
+
+.qoder .qoder/*
