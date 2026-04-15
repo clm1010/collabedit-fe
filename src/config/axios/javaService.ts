@@ -106,12 +106,14 @@ javaService.interceptors.response.use(
       response.request.responseType === 'blob' ||
       response.request.responseType === 'arraybuffer'
     ) {
-      // 如果响应是 JSON 格式，说明可能是错误响应
+      // 如果响应是 JSON 格式，可能是后端错误响应，也可能是原始 JSON 文件内容
       if (response.data.type === 'application/json') {
         const jsonData = await new Response(response.data).json()
-        if (jsonData.code !== 200 && jsonData.code !== 0) {
-          ElMessage.error(jsonData.msg || '请求失败')
-          return Promise.reject(new Error(jsonData.msg || '请求失败'))
+        // 只有包含 code 字段才视为后端标准响应包装，否则是原始文件内容（如 Tiptap JSON）
+        if (jsonData.code !== undefined && jsonData.code !== 200 && jsonData.code !== 0) {
+          const msg = jsonData.msg || jsonData.message || '请求失败'
+          ElMessage.error(msg)
+          return Promise.reject(new Error(msg))
         }
         return jsonData
       }

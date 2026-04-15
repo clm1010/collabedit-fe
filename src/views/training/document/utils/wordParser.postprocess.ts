@@ -501,6 +501,134 @@ export const convertLargeFontParagraphsToHeadings = (html: string): string => {
 
 export type ImportSource = 'lo' | 'docmodel' | 'ooxml' | 'mammoth' | 'redhead'
 
+/**
+ * 将块级元素（p, div, h1-h6）上的文本样式（color, font-size, font-family, font-weight）
+ * 转移到内联 span 包装中，因为 Tiptap 只识别 mark 级别的 TextStyle。
+ */
+const convertBlockStylesToInline = (html: string): string => {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('root')
+    if (!root) return html
+
+    const TEXT_STYLE_RE = /^(color|font-size|font-family|font-weight|font-style):/i
+
+    root.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6').forEach((el) => {
+      const style = el.getAttribute('style')
+      if (!style) return
+
+      const textStyles: string[] = []
+      const blockStyles: string[] = []
+
+      style.split(';').forEach((s) => {
+        const trimmed = s.trim()
+        if (!trimmed) return
+        if (TEXT_STYLE_RE.test(trimmed)) {
+          textStyles.push(trimmed)
+        } else {
+          blockStyles.push(trimmed)
+        }
+      })
+
+      if (textStyles.length === 0) return
+
+      if (blockStyles.length > 0) {
+        el.setAttribute('style', blockStyles.join('; '))
+      } else {
+        el.removeAttribute('style')
+      }
+
+      const innerHTML = el.innerHTML.trim()
+      if (!innerHTML || innerHTML === '<br>') return
+
+      el.innerHTML = `<span style="${textStyles.join('; ')}">${innerHTML}</span>`
+    })
+
+    return root.innerHTML
+  } catch (e) {
+    console.warn('convertBlockStylesToInline failed:', e)
+    return html
+  }
+}
+
+/**
+ * 将 inline style 的 font-weight:bold/700+ 转为 <strong> 标签,
+ * font-style:italic 转为 <em> 标签, text-decoration 转为 <u>/<s> 标签.
+ * Tiptap 对 HTML 标签的识别比对 inline style 更可靠.
+ */
+const convertInlineStylesToHtmlTags = (html: string): string => {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('root')
+    if (!root) return html
+
+    root.querySelectorAll('span').forEach((span) => {
+      const style = span.getAttribute('style')
+      if (!style) return
+
+      let wrapBold = false
+      let wrapItalic = false
+      let wrapUnderline = false
+      let wrapStrike = false
+      const remainStyles: string[] = []
+
+      style.split(';').forEach((s) => {
+        const trimmed = s.trim()
+        if (!trimmed) return
+        const lower = trimmed.toLowerCase()
+
+        if (/^font-weight\s*:\s*(bold|[5-9]\d\d|[1-9]\d{3})\s*$/i.test(trimmed)) {
+          wrapBold = true
+          return
+        }
+        if (/^font-style\s*:\s*italic\s*$/i.test(trimmed)) {
+          wrapItalic = true
+          return
+        }
+        if (lower.includes('text-decoration') && lower.includes('underline')) {
+          wrapUnderline = true
+          const cleaned = trimmed.replace(/underline/gi, '').replace(/text-decoration\s*:\s*;?/i, '').trim()
+          if (cleaned && !/^\s*;?\s*$/.test(cleaned) && !/^text-decoration\s*:\s*$/i.test('text-decoration: ' + cleaned)) {
+            remainStyles.push(`text-decoration: ${cleaned}`)
+          }
+          return
+        }
+        if (lower.includes('text-decoration') && lower.includes('line-through')) {
+          wrapStrike = true
+          const cleaned = trimmed.replace(/line-through/gi, '').replace(/text-decoration\s*:\s*;?/i, '').trim()
+          if (cleaned && !/^\s*;?\s*$/.test(cleaned)) {
+            remainStyles.push(`text-decoration: ${cleaned}`)
+          }
+          return
+        }
+        remainStyles.push(trimmed)
+      })
+
+      if (!wrapBold && !wrapItalic && !wrapUnderline && !wrapStrike) return
+
+      if (remainStyles.length > 0) {
+        span.setAttribute('style', remainStyles.join('; '))
+      } else {
+        span.removeAttribute('style')
+      }
+
+      let inner = span.innerHTML
+      if (wrapStrike) inner = `<s>${inner}</s>`
+      if (wrapUnderline) inner = `<u>${inner}</u>`
+      if (wrapItalic) inner = `<em>${inner}</em>`
+      if (wrapBold) inner = `<strong>${inner}</strong>`
+      span.innerHTML = inner
+    })
+
+    return root.innerHTML
+  } catch (e) {
+    console.warn('convertInlineStylesToHtmlTags failed:', e)
+    return html
+  }
+}
+
 function computeMaxImageWidth(metadata?: DocMetadata | null): number {
   const DEFAULT = 540
   if (!metadata?.paperSize || !metadata?.margins) return DEFAULT
@@ -528,7 +656,10 @@ export const normalizeImportedHtml = (
     html = cleanWordHtml(html, { maxImageWidth })
   }
 
+  html = convertBlockStylesToInline(html)
+  html = convertInlineStylesToHtmlTags(html)
   html = convertInlineStylesToTiptap(html)
+  html = convertLargeFontParagraphsToHeadings(html)
   html = sanitizeImagesIfNeeded(html, source)
 
   return html

@@ -1033,6 +1033,7 @@ const importProgress = ref(0)
 const importProgressText = ref('')
 const wordImportBlobUrls = ref<string[]>([])
 const wordImportImageStore = new ImageStore()
+const wordImportFromLo = ref(false)
 
 const clearImportBlobUrls = () => {
   wordImportImageStore.clear()
@@ -1190,6 +1191,7 @@ const handleWordFileSelect = async (uploadFile: any) => {
         if (result.html && result.html.trim().length > 20) {
           html = normalizeImportedHtml(result.html, 'lo', result.metadata)
           usedLoConverter = true
+          wordImportFromLo.value = true
           console.log('LO 转换服务解析成功，HTML长度:', html.length)
 
           // 异步保存元数据和原始文件（不阻塞 UI）
@@ -1968,6 +1970,7 @@ const confirmWordImport = async () => {
     return
   }
 
+  wordImportLoading.value = true
   try {
     const rawContent = wordImportRawHtml.value?.trim()
     let content = (rawContent || wordImportPreview.value).trim()
@@ -2005,13 +2008,15 @@ const confirmWordImport = async () => {
     const importTableBodyWidth = resolveEditorTableBodyWidth(
       editor.value?.view?.dom as HTMLElement | undefined
     )
-    // 预处理 HTML，确保样式格式正确且能被 Tiptap 识别
-    content = normalizeTableStructureForImport(content, importTableBodyWidth)
-    content = preprocessHtmlForTiptap(content)
-    content = normalizeTableStructureForImport(content, importTableBodyWidth)
-
-    // 再次清理图片 base64，避免 data URL 损坏导致渲染报错
-    content = validateAndFixImages(content)
+    if (wordImportFromLo.value) {
+      content = normalizeTableStructureForImport(content, importTableBodyWidth)
+      content = validateAndFixImages(content)
+    } else {
+      content = normalizeTableStructureForImport(content, importTableBodyWidth)
+      content = preprocessHtmlForTiptap(content)
+      content = normalizeTableStructureForImport(content, importTableBodyWidth)
+      content = validateAndFixImages(content)
+    }
 
     content = restoreDataImages(content, protectedImages.images)
 
@@ -2097,9 +2102,12 @@ const confirmWordImport = async () => {
     clearWordImportContent()
     wordImportFile.value = null
     wordArrayBuffer.value = null
+    wordImportFromLo.value = false
   } catch (error) {
     console.error('Word导入失败:', error)
     ElMessage.error('导入失败: ' + (error as Error).message)
+  } finally {
+    wordImportLoading.value = false
   }
 }
 
@@ -2108,6 +2116,7 @@ const clearWordImport = () => {
   wordImportFile.value = null
   clearWordImportContent()
   wordArrayBuffer.value = null
+  wordImportFromLo.value = false
   importProgress.value = 0
   importProgressText.value = ''
 }
@@ -2118,6 +2127,7 @@ const cancelWordImport = () => {
   clearWordImportContent()
   wordImportFile.value = null
   wordArrayBuffer.value = null
+  wordImportFromLo.value = false
   importProgress.value = 0
   importProgressText.value = ''
 }
