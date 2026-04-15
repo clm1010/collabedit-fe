@@ -289,7 +289,11 @@ const parseParagraphWithInlineImages = (element: Element): DocBlock[] => {
         originSrc: rawOriginSrc ? cleanDataUrlWhitespace(rawOriginSrc) : undefined,
         alt: el.getAttribute('alt') || undefined,
         width: parsePxValue(el.getAttribute('width') || undefined) || parsePxValue(imgStyleMap['width']),
-        height: parsePxValue(el.getAttribute('height') || undefined) || parsePxValue(imgStyleMap['height'])
+        height: parsePxValue(el.getAttribute('height') || undefined) || parsePxValue(imgStyleMap['height']),
+        cropTop: parseCropValue(el.getAttribute('data-crop-top')),
+        cropRight: parseCropValue(el.getAttribute('data-crop-right')),
+        cropBottom: parseCropValue(el.getAttribute('data-crop-bottom')),
+        cropLeft: parseCropValue(el.getAttribute('data-crop-left'))
       }
     })
   }
@@ -381,6 +385,12 @@ const cleanDataUrlWhitespace = (url: string): string => {
   return prefix + base64.replace(/[\s\r\n\t]+/g, '')
 }
 
+const parseCropValue = (raw: string | null): number | undefined => {
+  if (!raw) return undefined
+  const v = parseFloat(raw)
+  return !isNaN(v) && v > 0 ? v : undefined
+}
+
 const parseImage = (element: Element): DocImageBlock => {
   const rawOriginSrc = element.getAttribute('data-origin-src') || undefined
   const rawSrc = rawOriginSrc || element.getAttribute('src') || ''
@@ -415,7 +425,12 @@ const parseImage = (element: Element): DocImageBlock => {
           marginBottom
         }
       : undefined
-  return { type: 'image', src, originSrc, alt, width, height, style }
+  return { type: 'image', src, originSrc, alt, width, height, style,
+    cropTop: parseCropValue(element.getAttribute('data-crop-top')),
+    cropRight: parseCropValue(element.getAttribute('data-crop-right')),
+    cropBottom: parseCropValue(element.getAttribute('data-crop-bottom')),
+    cropLeft: parseCropValue(element.getAttribute('data-crop-left'))
+  }
 }
 
 const parseTable = (element: Element): DocTableBlock => {

@@ -178,6 +178,7 @@ import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { getFileStream as getFileStreamApi } from '@/api/training'
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
+import { applyCropToImages } from './utils/cropImageUtils'
 import {
   normalizeTableStructureForImport,
   resolveEditorTableBodyWidth
@@ -1138,7 +1139,8 @@ const handleSave = async () => {
   try {
     const content = editorInstance.value.getHTML()
     const restored = await restoreBlobImagesFromOriginAsync(content)
-    const docModel = parseHtmlToDocModel(restored, {
+    const cropped = await applyCropToImages(restored)
+    const docModel = parseHtmlToDocModel(cropped, {
       source: 'html',
       method: 'tiptap-html'
     })

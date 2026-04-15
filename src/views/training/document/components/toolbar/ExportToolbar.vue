@@ -143,6 +143,7 @@ import { docModelToDocx, normalizeHtmlThroughDocModel, parseHtmlToDocModel } fro
 import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 import { copyToClipboard } from '@/views/utils/clipboard'
+import { applyCropToImages } from '../../utils/cropImageUtils'
 
 const editor = useEditor()
 
@@ -165,7 +166,8 @@ const generateFullHtml = async (): Promise<string> => {
 
   const raw = editor.value.getHTML()
   const restored = await restoreBlobImagesFromOriginAsync(raw)
-  const content = normalizeHtmlThroughDocModel(restored, {
+  const cropped = await applyCropToImages(restored)
+  const content = normalizeHtmlThroughDocModel(cropped, {
     source: 'html',
     method: 'tiptap-html'
   })
@@ -179,7 +181,8 @@ const previewHtml = async () => {
   }
   const content = editor.value.getHTML()
   const restored = await restoreBlobImagesFromOriginAsync(content)
-  previewContent.value = normalizeHtmlThroughDocModel(restored, {
+  const cropped = await applyCropToImages(restored)
+  previewContent.value = normalizeHtmlThroughDocModel(cropped, {
     source: 'html',
     method: 'tiptap-html'
   })
@@ -199,7 +202,8 @@ const exportWord = async () => {
   try {
     const content = editor.value.getHTML()
     const restored = await restoreBlobImagesFromOriginAsync(content)
-    const normalizedHtml = normalizeHtmlThroughDocModel(restored, {
+    const cropped = await applyCropToImages(restored)
+    const normalizedHtml = normalizeHtmlThroughDocModel(cropped, {
       source: 'html',
       method: 'tiptap-html'
     })

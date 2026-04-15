@@ -144,6 +144,50 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
           if (!attributes['data-origin-src']) return {}
           return { 'data-origin-src': attributes['data-origin-src'] }
         }
+      },
+      cropTop: {
+        default: null,
+        parseHTML: (element) => {
+          const v = element.getAttribute('data-crop-top')
+          return v ? parseFloat(v) : null
+        },
+        renderHTML: (attributes) => {
+          if (attributes.cropTop == null) return {}
+          return { 'data-crop-top': String(attributes.cropTop) }
+        }
+      },
+      cropRight: {
+        default: null,
+        parseHTML: (element) => {
+          const v = element.getAttribute('data-crop-right')
+          return v ? parseFloat(v) : null
+        },
+        renderHTML: (attributes) => {
+          if (attributes.cropRight == null) return {}
+          return { 'data-crop-right': String(attributes.cropRight) }
+        }
+      },
+      cropBottom: {
+        default: null,
+        parseHTML: (element) => {
+          const v = element.getAttribute('data-crop-bottom')
+          return v ? parseFloat(v) : null
+        },
+        renderHTML: (attributes) => {
+          if (attributes.cropBottom == null) return {}
+          return { 'data-crop-bottom': String(attributes.cropBottom) }
+        }
+      },
+      cropLeft: {
+        default: null,
+        parseHTML: (element) => {
+          const v = element.getAttribute('data-crop-left')
+          return v ? parseFloat(v) : null
+        },
+        renderHTML: (attributes) => {
+          if (attributes.cropLeft == null) return {}
+          return { 'data-crop-left': String(attributes.cropLeft) }
+        }
       }
     }
   },

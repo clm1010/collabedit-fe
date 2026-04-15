@@ -67,6 +67,10 @@ const serializeRun = (run: DocRun): string => {
     if (img.alt) attrs.push(`alt="${escapeHtml(img.alt)}"`)
     if (img.width) attrs.push(`width="${img.width}"`)
     if (img.height) attrs.push(`height="${img.height}"`)
+    if (img.cropTop) attrs.push(`data-crop-top="${img.cropTop}"`)
+    if (img.cropRight) attrs.push(`data-crop-right="${img.cropRight}"`)
+    if (img.cropBottom) attrs.push(`data-crop-bottom="${img.cropBottom}"`)
+    if (img.cropLeft) attrs.push(`data-crop-left="${img.cropLeft}"`)
     attrs.push('style="display: inline-block; vertical-align: bottom;"')
     return `<img ${attrs.join(' ')} />`
   }
@@ -176,6 +180,10 @@ const serializeBlock = (block: DocBlock): string => {
     if (block.alt) attrs.push(`alt="${escapeHtml(block.alt)}"`)
     if (block.width) attrs.push(`width="${block.width}"`)
     if (block.height) attrs.push(`height="${block.height}"`)
+    if (block.cropTop) attrs.push(`data-crop-top="${block.cropTop}"`)
+    if (block.cropRight) attrs.push(`data-crop-right="${block.cropRight}"`)
+    if (block.cropBottom) attrs.push(`data-crop-bottom="${block.cropBottom}"`)
+    if (block.cropLeft) attrs.push(`data-crop-left="${block.cropLeft}"`)
     const align = block.style?.align || 'center'
     attrs.push(`data-align="${align}"`)
     const styleParts: string[] = ['display: block']

@@ -7,3 +7,15 @@ pnpm-debug
 auto-*.d.ts
 .idea
 .history
+
+.env*
+!.env.example
+
+pnpm-lock.yaml
+
+.vscode
+.cursor
+.cursor/
+.cursorrules
+
+.qoder

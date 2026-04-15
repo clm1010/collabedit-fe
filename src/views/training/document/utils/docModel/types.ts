@@ -78,6 +78,10 @@ export interface DocInlineImage {
   alt?: string
   width?: number
   height?: number
+  cropTop?: number
+  cropRight?: number
+  cropBottom?: number
+  cropLeft?: number
 }
 
 export interface DocRun {
@@ -118,6 +122,10 @@ export interface DocImageBlock {
   width?: number
   height?: number
   style?: ImageStyle
+  cropTop?: number
+  cropRight?: number
+  cropBottom?: number
+  cropLeft?: number
 }
 
 export interface DocPageBreakBlock {
