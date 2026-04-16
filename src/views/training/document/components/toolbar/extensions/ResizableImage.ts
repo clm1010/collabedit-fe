@@ -157,65 +157,70 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
     return [
       new Plugin({
         appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some((t) => t.docChanged)) return null
-          if (transactions.some((t) => t.getMeta(SPLIT_META))) return null
+          try {
+            if (!transactions.some((t) => t.docChanged)) return null
+            if (transactions.some((t) => t.getMeta(SPLIT_META))) return null
 
-          const { tr } = newState
-          let modified = false
-          const replacements: { from: number; to: number; content: any[] }[] = []
+            const { tr } = newState
+            let modified = false
+            const replacements: { from: number; to: number; content: any[] }[] = []
 
-          newState.doc.descendants((node, pos) => {
-            if (node.type.name !== 'paragraph') return
+            newState.doc.descendants((node, pos) => {
+              if (node.type.name !== 'paragraph') return
 
-            let hasBlockImage = false
-            let hasOtherContent = false
-            node.forEach((child) => {
-              if (child.type.name === 'image' && child.attrs.display !== 'inline') {
-                hasBlockImage = true
-              } else {
-                hasOtherContent = true
+              let hasBlockImage = false
+              let hasOtherContent = false
+              node.forEach((child) => {
+                if (child.type.name === 'image' && child.attrs.display !== 'inline') {
+                  hasBlockImage = true
+                } else {
+                  hasOtherContent = true
+                }
+              })
+              if (!hasBlockImage || !hasOtherContent) return
+
+              const schema = newState.schema
+              const newNodes: any[] = []
+              let currentChildren: any[] = []
+
+              const flush = () => {
+                if (currentChildren.length > 0) {
+                  newNodes.push(schema.nodes.paragraph.create(node.attrs, currentChildren))
+                  currentChildren = []
+                }
+              }
+
+              node.forEach((child) => {
+                if (child.type.name === 'image' && child.attrs.display !== 'inline') {
+                  flush()
+                  newNodes.push(schema.nodes.paragraph.create(null, child))
+                } else {
+                  currentChildren.push(child)
+                }
+              })
+              flush()
+
+              if (newNodes.length > 1) {
+                replacements.push({ from: pos, to: pos + node.nodeSize, content: newNodes })
               }
             })
-            if (!hasBlockImage || !hasOtherContent) return
 
-            const schema = newState.schema
-            const newNodes: any[] = []
-            let currentChildren: any[] = []
-
-            const flush = () => {
-              if (currentChildren.length > 0) {
-                newNodes.push(schema.nodes.paragraph.create(node.attrs, currentChildren))
-                currentChildren = []
-              }
+            replacements.sort((a, b) => b.from - a.from)
+            for (const { from, to, content } of replacements) {
+              const mFrom = tr.mapping.map(from)
+              const mTo = tr.mapping.map(to)
+              tr.replaceWith(mFrom, mTo, content)
+              modified = true
             }
 
-            node.forEach((child) => {
-              if (child.type.name === 'image' && child.attrs.display !== 'inline') {
-                flush()
-                newNodes.push(schema.nodes.paragraph.create(null, child))
-              } else {
-                currentChildren.push(child)
-              }
-            })
-            flush()
-
-            if (newNodes.length > 1) {
-              replacements.push({ from: pos, to: pos + node.nodeSize, content: newNodes })
+            if (modified) {
+              tr.setMeta(SPLIT_META, true)
             }
-          })
-
-          replacements.sort((a, b) => b.from - a.from)
-          for (const { from, to, content } of replacements) {
-            const mFrom = tr.mapping.map(from)
-            const mTo = tr.mapping.map(to)
-            tr.replaceWith(mFrom, mTo, content)
-            modified = true
+            return modified ? tr : null
+          } catch (e) {
+            console.warn('[ResizableImage] blockImageAutoSplit error:', e)
+            return null
           }
-
-          if (modified) {
-            tr.setMeta(SPLIT_META, true)
-          }
-          return modified ? tr : null
         }
       })
     ]

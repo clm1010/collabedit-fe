@@ -181,112 +181,135 @@ export const CustomTable = Table.extend({
           } catch { /* */ }
           if (!bodyWidth) return null
 
+          // 检测大规模内容替换（如导入文档），跳过同步以避免位置越界
+          const isBulkReplace = transactions.some(t => {
+            const steps = (t as any).steps
+            if (!steps || !Array.isArray(steps)) return false
+            return steps.some((s: any) => s.slice && s.slice.size > 500)
+          })
+          if (isBulkReplace) return null
+
           let tr = newState.tr
           let changed = false
 
-          newState.doc.descendants((node: any, pos: number) => {
-            if (node.type.name !== 'table') return true
+          try {
+            newState.doc.descendants((node: any, pos: number) => {
+              if (node.type.name !== 'table') return true
 
-            const newCols = extractLogicalColWidths(node)
-            const newSum = newCols.reduce((a, b) => a + b, 0)
-            const allValid = newCols.length > 0 && newCols.every(w => w > 0)
-            if (!allValid || newSum <= 0) return false
+              const newCols = extractLogicalColWidths(node)
+              const newSum = newCols.reduce((a, b) => a + b, 0)
+              const allValid = newCols.length > 0 && newCols.every(w => w > 0)
+              if (!allValid || newSum <= 0) return false
 
-            const currentTableWidth = Number(node.attrs.tableWidth || 0)
+              const currentTableWidth = Number(node.attrs.tableWidth || 0)
 
-            if (newSum <= bodyWidth!) {
-              if (Math.abs(newSum - currentTableWidth) > 2) {
+              if (newSum <= bodyWidth!) {
+                if (Math.abs(newSum - currentTableWidth) > 2) {
+                  tr = tr.setNodeMarkup(pos, undefined, {
+                    ...node.attrs,
+                    tableWidth: Math.round(newSum)
+                  })
+                  changed = true
+                }
+                return false
+              }
+
+              const excess = newSum - bodyWidth!
+              const cappedCols = [...newCols]
+
+              // 安全地获取旧文档中对应位置的节点（位置可能在旧文档中不存在）
+              let oldCols: number[] | null = null
+              if (pos < oldState.doc.content.size) {
+                try {
+                  const oldTableNode = oldState.doc.nodeAt(pos)
+                  oldCols =
+                    oldTableNode && oldTableNode.type.name === 'table'
+                      ? extractLogicalColWidths(oldTableNode)
+                      : null
+                } catch { /* position invalid in old doc */ }
+              }
+
+              if (
+                oldCols &&
+                oldCols.length === cappedCols.length &&
+                oldCols.every(w => w > 0)
+              ) {
+                let remaining = excess
+                for (let i = 0; i < cappedCols.length && remaining > 0; i++) {
+                  if (cappedCols[i] > oldCols[i]) {
+                    const increase = cappedCols[i] - oldCols[i]
+                    const cap = Math.min(increase, remaining)
+                    cappedCols[i] -= cap
+                    remaining -= cap
+                  }
+                }
+                while (remaining > 0) {
+                  let maxIdx = 0
+                  for (let j = 1; j < cappedCols.length; j++) {
+                    if (cappedCols[j] > cappedCols[maxIdx]) maxIdx = j
+                  }
+                  const room = cappedCols[maxIdx] - CELL_MIN_WIDTH
+                  if (room <= 0) break
+                  const cut = Math.min(room, remaining)
+                  cappedCols[maxIdx] -= cut
+                  remaining -= cut
+                }
+              } else {
+                const scale = bodyWidth! / newSum
+                for (let i = 0; i < cappedCols.length; i++) {
+                  cappedCols[i] = Math.max(
+                    CELL_MIN_WIDTH,
+                    Math.round(cappedCols[i] * scale)
+                  )
+                }
+                const scaledSum = cappedCols.reduce((a, b) => a + b, 0)
+                let driftExcess = scaledSum - bodyWidth!
+                for (
+                  let i = cappedCols.length - 1;
+                  i >= 0 && driftExcess > 0;
+                  i--
+                ) {
+                  const room = cappedCols[i] - CELL_MIN_WIDTH
+                  if (room > 0) {
+                    const cut = Math.min(room, driftExcess)
+                    cappedCols[i] -= cut
+                    driftExcess -= cut
+                  }
+                }
+              }
+
+              try {
+                node.forEach((rowNode: any, rowOffset: number) => {
+                  if (rowNode.type.name !== 'tableRow') return
+                  let colIdx = 0
+                  rowNode.forEach((cellNode: any, cellOffset: number) => {
+                    const span = cellNode.attrs.colspan || 1
+                    const cellCw = cappedCols.slice(colIdx, colIdx + span)
+                    const cellPos = pos + 1 + rowOffset + 1 + cellOffset
+                    tr = tr.setNodeMarkup(cellPos, undefined, {
+                      ...cellNode.attrs,
+                      colwidth: cellCw
+                    })
+                    colIdx += span
+                  })
+                  changed = true
+                })
+
                 tr = tr.setNodeMarkup(pos, undefined, {
                   ...node.attrs,
-                  tableWidth: Math.round(newSum)
+                  tableWidth: bodyWidth
                 })
                 changed = true
+              } catch (e) {
+                console.warn('[CustomTable] tableWidthSync skipped for table at pos', pos, e)
               }
+
               return false
-            }
-
-            const excess = newSum - bodyWidth!
-            const cappedCols = [...newCols]
-
-            const oldTableNode = oldState.doc.nodeAt(pos)
-            const oldCols =
-              oldTableNode && oldTableNode.type.name === 'table'
-                ? extractLogicalColWidths(oldTableNode)
-                : null
-
-            if (
-              oldCols &&
-              oldCols.length === cappedCols.length &&
-              oldCols.every(w => w > 0)
-            ) {
-              let remaining = excess
-              for (let i = 0; i < cappedCols.length && remaining > 0; i++) {
-                if (cappedCols[i] > oldCols[i]) {
-                  const increase = cappedCols[i] - oldCols[i]
-                  const cap = Math.min(increase, remaining)
-                  cappedCols[i] -= cap
-                  remaining -= cap
-                }
-              }
-              while (remaining > 0) {
-                let maxIdx = 0
-                for (let j = 1; j < cappedCols.length; j++) {
-                  if (cappedCols[j] > cappedCols[maxIdx]) maxIdx = j
-                }
-                const room = cappedCols[maxIdx] - CELL_MIN_WIDTH
-                if (room <= 0) break
-                const cut = Math.min(room, remaining)
-                cappedCols[maxIdx] -= cut
-                remaining -= cut
-              }
-            } else {
-              const scale = bodyWidth! / newSum
-              for (let i = 0; i < cappedCols.length; i++) {
-                cappedCols[i] = Math.max(
-                  CELL_MIN_WIDTH,
-                  Math.round(cappedCols[i] * scale)
-                )
-              }
-              const scaledSum = cappedCols.reduce((a, b) => a + b, 0)
-              let driftExcess = scaledSum - bodyWidth!
-              for (
-                let i = cappedCols.length - 1;
-                i >= 0 && driftExcess > 0;
-                i--
-              ) {
-                const room = cappedCols[i] - CELL_MIN_WIDTH
-                if (room > 0) {
-                  const cut = Math.min(room, driftExcess)
-                  cappedCols[i] -= cut
-                  driftExcess -= cut
-                }
-              }
-            }
-
-            node.forEach((rowNode: any, rowOffset: number) => {
-              if (rowNode.type.name !== 'tableRow') return
-              let colIdx = 0
-              rowNode.forEach((cellNode: any, cellOffset: number) => {
-                const span = cellNode.attrs.colspan || 1
-                const cellCw = cappedCols.slice(colIdx, colIdx + span)
-                const cellPos = pos + 1 + rowOffset + 1 + cellOffset
-                tr = tr.setNodeMarkup(cellPos, undefined, {
-                  ...cellNode.attrs,
-                  colwidth: cellCw
-                })
-                colIdx += span
-              })
-              changed = true
             })
-
-            tr = tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              tableWidth: bodyWidth
-            })
-            changed = true
-
-            return false
-          })
+          } catch (e) {
+            console.warn('[CustomTable] tableWidthSync appendTransaction error:', e)
+            return null
+          }
 
           return changed ? tr : null
         }
@@ -294,26 +317,31 @@ export const CustomTable = Table.extend({
       new Plugin({
         key: autoFitPluginKey,
         appendTransaction(transactions: readonly Transaction[], oldState, newState) {
-          if (!transactions.some(tr => tr.docChanged)) return null
-          const oldTableCount = countTables(oldState.doc)
-          const newTableCount = countTables(newState.doc)
-          if (newTableCount <= oldTableCount) return null
-
-          const newTablePositions = findNewTablesWithoutWidth(newState.doc)
-          if (!newTablePositions.length) return null
-
-          let bodyWidth: number | undefined
           try {
-            const domEl = document.querySelector('.ProseMirror') as HTMLElement | null
-            bodyWidth = resolveBodyWidth(domEl || undefined)
-          } catch { /* */ }
-          if (!bodyWidth) return null
+            if (!transactions.some(tr => tr.docChanged)) return null
+            const oldTableCount = countTables(oldState.doc)
+            const newTableCount = countTables(newState.doc)
+            if (newTableCount <= oldTableCount) return null
 
-          let tr = newState.tr
-          for (const { pos, node } of newTablePositions) {
-            tr = fitTableNodeToWidth(tr, pos, node, bodyWidth)
+            const newTablePositions = findNewTablesWithoutWidth(newState.doc)
+            if (!newTablePositions.length) return null
+
+            let bodyWidth: number | undefined
+            try {
+              const domEl = document.querySelector('.ProseMirror') as HTMLElement | null
+              bodyWidth = resolveBodyWidth(domEl || undefined)
+            } catch { /* */ }
+            if (!bodyWidth) return null
+
+            let tr = newState.tr
+            for (const { pos, node } of newTablePositions) {
+              tr = fitTableNodeToWidth(tr, pos, node, bodyWidth)
+            }
+            return tr.docChanged ? tr : null
+          } catch (e) {
+            console.warn('[CustomTable] autoFit appendTransaction error:', e)
+            return null
           }
-          return tr.docChanged ? tr : null
         }
       })
     ]

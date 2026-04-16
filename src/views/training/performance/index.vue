@@ -279,7 +279,7 @@ import ExamRecordDialog from './components/ExamRecordDialog.vue'
 import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { blobToText } from '@/views/utils/fileUtils'
 import { logger } from '@/views/utils/logger'
-import { parseFileContent } from '@/views/training/document/utils/wordParser'
+import { importDocx } from '@/api/converter'
 import { isEmpty, isArray, isNil, isObject, pickBy, find, every, filter, map } from 'lodash-es'
 
 defineOptions({ name: 'TrainingPerformance' })
@@ -746,16 +746,27 @@ const handlePreview = async (row: PerformanceApi.TrainingPerformanceVO) => {
     }
 
     if (isWordDoc) {
-      // Word 文档：直接转 ArrayBuffer 解析为 HTML
-      const arrayBuffer = await blob.arrayBuffer()
-      const htmlContent = await parseFileContent(arrayBuffer)
-      if (htmlContent) {
-        previewContent.value = htmlContent
-        previewTitle.value = row.planName || '文档预览'
-        previewDialogVisible.value = true
-        return
+      try {
+        const arrayBuffer = await blob.arrayBuffer()
+        const result = await importDocx(arrayBuffer)
+        const text = (result.data?.content?.content || [])
+          .map((n: any) => {
+            if (n.type === 'paragraph' || n.type === 'heading') {
+              return (n.content || []).map((c: any) => c.text || '').join('')
+            }
+            return ''
+          })
+          .filter(Boolean)
+          .join('\n')
+        if (text) {
+          previewContent.value = `<div style="white-space:pre-wrap;padding:12px;">${text}</div>`
+          previewTitle.value = row.planName || '文档预览'
+          previewDialogVisible.value = true
+          return
+        }
+      } catch (err) {
+        logger.warn('Word 解析失败，回退为文本预览:', err)
       }
-      logger.warn('Word 解析失败，回退为文本预览')
     }
 
     const text = await blobToText(blob)

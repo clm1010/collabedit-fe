@@ -56,6 +56,8 @@ nginx.conf nginx.conf.backup
 DEPLOY.md DEPLOY.md.backup
 DEPLOYMENT.md DEPLOYMENT.md.backup
 
-.cursor .cursor/*
+.cursor 
+.cursor/*
 
-.qoder .qoder/*
+.qoder 
+.qoder/*

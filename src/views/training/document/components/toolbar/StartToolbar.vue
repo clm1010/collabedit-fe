@@ -517,31 +517,14 @@ import {
   fontSizePxToLabel
 } from './types'
 import { useEditorState } from './useEditor'
-import {
-  isDocFormat,
-  isZipFormat,
-  isHtmlFormat,
-  isMhtmlFormat,
-  isRtfFormat,
-  validateAndFixImages,
-  validateDocxFile,
-  parseOoxmlDocument,
-  parseRedHeadDocument,
-  parseOoxmlDocumentEnhanced,
-  parseHtmlDocument,
-  parseMhtmlDocument,
-  parseDocxToDocModel,
-  serializeDocModelToHtml,
-  ImageStore
-} from '../../utils/wordParser'
-import { normalizeColor } from '../../utils/wordParser.shared'
+import { ImageStore } from '../../utils/imageStore'
+import { normalizeColor } from '../../utils/colorUtils'
 import {
   normalizeTableStructureForImport,
   resolveEditorTableBodyWidth
 } from '../../utils/tableStructureNormalize'
 import { checkConverterHealth, importDocx } from '@/api/converter'
 import { useDocMetadataStore } from '@/store/modules/docMetadata'
-import { normalizeImportedHtml, convertInlineStylesToTiptap } from '../../utils/wordParser.postprocess'
 
 // 获取编辑器实例及撤销/重做响应式状态
 const { editor, canUndo, canRedo } = useEditorState()
@@ -1035,6 +1018,9 @@ const wordImportBlobUrls = ref<string[]>([])
 const wordImportImageStore = new ImageStore()
 const wordImportFromLo = ref(false)
 
+// 新版：存储从转换服务返回的 Tiptap JSON 内容
+const wordImportJsonContent = ref<Record<string, unknown> | null>(null)
+
 const clearImportBlobUrls = () => {
   wordImportImageStore.clear()
   wordImportBlobUrls.value = []
@@ -1068,11 +1054,9 @@ const importWord = () => {
 }
 
 const handleWordFileSelect = async (uploadFile: any) => {
-  // Element Plus Upload 组件传递的是 UploadFile 对象
   const file = uploadFile.raw || uploadFile
   if (!file) return
 
-  // 验证文件类型 - 仅支持 .docx
   const validType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   if (file.type !== validType && !file.name.match(/\.docx$/i)) {
     ElMessage.error('仅支持 .docx 格式，不支持旧版 .doc 格式')
@@ -1081,228 +1065,53 @@ const handleWordFileSelect = async (uploadFile: any) => {
 
   wordImportFile.value = file
   wordImportLoading.value = true
+  wordImportJsonContent.value = null
   importProgress.value = 0
-  importProgressText.value = '正在检测文件...'
+  importProgressText.value = '正在上传并解析文档...'
 
   try {
-    const arrayBuffer = await file.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuffer)
-
-    // 检测文件格式
-    const isDoc = isDocFormat(bytes)
-    const isDocx = isZipFormat(bytes)
-    const isHtml = isHtmlFormat(bytes)
-    const isMhtml = isMhtmlFormat(bytes)
-    const isRtf = isRtfFormat(bytes)
-
-    console.log('文件格式检测:', { isDoc, isDocx, isHtml, isMhtml, isRtf, filename: file.name })
-
-    // 如果是 .doc 格式，提示不支持
-    if (isDoc) {
-      ElMessage.error('不支持旧版 .doc 格式，请将文件另存为 .docx 格式后重试')
-      clearWordImportContent()
-      wordImportFile.value = null
-      wordImportLoading.value = false
-      return
-    }
-
-    // 如果是 RTF 格式，提示不支持
-    if (isRtf) {
-      ElMessage.error('检测到 RTF 格式，请将文件另存为 .docx 格式后重试')
-      clearWordImportContent()
-      wordImportFile.value = null
-      wordImportLoading.value = false
-      return
-    }
-
-    // 如果是 HTML/MHTML 格式（假 docx 文件）
-    if (isHtml || isMhtml) {
-      console.log('检测到 HTML/MHTML 格式的伪 docx 文件')
-      importProgressText.value = '检测到 HTML 格式，正在转换...'
-      importProgress.value = 20
-
-      let html: string
-      try {
-        if (isMhtml) {
-          html = await parseMhtmlDocument(arrayBuffer, updateProgress)
-        } else {
-          html = await parseHtmlDocument(arrayBuffer, updateProgress)
-        }
-
-        // 清理和验证图片
-        html = cleanWordHtml(html)
-        html = validateAndFixImages(html)
-
-        wordImportNormalizedHtml.value = html
-        wordImportRawHtml.value = html
-        wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
-        wordArrayBuffer.value = arrayBuffer
-        importProgress.value = 100
-        importProgressText.value = '解析完成'
-        console.log('HTML/MHTML 格式解析成功，HTML长度:', html.length)
-      } catch (e) {
-        console.error('HTML/MHTML 解析失败:', e)
-        ElMessage.error('文件解析失败，请检查文件内容是否正确')
-        clearWordImportContent()
-        wordImportFile.value = null
-      }
-      wordImportLoading.value = false
-      return
-    }
-
-    // 验证是否为有效的 .docx 格式
-    if (!isDocx) {
-      ElMessage.error('无效的文件格式，请上传有效的 .docx 文件')
-      clearWordImportContent()
-      wordImportFile.value = null
-      wordImportLoading.value = false
-      return
-    }
-
-    // 1. 文件完整性校验
-    importProgressText.value = '正在校验文件完整性...'
-    importProgress.value = 10
-    const validation = await validateDocxFile(arrayBuffer)
-
-    if (!validation.valid) {
-      ElMessage.error(validation.error || '文件已损坏，无法导入')
-      clearWordImportContent()
-      wordImportFile.value = null
-      wordImportLoading.value = false
-      return
-    }
-
-    // 2. 保存 ArrayBuffer 供后续使用
-    wordArrayBuffer.value = arrayBuffer
-
-    // 3. 优先尝试 LO 转换服务
     importProgress.value = 20
-    importProgressText.value = '正在解析文档...'
+    importProgressText.value = '正在调用转换服务解析...'
 
-    let html: string
-    let usedLoConverter = false
-
-    try {
-      const health = await checkConverterHealth()
-      if (health.available) {
-        importProgressText.value = '正在使用转换服务解析...'
-        importProgress.value = 30
-        const result = await importDocx(arrayBuffer)
-        if (result.html && result.html.trim().length > 20) {
-          html = normalizeImportedHtml(result.html, 'lo', result.metadata)
-          usedLoConverter = true
-          wordImportFromLo.value = true
-          console.log('LO 转换服务解析成功，HTML长度:', html.length)
-
-          // 异步保存元数据和原始文件（不阻塞 UI）
-          if (result.metadata) {
-            try {
-              const metaStore = useDocMetadataStore()
-              if (metaStore.docId) {
-                metaStore.setMetadata(metaStore.docId, result.metadata)
-                metaStore.saveMetadata(metaStore.docId, result.metadata).catch(() => {})
-                metaStore.saveOriginalFile(metaStore.docId, file).catch(() => {})
-              }
-            } catch { /* store 可能未初始化 */ }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('LO 转换服务失败，降级到前端解析:', e)
+    const result = await importDocx(file)
+    const content = result.data?.content
+    if (!content || !content.content || content.content.length === 0) {
+      throw new Error('转换服务返回的内容为空')
     }
 
-    // 4. 若 LO 未成功，走前端解析链路
-    if (!usedLoConverter) {
-      ElMessage.warning({
-        message: '转换服务暂不可用，已使用基础模式解析，格式可能有差异',
-        duration: 4000,
-      })
+    wordImportJsonContent.value = content
+    wordImportFromLo.value = true
 
-    try {
-      const docModel = await parseDocxToDocModel(arrayBuffer, {
-        fileName: file.name,
-        onProgress: updateProgress,
-        useDocxPreview: true,
-        useMammothFallback: true,
-        useZipJs: true,
-        useWorkerForLargeFiles: true,
-        mergeRedheadOoxml: true
-      })
-      html = serializeDocModelToHtml(docModel)
-      console.log('DocModel 解析完成，原始HTML长度:', html?.length || 0)
-
-      // 与 OOXML 增强解析对比，优先选择表格有效内容更多的结果。
+    // 异步保存元数据和原始文件（不阻塞 UI）
+    if (result.metadata) {
       try {
-        const enhancedHtml = await parseOoxmlDocumentEnhanced(arrayBuffer, updateProgress)
-        const docModelScore = getTableContentScore(html)
-        const enhancedScore = getTableContentScore(enhancedHtml)
-        if (enhancedScore > docModelScore) {
-          html = enhancedHtml
+        const metaStore = useDocMetadataStore()
+        if (metaStore.docId) {
+          metaStore.setMetadata(metaStore.docId, result.metadata)
+          metaStore.saveMetadata(metaStore.docId, result.metadata).catch(() => {})
+          metaStore.saveOriginalFile(metaStore.docId, file).catch(() => {})
         }
-      } catch (enhancedError) {
-        console.warn('[import-compare] enhanced parse skipped:', enhancedError)
-      }
-    } catch (e) {
-      console.warn('DocModel 解析失败，尝试后备方案:', e)
-      // 回退到原有的解析方案
-      if (validation.hasAltChunk) {
-        console.log('回退到红头文件方案')
-        html = await parseRedHeadDocument(arrayBuffer, updateProgress)
-      } else {
-        console.log('回退到 OOXML 方案')
-        html = await parseOoxmlDocument(arrayBuffer, updateProgress)
-      }
-      console.log('后备方案解析完成，HTML长度:', html?.length || 0)
+      } catch { /* store 可能未初始化 */ }
     }
 
-    // 检查解析结果
-    if (!html || html.trim().length < 20) {
-      console.warn('解析结果过短，尝试 mammoth 后备方案')
-      await parseWithMammothFallback()
-      return
-    }
-
-    // 清理和优化 HTML
-    const beforeCleanLength = html.length
-    html = cleanWordHtml(html)
-    console.log(`cleanWordHtml: ${beforeCleanLength} -> ${html.length}`)
-
-    // 再次检查
-    if (!html || html.trim().length < 20) {
-      console.warn('cleanWordHtml 后内容过短，尝试 mammoth 后备方案')
-      await parseWithMammothFallback()
-      return
-    }
-
-    // 验证和修复图片 base64 数据，解决 ERR_INVALID_URL 错误
-    html = validateAndFixImages(html)
-
-    // 转换内联样式为 Tiptap 格式（与 parseFileContent 保持一致）
-    html = convertInlineStylesToTiptap(html)
-    } // end if (!usedLoConverter)
-
-    wordImportNormalizedHtml.value = html
-    wordImportRawHtml.value = html
-    wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
+    // 生成预览（使用临时编辑器渲染 JSON 为 HTML）
+    importProgress.value = 80
+    importProgressText.value = '正在生成预览...'
+    wordImportPreview.value = `<div style="padding:12px;color:#666;font-size:13px;">
+      <p>✅ 文档解析成功</p>
+      <p>共 ${content.content.length} 个顶级节点</p>
+      ${result.logs?.warn?.length ? `<p>⚠️ ${result.logs.warn.length} 个警告</p>` : ''}
+    </div>`
 
     importProgress.value = 100
     importProgressText.value = '解析完成'
-
-    console.log('Word 文档解析成功，最终HTML长度:', html.length)
+    console.log(`[import] 转换服务解析成功，${content.content.length} 个顶级节点`)
   } catch (error) {
-    console.error('Word解析失败:', error)
-
-    // 如果解析失败，尝试使用 mammoth 作为后备方案
-    console.log('解析失败，尝试使用 mammoth 后备方案...')
-    try {
-      await parseWithMammothFallback()
-      return
-    } catch (fallbackError) {
-      console.error('Mammoth 后备方案也失败:', fallbackError)
-    }
-
-    ElMessage.error('Word 文档解析失败: ' + (error as Error).message)
+    console.error('文档导入失败:', error)
+    ElMessage.error('文档导入失败: ' + (error as Error).message)
     clearWordImportContent()
+    wordImportJsonContent.value = null
+    wordImportFile.value = null
   } finally {
     wordImportLoading.value = false
   }
@@ -1314,801 +1123,73 @@ const updateProgress = (progress: number, text: string) => {
   importProgressText.value = text
 }
 
-// Mammoth 后备解析方案
-const parseWithMammothFallback = async () => {
-  if (!wordArrayBuffer.value) return
-
-  importProgressText.value = '正在使用后备方案解析...'
-
-  const mammoth = await import('mammoth')
-
-  // 配置转换选项
-  const options: any = {
-    styleMap: wordImportOptions.preserveStyles
-      ? [
-          "p[style-name='Heading 1'] => h1:fresh",
-          "p[style-name='Heading 2'] => h2:fresh",
-          "p[style-name='Heading 3'] => h3:fresh",
-          "p[style-name='Heading 4'] => h4:fresh",
-          "p[style-name='Heading 5'] => h5:fresh",
-          "p[style-name='Heading 6'] => h6:fresh",
-          "p[style-name='标题 1'] => h1:fresh",
-          "p[style-name='标题 2'] => h2:fresh",
-          "p[style-name='标题 3'] => h3:fresh",
-          "p[style-name='标题 4'] => h4:fresh",
-          "p[style-name='标题'] => h1:fresh",
-          "r[style-name='Strong'] => strong",
-          "r[style-name='Emphasis'] => em",
-          "r[style-name='加粗'] => strong",
-          "r[style-name='斜体'] => em",
-          "r[style-name='下划线'] => u",
-          "p[style-name='Quote'] => blockquote:fresh",
-          "p[style-name='Block Quote'] => blockquote:fresh",
-          "p[style-name='引用'] => blockquote:fresh",
-          "p[style-name='List Paragraph'] => p:fresh",
-          "p[style-name='列表段落'] => p:fresh",
-          "p[style-name='Normal'] => p:fresh",
-          "p[style-name='正文'] => p:fresh",
-          'table => table',
-          "p[style-name='Code'] => pre:fresh",
-          "r[style-name='Code'] => code"
-        ]
-      : [],
-    includeDefaultStyleMap: true,
-    includeEmbeddedStyleMap: true
-  }
-
-  // 处理图片
-  if (wordImportOptions.convertImages) {
-    const mammothLib = mammoth.default || mammoth
-    if (mammothLib.images && mammothLib.images.imgElement) {
-      options.convertImage = mammothLib.images.imgElement((image: any) => {
-        return image.read('base64').then((imageBuffer: string) => {
-          const contentType = image.contentType || 'image/png'
-          return {
-            src: `data:${contentType};base64,${imageBuffer}`
-          }
-        })
-      })
-    }
-  }
-
-  const mammothLib = mammoth.default || mammoth
-  const result = await mammothLib.convertToHtml({ arrayBuffer: wordArrayBuffer.value }, options)
-
-  let html = result.value
-  html = cleanWordHtml(html)
-  html = validateAndFixImages(html)
-
-  wordImportRawHtml.value = html
-  wordImportPreview.value = await replaceDataImagesWithBlobUrls(html)
-  importProgress.value = 100
-  importProgressText.value = '解析完成（后备方案）'
-
-  if (result.messages.length > 0) {
-    const ignoredPatterns = [
-      'v:path',
-      'v:fill',
-      'v:stroke',
-      'v:shape',
-      'v:rect',
-      'v:oval',
-      'v:line',
-      'v:imagedata',
-      'v:textbox',
-      'v:formulas',
-      'office:office',
-      'office-word',
-      'urn:schemas-microsoft-com',
-      'image/x-emf',
-      'image/x-wmf',
-      'OLEObject',
-      'lock',
-      'anchorlock'
-    ]
-
-    const importantWarnings = result.messages.filter((m: any) => {
-      if (m.type !== 'warning') return false
-      const msg = m.message || ''
-      return !ignoredPatterns.some((pattern) => msg.toLowerCase().includes(pattern.toLowerCase()))
-    })
-
-    if (importantWarnings.length > 0) {
-      console.warn('Word导入警告:', importantWarnings)
-    }
-  }
-}
-
-// 清理 Word 导出的 HTML - 保持更好的排版和样式
-const cleanWordHtml = (html: string): string => {
-  const originalHtml = html
-  const originalLength = html.length
-
-  // === 首先清理开头的空白和空段落 - 解决"总是空出一行"的问题 ===
-  html = html.trim()
-  // 移除开头的空段落（但保护内容不被完全清除）- 增强版，匹配带任意属性的空段落
-  const beforeClean = html
-  html = html.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')
-  // 移除开头的空白字符
-  html = html.replace(/^\s+/, '')
-
-  // 安全检查：如果清理后内容为空，恢复
-  if (!html.trim()) {
-    console.warn('cleanWordHtml: 清理开头空段落后内容为空，恢复原始内容')
-    html = beforeClean
-  }
-
-  // === 处理颜色样式，确保 Tiptap 能正确解析 ===
-
-  // 转换 font 标签为 span（Tiptap 不支持 font 标签）
-  html = html.replace(
-    /<font([^>]*)color\s*=\s*["']?([^"'\s>]+)["']?([^>]*)>/gi,
-    '<span style="color: $2"$1$3>'
-  )
-  html = html.replace(/<\/font>/gi, '</span>')
-
-  // 确保颜色值格式正确（添加 # 前缀如果缺失）
-  html = html.replace(/color:\s*([A-Fa-f0-9]{6})([^A-Fa-f0-9])/gi, 'color: #$1$2')
-  html = html.replace(/color:\s*([A-Fa-f0-9]{3})([^A-Fa-f0-9])/gi, 'color: #$1$2')
-
-  // 转换常见的颜色名称为十六进制值
-  const colorNameMap: Record<string, string> = {
-    red: '#FF0000',
-    blue: '#0000FF',
-    green: '#008000',
-    yellow: '#FFFF00',
-    black: '#000000',
-    white: '#FFFFFF',
-    gray: '#808080',
-    orange: '#FFA500',
-    purple: '#800080',
-    pink: '#FFC0CB',
-    navy: '#000080',
-    maroon: '#800000'
-  }
-
-  for (const [name, hex] of Object.entries(colorNameMap)) {
-    const regex = new RegExp(`color:\\s*${name}([;\\s"'])`, 'gi')
-    html = html.replace(regex, `color: ${hex}$1`)
-  }
-
-  // === 清理多余内容 ===
-
-  // 移除多余的连续空段落（保留单个空段落用于间距）- 增强版，处理带 style/class 属性的空段落
-  html = html.replace(/(<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*){2,}/gi, '<p><br></p>')
-
-  // 清理中间的多余空段落（超过2个连续的压缩为1个）
-  html = html.replace(/(<p[^>]*>\s*<br\s*\/?>\s*<\/p>\s*){3,}/gi, '<p><br></p>')
-
-  // 清理多余的空格，但保留必要的空格
-  html = html.replace(/&nbsp;&nbsp;+/g, ' ')
-
-  // 在移除 mso-* 样式之前，先提取并保留 text-align 样式
-  // 处理块级元素的 text-align 样式 - 增强版，支持更多格式变体
-  html = html.replace(
-    /<(p|div|h[1-6]|span)([^>]*)style="([^"]*)"/gi,
-    (match, tag, attrs, style) => {
-      // 提取 text-align 值（支持大小写和不同空格格式）
-      const textAlignMatch = style.match(/text-align\s*:\s*(left|center|right|justify)/i)
-
-      // 移除 mso-* 样式
-      let cleanedStyle = style.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
-
-      // 确保 text-align 被保留
-      if (textAlignMatch) {
-        const alignValue = textAlignMatch[1].toLowerCase() // 标准化对齐值
-        // 如果清理后 text-align 丢失，重新添加
-        if (!cleanedStyle.match(/text-align\s*:\s*(left|center|right|justify)/i)) {
-          cleanedStyle = cleanedStyle
-            ? `text-align: ${alignValue}; ${cleanedStyle}`
-            : `text-align: ${alignValue}`
-        } else {
-          // 即使存在，也确保格式正确（标准化为小写）
-          cleanedStyle = cleanedStyle.replace(
-            /text-align\s*:\s*(left|center|right|justify)/i,
-            `text-align: ${alignValue}`
-          )
-        }
-      }
-
-      // 清理多余的分号和空格
-      cleanedStyle = cleanedStyle
-        .replace(/;\s*;/g, ';')
-        .replace(/^\s*;\s*/, '')
-        .replace(/\s*;\s*$/, '')
-        .trim()
-
-      if (!cleanedStyle) {
-        return `<${tag}${attrs}>`
-      }
-      return `<${tag}${attrs}style="${cleanedStyle}"`
-    }
-  )
-
-  // 移除其他元素中的 Word 特有的 mso- 样式，但保留其他有用的样式（如 color, font-size 等）
-  html = html.replace(/mso-[^;:"]+:[^;:"]+;?\s*/gi, '')
-
-  // 移除空的 style 属性
-  html = html.replace(/style="\s*"/g, '')
-
-  // 移除 Word 特有的 class
-  html = html.replace(/class="[^"]*Mso[^"]*"/gi, '')
-
-  // 处理分页符 - 转换为自定义分页标记
-  html = html.replace(
-    /<br[^>]*style="[^"]*page-break[^"]*"[^>]*>/gi,
-    '<div class="page-break" data-type="page-break"></div>'
-  )
-  html = html.replace(
-    /<p[^>]*style="[^"]*page-break-before:\s*always[^"]*"[^>]*>/gi,
-    '<div class="page-break" data-type="page-break"></div><p>'
-  )
-  html = html.replace(
-    /<p[^>]*style="[^"]*page-break-after:\s*always[^"]*"[^>]*>(.*?)<\/p>/gi,
-    '<p>$1</p><div class="page-break" data-type="page-break"></div>'
-  )
-
-  // 处理红色横线（红头文件特有）
-  // 1. 处理带有红色边框的空段落/div - 转换为红色 hr
-  html = html.replace(
-    /<(p|div)[^>]*style="[^"]*border[^"]*(?:red|#[fF]{2}0{4}|#[fF]00|rgb\s*\(\s*255\s*,\s*0\s*,\s*0\s*\))[^"]*"[^>]*>\s*(?:&nbsp;)*\s*<\/(p|div)>/gi,
-    '<hr class="red-line" data-line-color="red">'
-  )
-
-  // 2. 处理只有 border-bottom 的红色横线
-  html = html.replace(
-    /<(p|div)[^>]*style="[^"]*border-bottom[^;]*(?:red|#[fF]{2}0{4}|#[fF]00)[^"]*"[^>]*>(\s*(?:&nbsp;)*\s*)<\/(p|div)>/gi,
-    '<hr class="red-line" data-line-color="red">'
-  )
-
-  // 3. 保留已有的 hr 标签，但如果有红色样式则添加 class
-  html = html.replace(
-    /<hr([^>]*)style="[^"]*(?:border[^;]*)?(?:red|#[fF]{2}0{4}|#[fF]00)[^"]*"([^>]*)>/gi,
-    '<hr$1 class="red-line" data-line-color="red"$2>'
-  )
-
-  // 处理图片宽度 - 限制最大宽度为编辑器可用宽度
-  const MAX_IMAGE_WIDTH = 540 // 编辑器可用宽度（A4 页面 794px - 边距 240px - 一些余量）
-
-  html = html.replace(/<img([^>]*)style="([^"]*)"/gi, (match, attrs, style) => {
-    const isInline = /data-display\s*=\s*["']inline["']/i.test(attrs)
-    const widthMatch = style.match(/width:\s*([^;]+)/i)
-    const heightMatch = style.match(/height:\s*([^;]+)/i)
-
-    let width = 0
-    let height = 0
-
-    if (widthMatch) {
-      const widthStr = widthMatch[1].trim()
-      if (widthStr.endsWith('pt')) {
-        width = parseFloat(widthStr) * 1.33
-      } else if (widthStr.endsWith('in')) {
-        width = parseFloat(widthStr) * 96
-      } else if (widthStr.endsWith('cm')) {
-        width = parseFloat(widthStr) * 37.8
-      } else if (widthStr.endsWith('mm')) {
-        width = parseFloat(widthStr) * 3.78
-      } else if (widthStr.endsWith('%')) {
-        width = 0
-      } else {
-        width = parseFloat(widthStr) || 0
-      }
-    }
-
-    if (heightMatch) {
-      const heightStr = heightMatch[1].trim()
-      if (heightStr.endsWith('pt')) {
-        height = parseFloat(heightStr) * 1.33
-      } else if (heightStr.endsWith('in')) {
-        height = parseFloat(heightStr) * 96
-      } else if (heightStr.endsWith('cm')) {
-        height = parseFloat(heightStr) * 37.8
-      } else if (heightStr.endsWith('mm')) {
-        height = parseFloat(heightStr) * 3.78
-      } else if (heightStr.endsWith('%')) {
-        height = 0
-      } else {
-        height = parseFloat(heightStr) || 0
-      }
-    }
-
-    if (width > MAX_IMAGE_WIDTH) {
-      const ratio = height / width
-      width = MAX_IMAGE_WIDTH
-      height = width * ratio
-    }
-
-    const displayStyle = isInline
-      ? 'display: inline-block; vertical-align: bottom;'
-      : 'display: block;'
-
-    let newStyle = `max-width: 100%; height: auto; ${displayStyle}`
-    if (width > 0) {
-      newStyle = `width: ${Math.round(width)}px; max-width: 100%; height: auto; ${displayStyle}`
-    }
-
-    return `<img${attrs}style="${newStyle}"`
-  })
-
-  // 处理没有 style 属性的图片 - 确保所有图片都有响应式样式
-  html = html.replace(/<img(?![^>]*style=)([^>]*)>/gi, (_match, attrs) => {
-    const isInline = /data-display\s*=\s*["']inline["']/i.test(attrs)
-    const displayStyle = isInline
-      ? 'display: inline-block; vertical-align: bottom;'
-      : 'display: block;'
-    return `<img${attrs} style="max-width: 100%; height: auto; ${displayStyle}">`
-  })
-
-  // 处理 width/height 属性的图片（Word 经常使用这种方式）
-  html = html.replace(
-    /<img([^>]*)\s+width\s*=\s*["']?(\d+)["']?([^>]*)\s+height\s*=\s*["']?(\d+)["']?([^>]*)>/gi,
-    (_match, before, w, mid, h, after) => {
-      const imgWidth = parseInt(w)
-      const imgHeight = parseInt(h)
-      let finalWidth = imgWidth
-      let finalHeight = imgHeight
-
-      if (imgWidth > MAX_IMAGE_WIDTH) {
-        const ratio = imgHeight / imgWidth
-        finalWidth = MAX_IMAGE_WIDTH
-        finalHeight = Math.round(finalWidth * ratio)
-      }
-
-      const fullAttrs = `${before}${mid}${after}`
-      const isInline = /data-display\s*=\s*["']inline["']/i.test(fullAttrs)
-      const displayStyle = isInline
-        ? 'display: inline-block; vertical-align: bottom;'
-        : 'display: block;'
-
-      // 移除 width/height 属性和已有的 style 属性，统一用新 style 替换
-      const cleanAttrs = fullAttrs
-        .replace(/width\s*=\s*["']?\d+["']?/gi, '')
-        .replace(/height\s*=\s*["']?\d+["']?/gi, '')
-        .replace(/style\s*=\s*"[^"]*"/gi, '')
-
-      return `<img${cleanAttrs} style="width: ${finalWidth}px; max-width: 100%; height: auto; ${displayStyle}">`
-    }
-  )
-
-  // 处理表格样式 - 防止溢出，同时保留关键表格属性
-  html = html.replace(/<table([^>]*)>/gi, (_match, attrs: string) => {
-    // 仅移除独立的 HTML width 属性，保护 data-table-width
-    let cleanAttrs = attrs.replace(/(?<![a-zA-Z0-9-])width\s*=\s*["'][^"']*["']/gi, '')
-    // 移除旧 style 属性（避免产生重复 style），但先提取需要保留的声明
-    const styleMatch = cleanAttrs.match(/style\s*=\s*["']([^"']*)["']/i)
-    const oldStyle = styleMatch ? styleMatch[1] : ''
-    cleanAttrs = cleanAttrs.replace(/style\s*=\s*["'][^"']*["']/gi, '')
-    // 从旧 style 中保留非 width 相关声明（使用负向前瞻保护 min-width/max-width）
-    const preservedDecls = oldStyle
-      .split(';')
-      .map((d: string) => d.trim())
-      .filter((d: string) => {
-        if (!d) return false
-        if (/^width\s*:/i.test(d)) return false
-        if (/^min-width\s*:/i.test(d)) return false
-        if (/^table-layout\s*:/i.test(d)) return false
-        return true
-      })
-      .join('; ')
-    const baseParts = ['border-collapse: collapse', 'max-width: 100%']
-    if (preservedDecls) baseParts.push(preservedDecls)
-    baseParts.push('table-layout: fixed')
-    return `<table${cleanAttrs} style="${baseParts.join('; ')};">`
-  })
-
-  // 处理表格单元格样式 - 保护 colwidth/data-colwidth 属性
-  const cleanCellAttrs = (attrs: string): string => {
-    // 仅移除独立的 HTML width 属性，保护 colwidth 和 data-colwidth
-    return attrs.replace(/(?<![a-zA-Z0-9-])width\s*=\s*["'][^"']*["']/gi, '')
-  }
-  html = html.replace(/<td([^>]*)>/gi, (_match, attrs: string) => {
-    const cleanAttrs = cleanCellAttrs(attrs)
-    if (cleanAttrs.includes('style=')) {
-      return `<td${cleanAttrs.replace(/style="([^"]*)"/i, 'style="$1; border: 1px solid #ddd; padding: 8px; word-wrap: break-word; overflow-wrap: break-word;"')}>`
-    }
-    return `<td${cleanAttrs} style="border: 1px solid #ddd; padding: 8px; word-wrap: break-word; overflow-wrap: break-word;">`
-  })
-  html = html.replace(/<th([^>]*)>/gi, (_match, attrs: string) => {
-    const cleanAttrs = cleanCellAttrs(attrs)
-    if (cleanAttrs.includes('style=')) {
-      return `<th${cleanAttrs.replace(/style="([^"]*)"/i, 'style="$1; border: 1px solid #ddd; padding: 8px; background: #f5f5f5; font-weight: bold; word-wrap: break-word; overflow-wrap: break-word;"')}>`
-    }
-    return `<th${cleanAttrs} style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5; font-weight: bold; word-wrap: break-word; overflow-wrap: break-word;">`
-  })
-
-  // 保持文本对齐
-  html = html.replace(/text-align:\s*(left|center|right|justify)/gi, 'text-align: $1')
-
-  // 保持缩进（转换为 padding-left）
-  html = html.replace(/text-indent:\s*([^;]+)/gi, 'text-indent: $1')
-
-  // 保持行高
-  html = html.replace(/line-height:\s*([^;]+)/gi, 'line-height: $1')
-
-  // 处理列表缩进
-  html = html.replace(
-    /<p[^>]*style="[^"]*margin-left:\s*(\d+)([^;]*)[^"]*"[^>]*>\s*[-•●○]\s*/gi,
-    '<li style="margin-left: $1$2">'
-  )
-
-  // === 特殊处理：将 div/p 上的文本样式转换为 span 包装 ===
-  // Tiptap 只能识别 span 标签上的 TextStyle（color, font-size, font-family）
-  html = convertBlockStylesToInline(html)
-
-  // 最终安全检查：如果处理后内容太短，恢复原始内容
-  const finalHtml = html.trim()
-  if (finalHtml.length < originalLength * 0.1 && originalLength > 100) {
-    console.warn('cleanWordHtml: 处理后内容过短，恢复原始内容')
-    return originalHtml
-  }
-
-  return finalHtml
-}
-
-/**
- * 将块级元素上的文本样式（color, font-size, font-family, font-weight）转换为内联 span
- * Tiptap 只能识别 mark 级别（span）的 TextStyle，不能识别 block 级别的
- */
-const convertBlockStylesToInline = (html: string): string => {
-  try {
-    // 使用 DOM 解析器更可靠地处理 HTML
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
-    const root = doc.getElementById('root')
-
-    if (!root) return html
-
-    // 处理所有块级元素（包括段落、div 和标题）
-    const blockElements = root.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6')
-
-    blockElements.forEach((element) => {
-      const style = element.getAttribute('style')
-      if (!style) return
-
-      // 提取文本相关样式
-      const textStyles: string[] = []
-      const blockStyles: string[] = []
-
-      // 解析样式
-      style.split(';').forEach((s) => {
-        const trimmed = s.trim()
-        if (!trimmed) return
-
-        // 文本样式（需要转移到 span）
-        if (
-          trimmed.match(/^color:/i) ||
-          trimmed.match(/^font-size:/i) ||
-          trimmed.match(/^font-family:/i) ||
-          trimmed.match(/^font-weight:/i)
-        ) {
-          textStyles.push(trimmed)
-        } else {
-          blockStyles.push(trimmed)
-        }
-      })
-
-      // 如果有文本样式需要转移
-      if (textStyles.length > 0) {
-        // 更新块级元素的样式（只保留非文本样式）
-        if (blockStyles.length > 0) {
-          element.setAttribute('style', blockStyles.join('; '))
-        } else {
-          element.removeAttribute('style')
-        }
-
-        // 如果内容不为空，用 span 包装
-        const innerHTML = element.innerHTML.trim()
-        if (innerHTML && innerHTML !== '<br>') {
-          // 检查内容是否已经被 span 完全包装
-          const wrappedMatch = innerHTML.match(/^<span([^>]*)>([\s\S]*)<\/span>$/i)
-          if (wrappedMatch) {
-            // 已有 span 包装，将样式合并到现有 span
-            const existingAttrs = wrappedMatch[1]
-            const innerContent = wrappedMatch[2]
-            const styleMatch = existingAttrs.match(/style="([^"]*)"/i)
-            if (styleMatch) {
-              // 合并样式
-              const existingStyle = styleMatch[1]
-              const newStyle = textStyles.join('; ') + '; ' + existingStyle
-              element.innerHTML = `<span style="${newStyle}">${innerContent}</span>`
-            } else {
-              // 添加样式
-              element.innerHTML = `<span style="${textStyles.join('; ')}"${existingAttrs}>${innerContent}</span>`
-            }
-          } else {
-            // 用新的 span 包装内容
-            element.innerHTML = `<span style="${textStyles.join('; ')}">${innerHTML}</span>`
-          }
-        }
-      }
-    })
-
-    return root.innerHTML
-  } catch (e) {
-    console.warn('convertBlockStylesToInline 处理失败:', e)
-    return html // 出错时返回原始内容
-  }
-}
-
-/**
- * 为 Tiptap 预处理 HTML，确保样式格式正确
- * 将 pt 单位转换为 px，确保颜色格式正确
- * 注意：此函数不再调用 convertBlockStylesToInline，因为 cleanWordHtml 已经处理过
- */
-const preprocessHtmlForTiptap = (html: string): string => {
-  try {
-    // 0. 统一将 pt 转换为 px
-    html = html.replace(/(\d+(?:\.\d+)?)\s*pt/gi, (_, size) => {
-      const pxSize = Math.round(parseFloat(size) * 1.33 * 100) / 100
-      return `${pxSize}px`
-    })
-
-    // 1. 将 pt 单位转换为 px (1pt ≈ 1.33px)
-    html = html.replace(/font-size:\s*(\d+(?:\.\d+)?)\s*pt/gi, (_, size) => {
-      const pxSize = Math.round(parseFloat(size) * 1.33)
-      return `font-size: ${pxSize}px`
-    })
-
-    // 2. 确保颜色格式正确（添加 # 前缀如果缺失）
-    html = html.replace(/color:\s*([A-Fa-f0-9]{6})([^A-Fa-f0-9])/gi, 'color: #$1$2')
-    html = html.replace(/color:\s*([A-Fa-f0-9]{3})([^A-Fa-f0-9])/gi, 'color: #$1$2')
-
-    // 3. 转换 RGB 颜色为十六进制
-    html = html.replace(/color:\s*rgb\((\d+),\s*(\d+),\s*(\d+)\)/gi, (_, r, g, b) => {
-      const hex =
-        '#' +
-        [r, g, b]
-          .map((x) => {
-            const h = parseInt(x).toString(16)
-            return h.length === 1 ? '0' + h : h
-          })
-          .join('')
-      return `color: ${hex}`
-    })
-
-    // 4. 处理红色横线（红头文件特有）- 作为补充处理
-    // 将带有红色边框的元素转换为带有 data-line-color 属性的 hr
-    html = html.replace(
-      /<(p|div)[^>]*style="[^"]*border[^"]*(?:red|#[fF]{2}0{4}|#[fF]00|rgb\s*\(\s*255\s*,\s*0\s*,\s*0\s*\))[^"]*"[^>]*>\s*<\/(p|div)>/gi,
-      '<hr class="red-line" data-line-color="red">'
-    )
-
-    // 处理只有 border-bottom 或 border-top 的红色横线
-    html = html.replace(
-      /<(p|div)[^>]*style="[^"]*(border-(?:bottom|top)[^;]*(?:red|#[fF]{2}0{4}|#[fF]00))[^"]*"[^>]*>(\s*|&nbsp;)*<\/(p|div)>/gi,
-      '<hr class="red-line" data-line-color="red">'
-    )
-
-    // 注意：不再重复调用 convertBlockStylesToInline，因为 cleanWordHtml 已经处理过
-
-    return html
-  } catch (e) {
-    console.warn('preprocessHtmlForTiptap 处理失败:', e)
-    return html
-  }
-}
-
-const hasTableInHtml = (html: string): boolean => /<table[\s>]/i.test(html || '')
-
-const getTableContentScore = (html: string): number => {
-  if (!html || !/<table[\s>]/i.test(html)) return 0
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(`<div id="table-score-root">${html}</div>`, 'text/html')
-    const root = doc.getElementById('table-score-root')
-    if (!root) return 0
-    let score = 0
-    root.querySelectorAll('table td, table th').forEach((cell) => {
-      const el = cell as HTMLElement
-      const text = (el.textContent || '').replace(/\s+/g, '').trim()
-      const hasImg = !!el.querySelector('img')
-      const hasShape = !!el.querySelector('svg, canvas, object, embed')
-      if (text.length > 0 || hasImg || hasShape) score += 1
-    })
-    return score
-  } catch {
-    return 0
-  }
-}
-
-const protectDataImages = (
-  html: string
-): { html: string; images: Array<{ key: string; src: string }> } => {
-  const images: Array<{ key: string; src: string }> = []
-  try {
-    if (!/data:image\//i.test(html)) return { html, images }
-    let index = 0
-    const replaceAttr = (input: string, attr: 'src' | 'data-origin-src') => {
-      const regex = new RegExp(`${attr}=(["'])(data:image\\/[^"']+)\\1`, 'gi')
-      return input.replace(regex, (_match, quote, src) => {
-        const key = `__DATA_IMAGE_${attr.toUpperCase()}_${index}__`
-        images.push({ key, src })
-        index += 1
-        return `${attr}=${quote}${key}${quote}`
-      })
-    }
-    let nextHtml = html
-    nextHtml = replaceAttr(nextHtml, 'src')
-    nextHtml = replaceAttr(nextHtml, 'data-origin-src')
-    return { html: nextHtml, images }
-  } catch (e) {
-    console.warn('protectDataImages failed:', e)
-    return { html, images }
-  }
-}
-
-const restoreDataImages = (html: string, images: Array<{ key: string; src: string }>): string => {
-  if (!images.length) return html
-  let restored = html
-  images.forEach(({ key, src }) => {
-    restored = restored.split(key).join(src)
-  })
-  return restored
-}
-
-const tagImportedImages = (html: string): string => {
-  if (!html) return html
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(`<div id="word-import-root">${html}</div>`, 'text/html')
-    const root = doc.getElementById('word-import-root')
-    if (!root) return html
-    root.querySelectorAll('img').forEach((img) => {
-      img.setAttribute('data-imported', 'true')
-    })
-    return root.innerHTML
-  } catch (e) {
-    console.warn('tagImportedImages failed:', e)
-    return html
-  }
-}
-
 // 确认导入 Word
 const confirmWordImport = async () => {
-  if (!editor.value || (!wordImportRawHtml.value && !wordImportPreview.value)) {
-    ElMessage.warning('没有可导入的内容')
+  if (!editor.value) {
+    ElMessage.warning('编辑器未就绪')
     return
   }
 
-  wordImportLoading.value = true
-  try {
-    const rawContent = wordImportRawHtml.value?.trim()
-    let content = (rawContent || wordImportPreview.value).trim()
-    if (!content) {
-      ElMessage.warning('导入内容为空')
-      return
-    }
-
-    // 清理开头的空段落和空白 - 解决"总是空出一行"的问题
-    // 但要小心不要删除所有内容
-    // 增强版：匹配带任意属性的空段落（包括 style、class 等）
-    const beforeClean = content
-    content = content.replace(/^(\s*<p[^>]*>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>\s*)+/gi, '')
-    content = content.replace(/^\s+/, '')
-
-    // 如果清理后内容为空，恢复原始内容
-    if (!content.trim()) {
-      console.warn('清理后内容为空，恢复原始内容')
-      content = beforeClean
-    }
-
-    // 如果内容不是以块级元素开始，包装在段落中
-    if (!content.match(/^<(p|h[1-6]|ul|ol|blockquote|pre|table|div|span)/i)) {
-      content = `<p>${content}</p>`
-    }
-
-    // 确保内容末尾有一个空段落（Tiptap 需要）
-    if (!content.match(/<p[^>]*>\s*(<br\s*\/?>)?\s*<\/p>\s*$/i)) {
-      content += '<p></p>'
-    }
-
-    const protectedImages = protectDataImages(content)
-    content = protectedImages.html
-
-    const importTableBodyWidth = resolveEditorTableBodyWidth(
-      editor.value?.view?.dom as HTMLElement | undefined
-    )
-    if (wordImportFromLo.value) {
-      content = normalizeTableStructureForImport(content, importTableBodyWidth)
-      content = validateAndFixImages(content)
-    } else {
-      content = normalizeTableStructureForImport(content, importTableBodyWidth)
-      content = preprocessHtmlForTiptap(content)
-      content = normalizeTableStructureForImport(content, importTableBodyWidth)
-      content = validateAndFixImages(content)
-    }
-
-    content = restoreDataImages(content, protectedImages.images)
-
-    content = tagImportedImages(content)
-
-    // 暂时保留 data:image，绕过 blob 转换以排查截断问题
-    // const replaceDataImages = (globalThis as any).__replaceDataImages
-    // if (typeof replaceDataImages === 'function') {
-    //   content = await replaceDataImages(content)
-    // }
-
-    // 使用 setContent 设置内容，emitUpdate=false 避免触发不必要的更新
+  // 新版：优先使用 JSON 内容（来自转换服务）
+  if (wordImportJsonContent.value) {
+    wordImportLoading.value = true
     try {
-      // 先清空编辑器
       editor.value.commands.clearContent(false)
       await nextTick()
 
-      // 设置新内容
-      editor.value.commands.setContent(content, false, {
-        preserveWhitespace: 'full'
-      })
-      await nextTick()
-      if (!hasTableInHtml(content)) {
+      // 先尝试直接设置（emitUpdate=false 避免触发不必要的保存）
+      // 如果失败，使用 emitUpdate=true 让 ProseMirror 自动修复 schema
+      try {
+        editor.value.commands.setContent(wordImportJsonContent.value, false)
+      } catch (directErr) {
+        console.warn('直接 setContent 失败，尝试容错模式:', directErr)
+        // ProseMirror 的 parseSlice/setContent 在 emitUpdate=true 时
+        // 会经过更严格的 schema 修复流程
         try {
-          editor.value.chain().fixTables().run()
-        } catch (e) {
-          console.warn('fixTables skipped:', e)
+          editor.value.commands.clearContent(false)
+          await nextTick()
+          editor.value.commands.setContent(wordImportJsonContent.value, true)
+        } catch (retryErr) {
+          console.error('容错模式也失败:', retryErr)
+          throw directErr
         }
       }
+      await nextTick()
 
-      // 等待 DOM 更新
+      try {
+        editor.value.chain().fixTables().run()
+      } catch (e) {
+        console.warn('fixTables skipped:', e)
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      // 安全地设置光标位置到文档开始
       try {
         const { doc } = editor.value.state
         if (doc.content.size > 0) {
-          // 找到第一个可以放置光标的位置
-          const firstPos = doc.resolve(1)
-          if (firstPos) {
-            editor.value.commands.setTextSelection(1)
-          }
+          editor.value.commands.setTextSelection(1)
         }
-      } catch (focusErr) {
+      } catch {
         // 忽略光标设置错误
-        console.log('光标设置忽略:', focusErr)
       }
-    } catch (setContentError) {
-      console.error('setContent 失败:', setContentError)
 
-      // 备用方案：使用 insertContent
-      try {
-        editor.value.commands.clearContent(false)
-        await nextTick()
-        editor.value.commands.insertContent(content)
-        await nextTick()
-        if (!hasTableInHtml(content)) {
-          try {
-            editor.value.chain().fixTables().run()
-          } catch (e) {
-            console.warn('fixTables skipped in fallback:', e)
-          }
-        }
-      } catch (insertError) {
-        console.error('insertContent 也失败:', insertError)
-        throw insertError
-      }
-    }
-
-    // 验证内容是否成功设置
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    const finalContent = editor.value.getHTML()
-    console.log('最终编辑器内容长度:', finalContent.length)
-
-    if (finalContent.length < 30) {
-      console.error('内容可能未成功导入，当前内容:', finalContent)
-      ElMessage.warning('内容可能未完全导入，请检查编辑器')
-    } else {
       ElMessage.success('Word 文档已成功导入')
+      wordImportDialogVisible.value = false
+      clearWordImportContent()
+      wordImportJsonContent.value = null
+      wordImportFile.value = null
+      wordArrayBuffer.value = null
+      wordImportFromLo.value = false
+    } catch (error) {
+      console.error('JSON 内容导入失败:', error)
+      ElMessage.error('导入失败: ' + (error as Error).message)
+    } finally {
+      wordImportLoading.value = false
     }
-
-    wordImportDialogVisible.value = false
-    clearWordImportContent()
-    wordImportFile.value = null
-    wordArrayBuffer.value = null
-    wordImportFromLo.value = false
-  } catch (error) {
-    console.error('Word导入失败:', error)
-    ElMessage.error('导入失败: ' + (error as Error).message)
-  } finally {
-    wordImportLoading.value = false
+    return
   }
+
+  ElMessage.warning('没有可导入的内容')
 }
 
 // 清除 Word 文件选择

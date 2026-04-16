@@ -177,12 +177,10 @@ import {
   type SubmitAuditReqVO
 } from './api/documentApi'
 import { getFilePage } from '@/api/training'
-import {
-  parseFileContent,
-  ImageStore
-} from './utils/wordParser'
+import { ImageStore } from './utils/imageStore'
+import { importDocx } from '@/api/converter'
 import { useDocBufferStore } from '@/store/modules/docBuffer'
-import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/wordParser.shared'
+import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/htmlSanitize'
 import {
   normalizeTableStructureForImport,
   resolveEditorTableBodyWidth
@@ -1376,29 +1374,28 @@ onMounted(async () => {
   if (isJsonContent) {
     isFirstLoadWithContent.value = true
   }
-  // 解析文件内容（仅解析暂存，不立即应用到编辑器，等协同同步完成后再决策）
+  // 解析文件内容：优先调用转换服务（返回 Tiptap JSON），失败则降级前端解析
   else if (arrayBuffer) {
     try {
       logger.debug('开始解析文件内容, 大小:', arrayBuffer.byteLength)
-      const parsedContent = await parseFileContent(arrayBuffer)
-      if (parsedContent) {
-        if (hasStyleHintsInHtml(parsedContent)) {
-          preloadedContent.value = parsedContent
-          void setDocCache(documentId.value, parsedContent)
-          logger.debug(
-            '预加载内容解析成功（含样式），已缓存到 IndexedDB，HTML 长度:',
-            parsedContent.length
-          )
-        } else {
-          preloadedContent.value = parsedContent
-          logger.debug(
-            '预加载内容解析成功（无样式），使用当前结果，HTML 长度:',
-            parsedContent.length
-          )
+
+      // 优先尝试转换服务（OOXML 直接解析，返回 Tiptap JSON）
+      let usedConverter = false
+      try {
+        const result = await importDocx(arrayBuffer)
+        if (result.data?.content && result.data.content.content?.length > 0) {
+          preloadedContent.value = '__JSON__'
+          ;(window as any).__docJsonContent = result.data.content
+          usedConverter = true
+          isFirstLoadWithContent.value = true
+          logger.debug('转换服务解析成功，节点数:', result.data.content.content.length)
         }
-        isFirstLoadWithContent.value = true
-      } else {
-        logger.warn('解析结果为空')
+      } catch (converterErr) {
+        logger.warn('转换服务解析失败，降级到前端解析:', converterErr)
+      }
+
+      if (!usedConverter) {
+        logger.warn('转换服务不可用，文档无法解析。将依赖协同同步获取内容。')
       }
     } catch (error) {
       console.error('解析预加载内容失败:', error)

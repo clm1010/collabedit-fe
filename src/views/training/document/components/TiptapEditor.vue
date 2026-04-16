@@ -276,7 +276,7 @@ import { EditorToolbar } from './toolbar'
 import { EditorKey } from './toolbar/types'
 import ColorPicker from './toolbar/ColorPicker.vue'
 import LinkPopover from './toolbar/LinkPopover.vue'
-import { normalizeColor } from '../utils/wordParser.shared'
+import { normalizeColor } from '../utils/colorUtils'
 import { generateExportHtml } from '@/views/utils/documentExport'
 import { copyToClipboard } from '@/views/utils/clipboard'
 

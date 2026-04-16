@@ -1,6 +1,7 @@
 /**
  * 文档转换服务 API
  * 封装与 collabedit-doc-converter 服务的通信
+ * 新版：OOXML 直接解析，导入返回 Tiptap JSON，导出接收 Tiptap JSON
  */
 
 export interface DocMetadata {
@@ -18,11 +19,18 @@ export interface DocMetadata {
   hasEndnotes?: boolean
   numberingDefinitions?: object[]
   customStyles?: object[]
+  isRedHead?: boolean
+}
+
+export interface TiptapDoc {
+  type: 'doc'
+  content: Array<Record<string, unknown>>
 }
 
 export interface ImportResult {
-  html: string
+  data: { content: TiptapDoc }
   metadata: DocMetadata
+  logs: { info: string[]; warn: string[]; error: string[] }
 }
 
 export interface ConverterHealthStatus {
@@ -55,7 +63,7 @@ export async function checkConverterHealth(): Promise<ConverterHealthStatus> {
 
     const data = await res.json()
     const result = {
-      available: data.status === 'ok',
+      available: data.status === 'ok' || data.status === 'degraded',
       unoserver: data.unoserver === true,
     }
     _healthCache = { result, ts: Date.now() }
@@ -93,13 +101,13 @@ export async function importDocx(file: File | ArrayBuffer): Promise<ImportResult
 }
 
 export async function exportDocx(
-  html: string,
+  content: TiptapDoc,
   metadata?: Partial<DocMetadata>
 ): Promise<Blob> {
-  const res = await fetch(`${CONVERTER_BASE}/export`, {
+  const res = await fetch(`${CONVERTER_BASE}/export/docx`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html, metadata, format: 'docx' }),
+    body: JSON.stringify({ content, metadata }),
   })
 
   if (!res.ok) {
@@ -111,43 +119,18 @@ export async function exportDocx(
 }
 
 export async function exportPdf(
-  html: string,
+  content: TiptapDoc,
   metadata?: Partial<DocMetadata>
 ): Promise<Blob> {
-  const res = await fetch(`${CONVERTER_BASE}/export`, {
+  const res = await fetch(`${CONVERTER_BASE}/export/pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html, metadata, format: 'pdf' }),
+    body: JSON.stringify({ content, metadata }),
   })
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
     throw new Error(`Export PDF failed (${res.status}): ${errText}`)
-  }
-
-  return res.blob()
-}
-
-export async function mergeExport(
-  originalFile: Blob,
-  editedHtml: string,
-  metadata?: Partial<DocMetadata>
-): Promise<Blob> {
-  const formData = new FormData()
-  formData.append('originalFile', originalFile)
-  formData.append('editedHtml', editedHtml)
-  if (metadata) {
-    formData.append('metadata', JSON.stringify(metadata))
-  }
-
-  const res = await fetch(`${CONVERTER_BASE}/export/merge`, {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    throw new Error(`Merge export failed (${res.status}): ${errText}`)
   }
 
   return res.blob()

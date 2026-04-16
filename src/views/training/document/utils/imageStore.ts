@@ -1,5 +1,28 @@
 import { logger } from '@/views/utils/logger'
-import { normalizeBase64 } from './wordParser.shared'
+
+/** 清理并规范化 base64 字符串（处理 URL 编码、空格、非标准字符、padding） */
+function normalizeBase64(rawBase64: string): string {
+  if (!rawBase64) return ''
+  let cleanBase64 = rawBase64
+  if (cleanBase64.includes('%')) {
+    try { cleanBase64 = decodeURIComponent(cleanBase64) } catch { /* ignore */ }
+  }
+  if (cleanBase64.includes(' ') && !cleanBase64.includes('+')) {
+    cleanBase64 = cleanBase64.replace(/ /g, '+')
+  }
+  cleanBase64 = cleanBase64.replace(/[\r\n\t\u200B\uFEFF]/g, '')
+  cleanBase64 = cleanBase64.replace(/-/g, '+').replace(/_/g, '/')
+  cleanBase64 = cleanBase64.replace(/[^A-Za-z0-9+/=]/g, '')
+  if (!cleanBase64) return ''
+
+  const withoutPad = cleanBase64.replace(/=+$/, '')
+  if (!withoutPad) return ''
+
+  const remainder = withoutPad.length % 4
+  if (remainder === 0) return withoutPad
+  if (remainder === 1) return withoutPad + '==='
+  return withoutPad + '='.repeat(4 - remainder)
+}
 
 /** blob URL 数量警告阈值（超出时记录警告，但不主动释放，避免正在使用的图片变白块） */
 const MAX_BLOB_URLS = 500
