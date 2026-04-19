@@ -341,9 +341,9 @@
       destroy-on-close
     >
       <div class="word-import-content">
-        <!-- 文件选择区域 -->
-        <div class="upload-area" v-if="!wordImportFile">
+        <div class="upload-area">
           <el-upload
+            :key="wordUploadKey"
             class="word-uploader"
             drag
             :auto-upload="false"
@@ -358,49 +358,9 @@
             </div>
           </el-upload>
         </div>
-
-        <!-- 导入选项 -->
-        <div class="import-options" v-if="wordImportFile">
-          <div class="file-info">
-            <Icon icon="mdi:file-word" class="file-icon" />
-            <span class="file-name">{{ wordImportFile.name }}</span>
-            <el-button text type="danger" size="small" @click="clearWordImport">
-              <Icon icon="mdi:close" />
-            </el-button>
-          </div>
-        </div>
-
-        <!-- 预览区域 -->
-        <div class="preview-area" v-if="wordImportPreview">
-          <div class="preview-header">
-            <span>预览</span>
-            <el-tag type="success" size="small">解析成功</el-tag>
-          </div>
-          <div class="preview-content" v-html="wordImportPreview"></div>
-        </div>
-
-        <!-- 加载状态 -->
-        <div class="loading-area" v-if="wordImportLoading">
-          <Icon icon="eos-icons:loading" class="loading-icon" />
-          <p>{{ importProgressText || '正在解析文档...' }}</p>
-          <el-progress
-            v-if="importProgress > 0"
-            :percentage="importProgress"
-            :stroke-width="8"
-            class="import-progress"
-          />
-        </div>
       </div>
       <template #footer>
         <el-button @click="cancelWordImport">取消</el-button>
-        <el-button
-          type="primary"
-          @click="confirmWordImport"
-          :disabled="!wordImportPreview"
-          :loading="wordImportLoading"
-        >
-          确认导入
-        </el-button>
       </template>
     </el-dialog>
 
@@ -499,12 +459,43 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Word 导入：对标 UMO 的顶部轻量提示（非全屏遮罩） -->
+    <Teleport to="body">
+      <Transition name="word-import-loading-fade">
+        <div v-if="wordImportBusy" class="word-import-umo-loading" role="status" aria-live="polite">
+          <Icon icon="eos-icons:loading" class="word-import-umo-loading__icon" />
+          <span class="word-import-umo-loading__text">正在转换 word 文档，请稍后...</span>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Word 导入成功选择弹窗 -->
+    <el-dialog
+      v-model="wordImportSuccessDialogVisible"
+      width="450px"
+      :show-close="true"
+      :close-on-click-modal="false"
+      @close="discardPendingImport"
+    >
+      <template #header>
+        <div class="word-import-success-header">
+          <el-icon class="word-import-success-header__icon" :size="22"><CircleCheck /></el-icon>
+          <span class="word-import-success-header__title">转换成功</span>
+        </div>
+      </template>
+      <p class="word-import-success-body">文档转换已完成，请在下方选择您要执行的下一步操作</p>
+      <template #footer>
+        <el-button @click="handleInsertAtCursor">插入到当前位置</el-button>
+        <el-button type="primary" @click="handleReplaceDocument">替换原文</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 // @ts-nocheck - 忽略 Tiptap 自定义扩展命令的类型问题
-import { ref, watch, reactive, nextTick, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { Icon } from '@/components/Icon'
 import { ElMessage } from 'element-plus'
 import ToolbarButton from './ToolbarButton.vue'
@@ -517,14 +508,11 @@ import {
   fontSizePxToLabel
 } from './types'
 import { useEditorState } from './useEditor'
-import { ImageStore } from '../../utils/imageStore'
 import { normalizeColor } from '../../utils/colorUtils'
-import {
-  normalizeTableStructureForImport,
-  resolveEditorTableBodyWidth
-} from '../../utils/tableStructureNormalize'
-import { checkConverterHealth, importDocx } from '@/api/converter'
+import { importDocx } from '@/api/converter'
 import { useDocMetadataStore } from '@/store/modules/docMetadata'
+import { safeSetContent } from '../../utils/safeSetContent'
+import { CircleCheck } from '@element-plus/icons-vue'
 
 // 获取编辑器实例及撤销/重做响应式状态
 const { editor, canUndo, canRedo } = useEditorState()
@@ -537,9 +525,6 @@ const highlightColor = ref('#FFFF00')
 const currentFontFamily = ref('')
 const currentFontSize = ref('')
 const currentLineHeight = ref('')
-
-// 文件输入
-const wordFileInput = ref<HTMLInputElement | null>(null)
 
 // 查找替换
 const findReplaceVisible = ref(false)
@@ -831,6 +816,7 @@ watch(
 
 // 组件卸载时移除事件监听
 onBeforeUnmount(() => {
+  wordImportBusy.value = false
   if (editor.value) {
     editor.value.off('selectionUpdate', updateCurrentStyles)
     editor.value.off('transaction', updateCurrentStyles)
@@ -997,60 +983,56 @@ const handleLineHeight = (value: string) => {
   // editor.value.chain().focus().setLineHeight(value).run()
 }
 
-// 导入 Word 对话框状态
+// 导入 Word 对话框
 const wordImportDialogVisible = ref(false)
-const wordImportLoading = ref(false)
-const wordImportPreview = ref('')
-const wordImportRawHtml = ref('')
-const wordImportNormalizedHtml = ref('')
-const wordImportFile = ref<File | null>(null)
-const wordImportOptions = reactive({
-  preserveStyles: true,
-  convertImages: true,
-  keepLineBreaks: true
-})
+const wordUploadKey = ref(0)
+/** Word 导入进行中：顶部浮层提示，不锁屏 */
+const wordImportBusy = ref(false)
+const wordImportSuccessDialogVisible = ref(false)
+const wordImportPendingDoc = ref<Record<string, unknown> | null>(null)
 
-// Word 导入相关状态
-const wordArrayBuffer = ref<ArrayBuffer | null>(null)
-const importProgress = ref(0)
-const importProgressText = ref('')
-const wordImportBlobUrls = ref<string[]>([])
-const wordImportImageStore = new ImageStore()
-const wordImportFromLo = ref(false)
+/** 单事务替换全文（协同安全：无间隙） */
+const replaceDocumentWithWordJson = (jsonContent: Record<string, unknown>) => {
+  const ed = editor.value
+  if (!ed) throw new Error('编辑器未就绪')
 
-// 新版：存储从转换服务返回的 Tiptap JSON 内容
-const wordImportJsonContent = ref<Record<string, unknown> | null>(null)
-
-const clearImportBlobUrls = () => {
-  wordImportImageStore.clear()
-  wordImportBlobUrls.value = []
-}
-
-const clearWordImportContent = () => {
-  wordImportPreview.value = ''
-  wordImportRawHtml.value = ''
-  wordImportNormalizedHtml.value = ''
-  clearImportBlobUrls()
-}
-
-const replaceDataImagesWithBlobUrls = async (html: string): Promise<string> => {
-  const replaced = await wordImportImageStore.replaceDataImagesWithBlobUrls(html)
-  const detectedUrls = replaced.match(/blob:[^"']+/g) || []
-  if (detectedUrls.length > 0) {
-    wordImportBlobUrls.value = Array.from(new Set(detectedUrls))
+  const result = safeSetContent(ed, jsonContent, {
+    logPrefix: '[replaceDocumentWithWordJson]'
+  })
+  if (!result.success) {
+    throw (result.error instanceof Error ? result.error : new Error('setContent 失败'))
   }
-  return replaced
 }
 
-// 导入 Word
+/** 在光标处插入转换内容 */
+const insertWordJsonAtSelection = (jsonContent: Record<string, unknown>) => {
+  const ed = editor.value
+  if (!ed) throw new Error('编辑器未就绪')
+
+  const backup = ed.getJSON()
+  ed.setEditable(false)
+
+  try {
+    const docContent = (jsonContent as any).content
+    if (!docContent) throw new Error('内容为空')
+    ed.chain().focus().insertContent(docContent).run()
+    try { ed.chain().fixTables().run() } catch { /* fixTables 失败不阻断 */ }
+  } catch (err) {
+    console.error('insertWordJsonAtSelection 失败，恢复备份:', err)
+    try { ed.commands.setContent(backup, false) } catch {
+      try { ed.commands.setContent(backup, true) } catch (restoreErr) {
+        console.error('恢复文档失败:', restoreErr)
+      }
+    }
+    throw err
+  } finally {
+    ed.setEditable(true)
+  }
+}
+
 const importWord = () => {
-  // 重置所有状态
+  wordUploadKey.value += 1
   wordImportDialogVisible.value = true
-  clearWordImportContent()
-  wordImportFile.value = null
-  wordArrayBuffer.value = null
-  importProgress.value = 0
-  importProgressText.value = ''
 }
 
 const handleWordFileSelect = async (uploadFile: any) => {
@@ -1063,26 +1045,26 @@ const handleWordFileSelect = async (uploadFile: any) => {
     return
   }
 
-  wordImportFile.value = file
-  wordImportLoading.value = true
-  wordImportJsonContent.value = null
-  importProgress.value = 0
-  importProgressText.value = '正在上传并解析文档...'
+  if (!editor.value) {
+    ElMessage.warning('编辑器未就绪')
+    return
+  }
+
+  wordImportDialogVisible.value = false
+  wordImportBusy.value = true
 
   try {
-    importProgress.value = 20
-    importProgressText.value = '正在调用转换服务解析...'
-
     const result = await importDocx(file)
     const content = result.data?.content
     if (!content || !content.content || content.content.length === 0) {
       throw new Error('转换服务返回的内容为空')
     }
 
-    wordImportJsonContent.value = content
-    wordImportFromLo.value = true
+    if (result.logs?.warn?.length) {
+      console.warn('[importDocx] 转换警告:', result.logs.warn)
+    }
+    console.log(`[import] 转换服务解析成功，${content.content.length} 个顶级节点`)
 
-    // 异步保存元数据和原始文件（不阻塞 UI）
     if (result.metadata) {
       try {
         const metaStore = useDocMetadataStore()
@@ -1091,126 +1073,56 @@ const handleWordFileSelect = async (uploadFile: any) => {
           metaStore.saveMetadata(metaStore.docId, result.metadata).catch(() => {})
           metaStore.saveOriginalFile(metaStore.docId, file).catch(() => {})
         }
-      } catch { /* store 可能未初始化 */ }
+      } catch {
+        /* store 可能未初始化 */
+      }
     }
 
-    // 生成预览（使用临时编辑器渲染 JSON 为 HTML）
-    importProgress.value = 80
-    importProgressText.value = '正在生成预览...'
-    wordImportPreview.value = `<div style="padding:12px;color:#666;font-size:13px;">
-      <p>✅ 文档解析成功</p>
-      <p>共 ${content.content.length} 个顶级节点</p>
-      ${result.logs?.warn?.length ? `<p>⚠️ ${result.logs.warn.length} 个警告</p>` : ''}
-    </div>`
-
-    importProgress.value = 100
-    importProgressText.value = '解析完成'
-    console.log(`[import] 转换服务解析成功，${content.content.length} 个顶级节点`)
+    wordImportPendingDoc.value = content as Record<string, unknown>
+    wordImportSuccessDialogVisible.value = true
   } catch (error) {
     console.error('文档导入失败:', error)
     ElMessage.error('文档导入失败: ' + (error as Error).message)
-    clearWordImportContent()
-    wordImportJsonContent.value = null
-    wordImportFile.value = null
   } finally {
-    wordImportLoading.value = false
+    wordImportBusy.value = false
   }
 }
 
-// 进度更新回调
-const updateProgress = (progress: number, text: string) => {
-  importProgress.value = progress
-  importProgressText.value = text
-}
-
-// 确认导入 Word
-const confirmWordImport = async () => {
-  if (!editor.value) {
-    ElMessage.warning('编辑器未就绪')
-    return
-  }
-
-  // 新版：优先使用 JSON 内容（来自转换服务）
-  if (wordImportJsonContent.value) {
-    wordImportLoading.value = true
-    try {
-      editor.value.commands.clearContent(false)
-      await nextTick()
-
-      // 先尝试直接设置（emitUpdate=false 避免触发不必要的保存）
-      // 如果失败，使用 emitUpdate=true 让 ProseMirror 自动修复 schema
-      try {
-        editor.value.commands.setContent(wordImportJsonContent.value, false)
-      } catch (directErr) {
-        console.warn('直接 setContent 失败，尝试容错模式:', directErr)
-        // ProseMirror 的 parseSlice/setContent 在 emitUpdate=true 时
-        // 会经过更严格的 schema 修复流程
-        try {
-          editor.value.commands.clearContent(false)
-          await nextTick()
-          editor.value.commands.setContent(wordImportJsonContent.value, true)
-        } catch (retryErr) {
-          console.error('容错模式也失败:', retryErr)
-          throw directErr
-        }
-      }
-      await nextTick()
-
-      try {
-        editor.value.chain().fixTables().run()
-      } catch (e) {
-        console.warn('fixTables skipped:', e)
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      try {
-        const { doc } = editor.value.state
-        if (doc.content.size > 0) {
-          editor.value.commands.setTextSelection(1)
-        }
-      } catch {
-        // 忽略光标设置错误
-      }
-
-      ElMessage.success('Word 文档已成功导入')
-      wordImportDialogVisible.value = false
-      clearWordImportContent()
-      wordImportJsonContent.value = null
-      wordImportFile.value = null
-      wordArrayBuffer.value = null
-      wordImportFromLo.value = false
-    } catch (error) {
-      console.error('JSON 内容导入失败:', error)
-      ElMessage.error('导入失败: ' + (error as Error).message)
-    } finally {
-      wordImportLoading.value = false
-    }
-    return
-  }
-
-  ElMessage.warning('没有可导入的内容')
-}
-
-// 清除 Word 文件选择
-const clearWordImport = () => {
-  wordImportFile.value = null
-  clearWordImportContent()
-  wordArrayBuffer.value = null
-  wordImportFromLo.value = false
-  importProgress.value = 0
-  importProgressText.value = ''
-}
-
-// 取消导入
 const cancelWordImport = () => {
   wordImportDialogVisible.value = false
-  clearWordImportContent()
-  wordImportFile.value = null
-  wordArrayBuffer.value = null
-  wordImportFromLo.value = false
-  importProgress.value = 0
-  importProgressText.value = ''
+}
+
+const handleReplaceDocument = () => {
+  if (!wordImportPendingDoc.value) return
+  try {
+    replaceDocumentWithWordJson(wordImportPendingDoc.value)
+    ElMessage.success('Word 文档已成功替换原文')
+  } catch (error) {
+    console.error('替换原文失败:', error)
+    ElMessage.error('替换原文失败: ' + (error as Error).message)
+  } finally {
+    wordImportPendingDoc.value = null
+    wordImportSuccessDialogVisible.value = false
+  }
+}
+
+const handleInsertAtCursor = () => {
+  if (!wordImportPendingDoc.value) return
+  try {
+    insertWordJsonAtSelection(wordImportPendingDoc.value)
+    ElMessage.success('Word 文档已成功插入到当前位置')
+  } catch (error) {
+    console.error('插入失败:', error)
+    ElMessage.error('插入失败: ' + (error as Error).message)
+  } finally {
+    wordImportPendingDoc.value = null
+    wordImportSuccessDialogVisible.value = false
+  }
+}
+
+const discardPendingImport = () => {
+  wordImportPendingDoc.value = null
+  wordImportSuccessDialogVisible.value = false
 }
 
 // 查找替换
@@ -1689,133 +1601,51 @@ const printDocument = () => {
       }
     }
   }
+}
 
-  .import-options {
-    padding: 16px;
-    background: #f5f7fa;
-    border-radius: 8px;
-    margin-bottom: 16px;
+// Word 导入轻量提示（对标 UMO：顶栏下方居中、白底卡片、不锁屏）
+.word-import-umo-loading {
+  position: fixed;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  font-size: 14px;
+  color: #303133;
+  pointer-events: none;
 
-    .file-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #e0e0e0;
-
-      .file-icon {
-        font-size: 24px;
-        color: #4285f4;
-      }
-
-      .file-name {
-        flex: 1;
-        font-size: 14px;
-        font-weight: 500;
-        color: #333;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-
-    .options-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
+  .word-import-umo-loading__icon {
+    font-size: 22px;
+    color: #409eff;
+    flex-shrink: 0;
+    animation: word-import-spin 0.9s linear infinite;
   }
 
-  .preview-area {
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    overflow: hidden;
-
-    .preview-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      background: #fafafa;
-      border-bottom: 1px solid #e0e0e0;
-      font-size: 13px;
-      color: #666;
-    }
-
-    .preview-content {
-      max-height: 460px;
-      overflow-y: auto;
-      padding: 16px;
-      font-size: 14px;
-      line-height: 1.6;
-
-      :deep(h1) {
-        font-size: 1.5em;
-        margin: 0.5em 0;
-      }
-      :deep(h2) {
-        font-size: 1.25em;
-        margin: 0.5em 0;
-      }
-      :deep(h3) {
-        font-size: 1.1em;
-        margin: 0.5em 0;
-      }
-      :deep(p) {
-        margin: 0.5em 0;
-      }
-      // 确保段落和 span 能正确显示自定义样式
-      :deep(p[style]),
-      :deep(span[style]) {
-        // 允许自定义颜色和字号覆盖默认样式
-        all: revert;
-        margin: 0.5em 0;
-        display: inline;
-      }
-      :deep(p[style]) {
-        display: block;
-      }
-      :deep(table) {
-        border-collapse: collapse;
-        width: 100%;
-        margin: 1em 0;
-      }
-      :deep(th),
-      :deep(td) {
-        border: 1px solid #ddd;
-        padding: 8px;
-      }
-      :deep(img) {
-        max-width: 100%;
-        height: auto;
-      }
-    }
-  }
-
-  .loading-area {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    color: #666;
-
-    .loading-icon {
-      font-size: 48px;
-      color: #1a73e8;
-      animation: spin 1s linear infinite;
-      margin-bottom: 16px;
-    }
-
-    p {
-      margin: 0;
-      font-size: 14px;
-    }
+  .word-import-umo-loading__text {
+    line-height: 1.4;
+    white-space: nowrap;
   }
 }
 
-@keyframes spin {
+.word-import-loading-fade-enter-active,
+.word-import-loading-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.word-import-loading-fade-enter-from,
+.word-import-loading-fade-leave-to {
+  opacity: 0;
+}
+
+@keyframes word-import-spin {
   from {
     transform: rotate(0deg);
   }
@@ -1824,10 +1654,27 @@ const printDocument = () => {
   }
 }
 
-// 导入进度条
-.import-progress {
-  width: 200px;
-  margin-top: 12px;
+.word-import-success-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &__icon {
+    color: #67c23a;
+  }
+
+  &__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+  }
+}
+
+.word-import-success-body {
+  margin: 0;
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 // 文档预览对话框样式

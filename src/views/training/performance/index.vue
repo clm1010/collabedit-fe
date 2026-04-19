@@ -564,8 +564,11 @@ const handleEdit = async (row: any) => {
       docBufferStore.setBuffer(String(row.id), arrayBuffer)
       hasContent = true
       logger.debug('文件流已存入内存 Store, size:', arrayBuffer.byteLength)
+    } else if (row.fileId) {
+      logger.warn('列表存在 fileId 但未拉到有效文件流，请检查存储或接口')
+      ElMessage.warning('文档文件加载失败，将以空白文档打开')
     } else {
-      logger.warn('文件流为空或无效')
+      logger.debug('无已持久化文件，以空白文档进入编辑')
     }
     const documentInfo = {
       id: String(row.id),

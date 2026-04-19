@@ -52,45 +52,6 @@ export interface SaveDocumentFileResponse {
   msg?: string
 }
 
-// .doc 转换响应接口
-export interface DocConvertResponse {
-  code: number
-  data: string // 转换后的 HTML 内容
-  status: number
-  msg?: string
-}
-
-/**
- * 转换 .doc 文件为 HTML - 调用 Java 后端
- * POST /getPlan/convertDoc
- *
- * 说明：由于前端 mammoth.js 只支持 .docx 格式，旧版 .doc 格式需要后端转换
- * 后端可使用 Apache POI 或 LibreOffice 进行转换
- *
- * @param file .doc 文件
- * @returns 转换后的 HTML 内容
- */
-export const convertDocToHtml = async (file: File): Promise<string> => {
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const res = await javaRequest.upload<DocConvertResponse>('/getPlan/convertDoc', formData)
-
-    console.log('.doc 转换响应:', res)
-
-    // 处理响应
-    if (res && (res.code === 200 || res.code === 0)) {
-      return res.data || ''
-    }
-
-    throw new Error(res?.msg || '.doc 文件转换失败')
-  } catch (error) {
-    console.error('.doc 文件转换失败:', error)
-    throw error
-  }
-}
-
 /**
  * 保存文档文件到后端 - 直接调用 Java 后端
  * POST /getPlan/saveFile

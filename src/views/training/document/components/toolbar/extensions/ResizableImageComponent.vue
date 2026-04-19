@@ -86,36 +86,36 @@
         </button>
         <span class="toolbar-divider"></span>
         <button
-            class="toolbar-btn"
-            :class="{ active: currentAlign === 'left' }"
-            @click.stop="alignImage('left')"
-            title="左对齐"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z" />
-            </svg>
-          </button>
-          <button
-            class="toolbar-btn"
-            :class="{ active: currentAlign === 'center' || !currentAlign }"
-            @click.stop="alignImage('center')"
-            title="居中"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 3h18v2H3V3zm3 4h12v2H6V7zm-3 4h18v2H3v-2zm3 4h12v2H6v-2zm-3 4h18v2H3v-2z" />
-            </svg>
-          </button>
-          <button
-            class="toolbar-btn"
-            :class="{ active: currentAlign === 'right' }"
-            @click.stop="alignImage('right')"
-            title="右对齐"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 3h18v2H3V3zm6 4h12v2H9V7zm-6 4h18v2H3v-2zm6 4h12v2H9v-2zm-6 4h18v2H3v-2z" />
-            </svg>
-          </button>
-          <span class="toolbar-divider"></span>
+          class="toolbar-btn"
+          :class="{ active: currentAlign === 'left' }"
+          @click.stop="alignImage('left')"
+          title="左对齐"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z" />
+          </svg>
+        </button>
+        <button
+          class="toolbar-btn"
+          :class="{ active: currentAlign === 'center' || !currentAlign }"
+          @click.stop="alignImage('center')"
+          title="居中"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 3h18v2H3V3zm3 4h12v2H6V7zm-3 4h18v2H3v-2zm3 4h12v2H6v-2zm-3 4h18v2H3v-2z" />
+          </svg>
+        </button>
+        <button
+          class="toolbar-btn"
+          :class="{ active: currentAlign === 'right' }"
+          @click.stop="alignImage('right')"
+          title="右对齐"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 3h18v2H3V3zm6 4h12v2H9V7zm-6 4h18v2H3v-2zm6 4h12v2H9v-2zm-6 4h18v2H3v-2z" />
+          </svg>
+        </button>
+        <span class="toolbar-divider"></span>
         <button class="toolbar-btn" @click.stop="previewImage" title="预览">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path
@@ -326,34 +326,51 @@ const handleImageLoad = () => {
       currentWidth.value = maxW
       currentHeight.value = currentWidth.value / aspectRatio.value
     } else {
-      let parsedWidth = parseFloat(props.node.attrs.width) || naturalWidth.value
-      // 限制宽度不超过编辑器可用宽度
-      if (parsedWidth > editorMaxWidth.value) {
-        parsedWidth = editorMaxWidth.value
+      const originalWidth = parseFloat(props.node.attrs.width) || naturalWidth.value
+      const originalHeight = props.node.attrs.height ? parseFloat(props.node.attrs.height) : undefined
+
+      // 1) 先按编辑器最大宽度等比缩放（宽高同时按同一系数，保留 docx 的宽高比）
+      let scale = 1
+      if (originalWidth > editorMaxWidth.value) {
+        scale = editorMaxWidth.value / originalWidth
       }
-      // 只有宽度且没有高度时，使用自然宽度（避免导入后被过度压缩）；行内图片跳过，保留原始宽度
+      let parsedWidth = originalWidth * scale
+      let parsedHeight = originalHeight !== undefined ? originalHeight * scale : undefined
+
+      // 2) 如果只有宽度而没有高度，使用自然宽度（避免导入后被过度压缩）；行内图片保留原始宽度
       if (!props.node.attrs.height && naturalWidth.value && !isInline.value) {
         parsedWidth = Math.min(naturalWidth.value, editorMaxWidth.value)
+        parsedHeight = undefined
         props.updateAttributes({
           width: Math.round(parsedWidth)
         })
       }
+
       currentWidth.value = parsedWidth
-      const parsedHeight = props.node.attrs.height ? parseFloat(props.node.attrs.height) : undefined
-      if (parsedHeight) {
-        const expectedRatio = naturalHeight.value / naturalWidth.value
-        const actualRatio = parsedHeight / parsedWidth
-        if (expectedRatio && Math.abs(actualRatio - expectedRatio) > 0.02) {
-          logger.warn('[image] height mismatch, drop height', {
+
+      if (parsedHeight !== undefined) {
+        // 3) 只在 docx 声明的纵横比与自然纵横比 "严重" 不一致时才回退到自然比例。
+        //    阈值放宽到 25%：Word 里常见 1%~8% 的 EMU 整数舍入漂移不应触发回退；
+        //    真正被 Word 显式拉伸/裁剪的图也通常按作者意图保留。
+        //    仅当差距超过 25% 时，认为高度值可能来自错误来源，回退到自然比例。
+        const expectedRatio = naturalWidth.value ? naturalHeight.value / naturalWidth.value : 0
+        const declaredRatio = originalWidth ? (originalHeight ?? originalWidth) / originalWidth : 0
+        const ratioDiff =
+          expectedRatio > 0 && declaredRatio > 0
+            ? Math.abs(declaredRatio - expectedRatio) / expectedRatio
+            : 0
+
+        if (expectedRatio && ratioDiff > 0.25) {
+          logger.debug('[image] declared aspect ratio differs >25% from natural, fallback', {
             src: String(props.node.attrs.src || '').slice(0, 80),
-            parsedWidth,
-            parsedHeight,
+            declaredRatio: Number(declaredRatio.toFixed(3)),
+            expectedRatio: Number(expectedRatio.toFixed(3)),
+            originalWidth,
+            originalHeight,
             naturalWidth: naturalWidth.value,
             naturalHeight: naturalHeight.value
           })
-          props.updateAttributes({
-            height: null
-          })
+          props.updateAttributes({ height: null })
           currentHeight.value = currentWidth.value / aspectRatio.value
         } else {
           currentHeight.value = parsedHeight
@@ -362,8 +379,9 @@ const handleImageLoad = () => {
         currentHeight.value = currentWidth.value / aspectRatio.value
       }
 
-      // 如果宽度被限制了，更新节点属性
-      if (parsedWidth !== parseFloat(props.node.attrs.width)) {
+      // 4) 若应用了缩放（宽度被裁剪或等比缩放过），同步把裁剪后的宽高回写节点属性，
+      //    避免下次渲染再走一次 "docx 原尺寸 → 裁剪 → 回写" 流程。
+      if (scale !== 1) {
         props.updateAttributes({
           width: Math.round(currentWidth.value),
           height: Math.round(currentHeight.value)
@@ -412,8 +430,7 @@ const retryLoadImage = () => {
   }
 }
 
-const handleClick = () => {
-}
+const handleClick = () => {}
 
 const handleDoubleClick = () => {
   if (props.node.attrs.src && !imageError.value) {
@@ -669,7 +686,6 @@ onMounted(() => {
   if (props.node.attrs.height) {
     currentHeight.value = parseFloat(props.node.attrs.height)
   }
-
 })
 
 onBeforeUnmount(() => {

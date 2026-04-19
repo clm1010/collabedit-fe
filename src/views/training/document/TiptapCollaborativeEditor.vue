@@ -17,17 +17,6 @@
       @review-reject="openReviewRejectDialog"
     />
 
-    <!-- 转换服务不可用提示 -->
-    <el-alert
-      v-if="converterUnavailable"
-      title="文档转换服务未就绪，导入导出将使用基础模式（格式保真度较低）"
-      type="warning"
-      :closable="true"
-      show-icon
-      class="converter-status-alert"
-      @close="converterAlertDismissed = true"
-    />
-
     <!-- 主内容区域 -->
     <div class="flex-1 flex overflow-hidden relative">
       <!-- 编辑器容器 -->
@@ -181,13 +170,13 @@ import { ImageStore } from './utils/imageStore'
 import { importDocx } from '@/api/converter'
 import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { hasStyleHintsInHtml, sanitizeImagesIfNeeded } from './utils/htmlSanitize'
+import { safeSetContent } from './utils/safeSetContent'
 import {
   normalizeTableStructureForImport,
   resolveEditorTableBodyWidth
 } from './utils/tableStructureNormalize'
 import { logger } from '@/views/utils/logger'
 import { copyHtmlToClipboard } from '@/views/utils/clipboard'
-import { checkConverterHealth } from '@/api/converter'
 import { useDocMetadataStore } from '@/store/modules/docMetadata'
 import { javaRequest } from '@/config/axios/javaService'
 
@@ -329,13 +318,6 @@ const collaborationUserStore = useCollaborationUserStore()
 // 获取文档 ID - 优先使用路由参数 id，其次使用 props.docId
 const documentId = computed(() => {
   return (route.params.id as string) || props.docId
-})
-
-// 转换服务状态
-const converterAlertDismissed = ref(false)
-const converterUnavailable = computed(() => {
-  const store = useDocMetadataStore()
-  return !store.converterAvailable && !converterAlertDismissed.value
 })
 
 // 获取协作用户信息（从 sessionStorage 中获取，确保刷新时用户一致）
@@ -1014,11 +996,19 @@ const applyPreloadedContent = async () => {
         }
 
         await sleep(300)
-        editorInstance.value.commands.setContent(json)
+        const applied = safeSetContent(editorInstance.value, json, {
+          logPrefix: '[collab.applyPreloaded]'
+        })
+        if (!applied.success) {
+          logger.warn('预加载 JSON 应用失败，回退为空文档', applied.error)
+          ElMessage.warning('文档解析异常，部分内容可能无法显示')
+        }
         preloadedApplied.value = true
         isFirstLoadWithContent.value = false
         void clearPreloadedCache()
-        ElMessage.success('文档内容已加载')
+        if (applied.success) {
+          ElMessage.success('文档内容已加载')
+        }
         return
       }
     }
@@ -1301,20 +1291,9 @@ watch(
 
 // 组件挂载
 onMounted(async () => {
-  // 初始化 docMetadata store 并检查转换服务状态
   const docMetaStore = useDocMetadataStore()
   docMetaStore.clear()
   docMetaStore.docId = documentId.value
-
-  // 异步检查转换服务状态（不阻塞主流程）
-  checkConverterHealth().then((health) => {
-    docMetaStore.setConverterStatus(health.available)
-    if (!health.available) {
-      logger.warn('[converter] 转换服务不可用，导入导出将使用基础模式')
-    }
-  }).catch(() => {
-    docMetaStore.setConverterStatus(false)
-  })
 
   // 异步加载文档元数据（不阻塞主流程）
   docMetaStore.loadMetadata(documentId.value).catch(() => {})
@@ -1389,6 +1368,48 @@ onMounted(async () => {
           usedConverter = true
           isFirstLoadWithContent.value = true
           logger.debug('转换服务解析成功，节点数:', result.data.content.content.length)
+
+          // 协同路径下首次解析 DOCX 时，同步持久化 metadata，
+          // 避免下次刷新丢失页眉页脚、节设置、脚注等元信息。
+          // 仅当后端尚无 metadata 记录时写入，防止覆盖用户后续编辑。
+          try {
+            if (result.metadata && !docMetaStore.metadata) {
+              docMetaStore.setMetadata(documentId.value, result.metadata)
+              docMetaStore
+                .saveMetadata(documentId.value, result.metadata)
+                .catch((err) => {
+                  logger.warn('持久化 metadata 失败:', err)
+                })
+            }
+          } catch (metaErr) {
+            logger.warn('同步 metadata 到 store 失败:', metaErr)
+          }
+
+          if (result.logs?.warn?.length) {
+            logger.warn('[importDocx] 转换警告:', result.logs.warn)
+          }
+
+          // 选择性保存高保真方案（plan 1.1 节）：协同首次打开时若后端尚无原始 DOCX，
+          // 把当前用于解析的 ArrayBuffer 作为 File 回传。
+          // 这样后续导出才能走字节级"原样部件复制 + 仅 patch 改动段落"的高保真路径。
+          // 若历史生产数据缺失原始文件，此处补传；后端 saveOriginalFile 会走 FileOverwriteLog 机制。
+          // 同时把原始字节写入 docBufferStore.originalDocx 缓存，避免导出时再次 fetch。
+          try {
+            if (arrayBuffer) {
+              docBufferStore.setOriginalDocx(documentId.value, arrayBuffer)
+              const hasOrig = await docMetaStore.checkHasOriginalFile(documentId.value)
+              if (!hasOrig) {
+                const origFile = new File([arrayBuffer], `${documentId.value}.docx`, {
+                  type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                })
+                docMetaStore
+                  .saveOriginalFile(documentId.value, origFile)
+                  .catch((err) => logger.warn('补传原始 DOCX 失败:', err))
+              }
+            }
+          } catch (origErr) {
+            logger.warn('原始 DOCX 同步步骤异常:', origErr)
+          }
         }
       } catch (converterErr) {
         logger.warn('转换服务解析失败，降级到前端解析:', converterErr)
@@ -1459,14 +1480,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" scoped>
-.converter-status-alert {
-  flex-shrink: 0;
-  border-radius: 0;
-  :deep(.el-alert__content) {
-    font-size: 12px;
-  }
-}
-
 // 抽屉动画
 :deep(.material-drawer) {
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);

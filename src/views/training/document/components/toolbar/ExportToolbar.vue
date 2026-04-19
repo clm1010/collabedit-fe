@@ -144,6 +144,8 @@ import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 import { copyToClipboard } from '@/views/utils/clipboard'
 import { checkConverterHealth, exportDocx, exportPdf as apiExportPdf } from '@/api/converter'
 import { useDocMetadataStore } from '@/store/modules/docMetadata'
+import { useDocBufferStore } from '@/store/modules/docBuffer'
+import { javaRequest } from '@/config/axios/javaService'
 
 const editor = useEditor()
 
@@ -186,13 +188,45 @@ const exportHtml = async () => {
   ElMessage.success('HTML 已导出')
 }
 
+/**
+ * 选择性保存高保真方案：导出前尝试获取原始 DOCX 字节，交给 converter 做字节级选择性保存。
+ *   1. 优先读 docBufferStore.originalDocx 内存缓存（首次打开时已预热）。
+ *   2. 未命中再调 /getPlan/getOriginalFile 回源。
+ *   3. 回源失败 / 204 无原始文件 → 返回 null，converter 自动降级到 legacy 全量重生成。
+ *
+ * 返回值作为 exportDocx 的 options.originalDocx 传入。
+ */
+const fetchOriginalDocx = async (docId: string): Promise<ArrayBuffer | null> => {
+  if (!docId) return null
+  const bufferStore = useDocBufferStore()
+  const cached = bufferStore.getOriginalDocx(docId)
+  if (cached) return cached
+  try {
+    const buffer = await javaRequest.downloadArrayBuffer(
+      '/getPlan/getOriginalFile',
+      { id: docId }
+    )
+    if (buffer && buffer.byteLength > 0) {
+      bufferStore.setOriginalDocx(docId, buffer)
+      return buffer
+    }
+  } catch (err) {
+    console.warn('获取原始 DOCX 失败，将走 legacy 导出路径:', err)
+  }
+  return null
+}
+
 const exportWord = async () => {
   if (!editor.value) return
 
   try {
     const json = editor.value.getJSON()
     const metaStore = useDocMetadataStore()
-    const blob = await exportDocx(json, metaStore.metadata ?? undefined)
+    const docId = metaStore.docId ?? ''
+    const originalDocx = docId ? await fetchOriginalDocx(docId) : null
+    const blob = await exportDocx(json, metaStore.metadata ?? undefined, {
+      originalDocx
+    })
     downloadBlob(blob, '文档.docx')
     ElMessage.success('Word 文档已导出')
   } catch (error) {

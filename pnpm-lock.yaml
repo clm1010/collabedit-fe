@@ -68,6 +68,9 @@ importers:
       '@tiptap/extension-node-range':
         specifier: ^3.22.3
         version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.3))(@tiptap/pm@3.22.3)
+      '@tiptap/extension-paragraph':
+        specifier: 3.22.3
+        version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.3))
       '@tiptap/extension-subscript':
         specifier: ^3.22.3
         version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.3))(@tiptap/pm@3.22.3)
@@ -116,9 +119,6 @@ importers:
       '@wangeditor-next/plugin-mention':
         specifier: ^1.0.16
         version: 1.0.26(@wangeditor-next/editor@5.6.56)(snabbdom@3.6.3)
-      '@zip.js/zip.js':
-        specifier: ^2.8.15
-        version: 2.8.26
       '@zxcvbn-ts/core':
         specifier: ^3.0.4
         version: 3.0.4
@@ -2759,10 +2759,6 @@ packages:
   '@xmldom/xmldom@0.8.12':
     resolution: {integrity: sha512-9k/gHF6n/pAi/9tqr3m3aqkuiNosYTurLLUtc7xQ9sxB/wm7WPygCv8GYa6mS0fLJEHhqMC1ATYhz++U/lRHqg==}
     engines: {node: '>=10.0.0'}
-
-  '@zip.js/zip.js@2.8.26':
-    resolution: {integrity: sha512-RQ4h9F6DOiHxpdocUDrOl6xBM+yOtz+LkUol47AVWcfebGBDpZ7w7Xvz9PS24JgXvLGiXXzSAfdCdVy1tPlaFA==}
-    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   '@zxcvbn-ts/core@3.0.4':
     resolution: {integrity: sha512-aQeiT0F09FuJaAqNrxynlAwZ2mW/1MdXakKWNmGM1Qp/VaY6CnB/GfnMS2T8gB2231Esp1/maCWd8vTG4OuShw==}
@@ -8491,8 +8487,6 @@ snapshots:
       snabbdom: 3.6.3
 
   '@xmldom/xmldom@0.8.12': {}
-
-  '@zip.js/zip.js@2.8.26': {}
 
   '@zxcvbn-ts/core@3.0.4':
     dependencies:

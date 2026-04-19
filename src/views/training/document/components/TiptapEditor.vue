@@ -268,6 +268,10 @@ import NodeRange from '@tiptap/extension-node-range'
 import { PageBreak } from './toolbar/extensions/PageBreak'
 import { ColoredHorizontalRule } from './toolbar/extensions/ColoredHorizontalRule'
 import { HardBreakMarker } from './toolbar/extensions/HardBreakMarker'
+import { TocEntry } from './toolbar/extensions/TocEntry'
+import { IndentParagraph } from './toolbar/extensions/IndentParagraph'
+import { OrigAttrs } from './toolbar/extensions/OrigAttrs'
+import { HeadingNumbering } from './toolbar/extensions/HeadingNumbering'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { Icon } from '@/components/Icon'
@@ -440,8 +444,21 @@ const editor = useEditor({
       // 禁用 StarterKit 自带的 Link，使用自定义配置
       link: false,
       // 禁用默认的 horizontalRule，使用自定义的 ColoredHorizontalRule
-      horizontalRule: false
+      horizontalRule: false,
+      // 禁用默认 paragraph，使用支持 textIndent / indent 属性的 IndentParagraph
+      // 仍然使用同名 "paragraph"，TextAlign 等其它扩展按 name 查找不受影响
+      paragraph: false
     }),
+    // 段落节点（支持首行缩进 / 左右缩进，保留 Word 的 w:ind 信息）
+    IndentParagraph,
+    // 选择性保存高保真：通过 addGlobalAttributes 给 paragraph/heading/table/
+    // horizontalRule/image/pageBreak/tocEntry 注入 __origRange/__origHash/__origPart。
+    // 这些属性 rendered:false，不影响 HTML 输出，仅用于导出侧选择性保存引擎识别未改动节点。
+    OrigAttrs,
+    // 标题章节编号：把 converter 导入时写入 heading 节点的 numberingText
+    // 渲染为 data-numbering-text 属性，CSS 用 ::before 显示为 "1 / 1.2 / 1.2.1"
+    // 前缀；同时保留 __origNumPr 给导出链路使用。
+    HeadingNumbering,
     // 自定义水平线扩展（支持红色横线）
     ColoredHorizontalRule,
     // 协同编辑 - 使用预初始化的 fragment 而不是 document
@@ -523,6 +540,8 @@ const editor = useEditor({
     }),
     // 软回车（Shift+Enter）视觉标记 ↓
     HardBreakMarker,
+    // 目录条目（由 converter 从 SDT/TOC 生成）
+    TocEntry,
     // DragHandle 依赖的 NodeRange 扩展（提供 NodeRangeSelection 和拖拽视觉反馈）
     NodeRange
   ],
@@ -1354,6 +1373,10 @@ defineExpose({
       margin-top: 0.5em;
       margin-bottom: 0.25em;
     }
+
+    // 章节编号：DOCX 导入时由 converter 计算（"1"、"1.2"、"1.2.1"），作为
+    // 真实 text 节点直接拼到 heading content 的最前面，用户可像编辑普通文字
+    // 一样选中 / 修改 / 删除；无需额外 CSS。
 
     ul,
     ol {

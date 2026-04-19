@@ -144,6 +144,37 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
           if (!attributes['data-origin-src']) return {}
           return { 'data-origin-src': attributes['data-origin-src'] }
         }
+      },
+      // ---- 选择性保存高保真方案：原始 rels 追溯三元组 ----
+      // data-origin-rid: 原始 w:blip 的 r:embed 值（如 "rId7"）。
+      //   导出时若该 rId 在原 rels 中仍存在，直接复用，避免重新嵌入 media 文件。
+      'data-origin-rid': {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-origin-rid'),
+        renderHTML: (attributes) => {
+          if (!attributes['data-origin-rid']) return {}
+          return { 'data-origin-rid': attributes['data-origin-rid'] }
+        }
+      },
+      // data-origin-target: 原始 rels 条目的 Target（如 "media/image1.png"）。
+      //   当 rId 已失效（跨段落移动导致 rId 丢失）时，按 Target 在当前部件 rels 中反查。
+      'data-origin-target': {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-origin-target'),
+        renderHTML: (attributes) => {
+          if (!attributes['data-origin-target']) return {}
+          return { 'data-origin-target': attributes['data-origin-target'] }
+        }
+      },
+      // data-origin-part: 原始来源部件（如 "word/document.xml" / "word/header1.xml"）。
+      //   不同部件使用不同 rels 文件，不能跨部件误用 rId。
+      'data-origin-part': {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-origin-part'),
+        renderHTML: (attributes) => {
+          if (!attributes['data-origin-part']) return {}
+          return { 'data-origin-part': attributes['data-origin-part'] }
+        }
       }
     }
   },

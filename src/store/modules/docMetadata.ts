@@ -7,7 +7,6 @@ interface DocMetadataState {
   docId: string | null
   metadata: DocMetadata | null
   hasOriginalFile: boolean
-  converterAvailable: boolean
 }
 
 export const useDocMetadataStore = defineStore('doc-metadata', {
@@ -15,13 +14,8 @@ export const useDocMetadataStore = defineStore('doc-metadata', {
     docId: null,
     metadata: null,
     hasOriginalFile: false,
-    converterAvailable: false,
   }),
   actions: {
-    setConverterStatus(available: boolean) {
-      this.converterAvailable = available
-    },
-
     setMetadata(docId: string, metadata: DocMetadata) {
       this.docId = docId
       this.metadata = metadata
@@ -66,6 +60,26 @@ export const useDocMetadataStore = defineStore('doc-metadata', {
         this.hasOriginalFile = true
       } catch (err) {
         console.warn('保存原始文件失败:', err)
+      }
+    },
+
+    /**
+     * 选择性保存高保真方案：查询后端是否已存在原始 DOCX。
+     * 成功时同步更新 `hasOriginalFile` 状态，并返回布尔值，供调用方决定是否补传。
+     * 出错不抛异常，返回 false 让调用方走"兜底尝试上传"路径。
+     */
+    async checkHasOriginalFile(docId: string): Promise<boolean> {
+      try {
+        const res = await javaRequest.get<{ hasOriginalFile: boolean }>(
+          '/getPlan/hasOriginalFile',
+          { id: docId }
+        )
+        const has = !!res?.hasOriginalFile
+        this.hasOriginalFile = has
+        return has
+      } catch (err) {
+        console.warn('查询原始文件状态失败:', err)
+        return false
       }
     },
 
