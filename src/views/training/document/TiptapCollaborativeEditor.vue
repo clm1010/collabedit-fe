@@ -161,7 +161,6 @@ import { useCollaboration } from '@/lmHooks'
 import { defaultCollaborationConfig } from './config/editorConfig'
 import {
   saveDocumentFile,
-  resetCollaborationDoc,
   submitAudit,
   examApply,
   type DocumentInfo,
@@ -395,6 +394,8 @@ const pendingTimers = ref<Set<ReturnType<typeof setTimeout>>>(new Set())
 const isUnmounted = ref(false)
 // 自动保存相关状态
 const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+// 自动保存挂起的 idleCallback 句柄（用于在重复触发 / 卸载时取消）
+const autoSaveIdleHandle = ref<number | null>(null)
 const lastSavedContentHash = ref<string>('')
 const isAutoSaving = ref(false)
 const hasUserEdited = ref(false) // 标记用户是否真的编辑过（避免首次加载触发保存）
@@ -682,15 +683,36 @@ const handleContentUpdate = (_content: string) => {
   // 只读模式不触发自动保存
   if (isReadonly.value) return
 
-  // 清除之前的自动保存定时器
+  // 清除之前的自动保存 setTimeout 定时器
   if (autoSaveTimer.value) {
     clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
+  // 清除之前挂起的 idle 回调（若存在），避免旧窗口的保存在新输入到来后仍然执行
+  if (
+    autoSaveIdleHandle.value !== null &&
+    typeof (window as any).cancelIdleCallback === 'function'
+  ) {
+    ;(window as any).cancelIdleCallback(autoSaveIdleHandle.value)
+    autoSaveIdleHandle.value = null
   }
 
-  // 设置新的自动保存定时器（3秒防抖）
+  // 3 秒防抖；到点后把实际保存推迟到浏览器空闲帧（最多再等 2 秒兜底）
   autoSaveTimer.value = setTimeout(() => {
-    if (!isUnmounted.value) {
+    autoSaveTimer.value = null
+    if (isUnmounted.value) return
+
+    const run = () => {
+      autoSaveIdleHandle.value = null
+      if (isUnmounted.value) return
       performAutoSave()
+    }
+
+    if (typeof (window as any).requestIdleCallback === 'function') {
+      autoSaveIdleHandle.value = (window as any).requestIdleCallback(run, { timeout: 2000 })
+    } else {
+      // 老环境降级：直接执行（等同原行为）
+      run()
     }
   }, 3000)
 }
@@ -1165,7 +1187,6 @@ const handleSave = async () => {
       ElMessage.success('文档已保存')
       hasUnsavedChanges.value = false
       void deleteDocCache(documentId.value)
-      void resetCollaborationDoc(documentId.value)
 
       if (documentInfo.value) {
         documentInfo.value.updateTime = new Date().toISOString()
@@ -1344,6 +1365,14 @@ onBeforeUnmount(() => {
   if (autoSaveTimer.value) {
     clearTimeout(autoSaveTimer.value)
     autoSaveTimer.value = null
+  }
+  // 清理挂起的 idle 回调句柄，防止组件卸载后仍执行 performAutoSave
+  if (
+    autoSaveIdleHandle.value !== null &&
+    typeof (window as any).cancelIdleCallback === 'function'
+  ) {
+    ;(window as any).cancelIdleCallback(autoSaveIdleHandle.value)
+    autoSaveIdleHandle.value = null
   }
 
   // 清理所有待执行的 setTimeout，防止内存泄漏

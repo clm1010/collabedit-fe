@@ -1,3 +1,6 @@
+// 全局 passive 事件补丁（必须在任何组件/库注册事件之前执行）
+import '@/utils/passiveEventPatch'
+
 // 引入unocss css
 import '@/plugins/unocss'
 
