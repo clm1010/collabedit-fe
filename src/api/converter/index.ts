@@ -74,7 +74,10 @@ export interface ImportResult {
 
 export interface ConverterHealthStatus {
   available: boolean
+  /** @deprecated 历史字段，恒为 false；保留以兼容旧缓存 */
   unoserver: boolean
+  /** Puppeteer 模式下的 Chromium 连通状态；lazy launch 策略下首次未请求时可能是 false */
+  chromium?: boolean
 }
 
 const CONVERTER_BASE = import.meta.env.VITE_CONVERTER_URL || '/converter'
@@ -95,20 +98,21 @@ export async function checkConverterHealth(): Promise<ConverterHealthStatus> {
     clearTimeout(timer)
 
     if (!res.ok) {
-      const result = { available: false, unoserver: false }
+      const result: ConverterHealthStatus = { available: false, unoserver: false, chromium: false }
       _healthCache = { result, ts: Date.now() }
       return result
     }
 
     const data = await res.json()
-    const result = {
+    const result: ConverterHealthStatus = {
       available: data.status === 'ok' || data.status === 'degraded',
       unoserver: data.unoserver === true,
+      chromium: data.chromium === true,
     }
     _healthCache = { result, ts: Date.now() }
     return result
   } catch {
-    const result = { available: false, unoserver: false }
+    const result: ConverterHealthStatus = { available: false, unoserver: false, chromium: false }
     _healthCache = { result, ts: Date.now() }
     return result
   }
@@ -202,14 +206,43 @@ export async function exportDocx(
   return res.blob()
 }
 
+/**
+ * Puppeteer PDF 导出配置（与后端 pdfExporter.ts 的 PdfOptions 结构保持一致）
+ *
+ * 注意：margin 值为字符串且支持单位（'20mm' / '1in' / '96px' / '2cm'）。
+ */
+export interface PdfOptions {
+  format?: 'A4' | 'A3' | 'Letter' | 'Legal' | 'Tabloid'
+  margin?: {
+    top?: string
+    bottom?: string
+    left?: string
+    right?: string
+  }
+  displayHeaderFooter?: boolean
+  headerTemplate?: string
+  footerTemplate?: string
+  landscape?: boolean
+  /** 默认 true，保证公文红头、表格底纹、彩色边框被渲染到 PDF */
+  printBackground?: boolean
+}
+
+/**
+ * 导出 PDF（Puppeteer 模式）
+ *
+ * 请求体：{ html: string, options?: PdfOptions }
+ *
+ * 约定：调用方必须把 HTML 中所有图片内联为 data URL（见
+ * `views/utils/fileUtils.ts#inlineAllImagesAsync`），否则后端容器可能无法访问外链。
+ */
 export async function exportPdf(
-  content: TiptapDoc,
-  metadata?: Partial<DocMetadata>
+  html: string,
+  options?: PdfOptions
 ): Promise<Blob> {
   const res = await fetch(`${CONVERTER_BASE}/export/pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, metadata }),
+    body: JSON.stringify({ html, options }),
   })
 
   if (!res.ok) {

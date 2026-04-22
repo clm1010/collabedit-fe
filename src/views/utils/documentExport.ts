@@ -3,7 +3,7 @@
  * 提供 HTML 和 JSON 格式的文档导出功能
  */
 
-import { restoreBlobImagesFromOriginAsync } from './fileUtils'
+import { inlineAllImagesAsync } from './fileUtils'
 
 /**
  * 导出用 HTML 模板的 CSS 样式
@@ -96,8 +96,9 @@ ${content}
 
 /**
  * 异步生成导出用 HTML 文档
- * 自动将 blob URL 图片还原为 data URL，确保导出后图片可见
- * @param rawHtml 编辑器原始 HTML（可能包含 blob: URL）
+ * 自动将所有图片（blob: / http(s):// 外链）内联为 data URL，确保导出后图片可见、
+ * 并且后端 Puppeteer 渲染 PDF 时无需访问外网/MinIO 即可还原完整图片。
+ * @param rawHtml 编辑器原始 HTML（可能包含 blob: / http(s):// URL）
  * @param title 文档标题
  * @returns 完整的 HTML 文档字符串
  */
@@ -105,7 +106,7 @@ export const generateExportHtml = async (
   rawHtml: string,
   title: string = '文档'
 ): Promise<string> => {
-  const restored = await restoreBlobImagesFromOriginAsync(rawHtml)
+  const restored = await inlineAllImagesAsync(rawHtml)
   return wrapInExportHtml(restored, title)
 }
 

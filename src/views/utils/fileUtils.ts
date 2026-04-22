@@ -374,6 +374,113 @@ export const restoreBlobImagesFromOriginAsync = async (html: string): Promise<st
   }
 }
 
+/**
+ * 单图带超时的 fetch → data URL 转换。失败返回 null（让外层保留原 URL）。
+ */
+const fetchImageAsDataUrl = async (
+  src: string,
+  timeoutMs = 5000
+): Promise<string | null> => {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const response = await fetch(src, { signal: controller.signal })
+    clearTimeout(timer)
+    if (!response.ok) return null
+    const blob = await response.blob()
+    if (blob.size === 0) return null
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 把 HTML 中所有图片（blob: / http(s):// 外链）全部内联为 data URL。
+ *
+ * 使用场景：把 HTML 交给后端 Puppeteer 渲染 PDF 之前调用，
+ * 这样后端容器即便无法访问外网 / MinIO，也能渲染出完整图片。
+ *
+ * 特性：
+ * - `data:` 开头的图片直接跳过（已是内联）
+ * - `blob:` 优先从 `data-origin-src` 还原，其次 fetch；与 restoreBlobImagesFromOriginAsync 行为一致
+ * - `http://` / `https://` 图片通过 fetch 下载，单图 5 秒超时 + catch 容错
+ * - 失败时保留原 URL（最差 PDF 对应图片空白，但导出不中断）
+ */
+export const inlineAllImagesAsync = async (html: string): Promise<string> => {
+  if (!html) return html
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="export-root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('export-root')
+    if (!root) return html
+    const images = Array.from(root.querySelectorAll('img'))
+
+    let total = 0
+    let skippedDataUrl = 0
+    let inlinedBlob = 0
+    let inlinedHttp = 0
+    let failed = 0
+
+    for (const img of images) {
+      const src = img.getAttribute('src') || ''
+      if (!src) continue
+      total++
+
+      if (src.startsWith('data:')) {
+        skippedDataUrl++
+        continue
+      }
+
+      if (src.startsWith('blob:')) {
+        const origin = img.getAttribute('data-origin-src') || ''
+        if (origin.startsWith('data:image/')) {
+          img.setAttribute('src', origin)
+          inlinedBlob++
+          continue
+        }
+        const dataUrl = await fetchImageAsDataUrl(src, 5000)
+        if (dataUrl && dataUrl.startsWith('data:')) {
+          img.setAttribute('src', dataUrl)
+          inlinedBlob++
+        } else {
+          failed++
+        }
+        continue
+      }
+
+      if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+        const normalized = src.startsWith('//') ? `${location.protocol}${src}` : src
+        const dataUrl = await fetchImageAsDataUrl(normalized, 5000)
+        if (dataUrl && dataUrl.startsWith('data:')) {
+          img.setAttribute('src', dataUrl)
+          inlinedHttp++
+        } else {
+          failed++
+          logger.warn('[inlineAllImages] 图片拉取失败，保留原 URL:', normalized.substring(0, 80))
+        }
+      }
+    }
+
+    if (total > 0) {
+      logger.info(
+        `[inlineAllImages] 处理完成: 共 ${total} 张, 已是 data ${skippedDataUrl} 张, ` +
+          `blob 内联 ${inlinedBlob} 张, http 内联 ${inlinedHttp} 张, 失败 ${failed} 张`
+      )
+    }
+
+    return root.innerHTML
+  } catch (err) {
+    logger.warn('[inlineAllImages] 失败，返回原 HTML:', err)
+    return html
+  }
+}
+
 const bufferToHex = (buffer: ArrayBuffer): string => {
   const bytes = new Uint8Array(buffer)
   let hex = ''

@@ -139,7 +139,7 @@ import { ref, computed } from 'vue'
 import { Icon } from '@/components/Icon'
 import { ElMessage } from 'element-plus'
 import { useEditor } from './useEditor'
-import { restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
+import { inlineAllImagesAsync, restoreBlobImagesFromOriginAsync } from '@/views/utils/fileUtils'
 import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 import { copyToClipboard } from '@/views/utils/clipboard'
 import { checkConverterHealth, exportDocx, exportPdf as apiExportPdf } from '@/api/converter'
@@ -167,7 +167,10 @@ const generateFullHtml = async (): Promise<string> => {
   if (!editor.value) return ''
 
   const raw = editor.value.getHTML()
-  const restored = await restoreBlobImagesFromOriginAsync(raw)
+  // 把所有图片（blob: / http(s)://）内联为 data URL：
+  //   1. 保证离线/打印窗口能直接渲染
+  //   2. 保证后端 Puppeteer 渲染 PDF 时无需外网访问 MinIO
+  const restored = await inlineAllImagesAsync(raw)
   return wrapInExportHtml(restored, '文档')
 }
 
@@ -241,9 +244,13 @@ const exportPdf = async () => {
   const health = await checkConverterHealth()
   if (health.available) {
     try {
-      const json = editor.value.getJSON()
-      const metaStore = useDocMetadataStore()
-      const blob = await apiExportPdf(json, metaStore.metadata ?? undefined)
+      // Puppeteer 模式：发送完整 HTML（已内联所有图片）+ PdfOptions
+      const html = await generateFullHtml()
+      const blob = await apiExportPdf(html, {
+        format: 'A4',
+        margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' },
+        printBackground: true,
+      })
       downloadBlob(blob, '文档.pdf')
       ElMessage.success('PDF 已导出')
       return
