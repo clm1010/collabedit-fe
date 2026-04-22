@@ -175,6 +175,60 @@ export const ResizableImage = Image.extend<ResizableImageOptions>({
           if (!attributes['data-origin-part']) return {}
           return { 'data-origin-part': attributes['data-origin-part'] }
         }
+      },
+      // ---- 图片裁剪（CSS 预览 + 导出时烧入像素）----
+      // cropTop/cropRight/cropBottom/cropLeft: 0~1 的百分比，表示从对应边缘裁掉多少。
+      //   - 编辑时：ResizableImageComponent.vue 用 clip-path 渲染，保持原图保真；
+      //   - 保存时：随 Tiptap JSON 一同持久化到 .json 文件；
+      //   - 导出 HTML/PDF/DOCX 时：由 utils/cropImageUtils.ts 把 crop 烧入图片像素，
+      //     并在产物中移除 data-crop-* 属性，避免后端 converter 误解读。
+      cropTop: {
+        default: 0,
+        parseHTML: (element) => {
+          const v = parseFloat(element.getAttribute('data-crop-top') || '0')
+          return isFinite(v) ? v : 0
+        },
+        renderHTML: (attributes) => {
+          const v = Number(attributes.cropTop) || 0
+          if (v <= 0) return {}
+          return { 'data-crop-top': String(v) }
+        }
+      },
+      cropRight: {
+        default: 0,
+        parseHTML: (element) => {
+          const v = parseFloat(element.getAttribute('data-crop-right') || '0')
+          return isFinite(v) ? v : 0
+        },
+        renderHTML: (attributes) => {
+          const v = Number(attributes.cropRight) || 0
+          if (v <= 0) return {}
+          return { 'data-crop-right': String(v) }
+        }
+      },
+      cropBottom: {
+        default: 0,
+        parseHTML: (element) => {
+          const v = parseFloat(element.getAttribute('data-crop-bottom') || '0')
+          return isFinite(v) ? v : 0
+        },
+        renderHTML: (attributes) => {
+          const v = Number(attributes.cropBottom) || 0
+          if (v <= 0) return {}
+          return { 'data-crop-bottom': String(v) }
+        }
+      },
+      cropLeft: {
+        default: 0,
+        parseHTML: (element) => {
+          const v = parseFloat(element.getAttribute('data-crop-left') || '0')
+          return isFinite(v) ? v : 0
+        },
+        renderHTML: (attributes) => {
+          const v = Number(attributes.cropLeft) || 0
+          if (v <= 0) return {}
+          return { 'data-crop-left': String(v) }
+        }
       }
     }
   },

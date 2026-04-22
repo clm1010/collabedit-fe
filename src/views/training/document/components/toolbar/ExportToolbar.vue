@@ -143,9 +143,11 @@ import { inlineAllImagesAsync, restoreBlobImagesFromOriginAsync } from '@/views/
 import { downloadBlob, wrapInExportHtml } from '@/views/utils/documentExport'
 import { copyToClipboard } from '@/views/utils/clipboard'
 import { checkConverterHealth, exportDocx, exportPdf as apiExportPdf } from '@/api/converter'
+import type { TiptapDoc } from '@/api/converter'
 import { useDocMetadataStore } from '@/store/modules/docMetadata'
 import { useDocBufferStore } from '@/store/modules/docBuffer'
 import { javaRequest } from '@/config/axios/javaService'
+import { applyCropToImages, applyCropToTiptapImages } from '../../utils/cropImageUtils'
 
 const editor = useEditor()
 
@@ -170,8 +172,11 @@ const generateFullHtml = async (): Promise<string> => {
   // 把所有图片（blob: / http(s)://）内联为 data URL：
   //   1. 保证离线/打印窗口能直接渲染
   //   2. 保证后端 Puppeteer 渲染 PDF 时无需外网访问 MinIO
+  //   3. 保证下一步 applyCropToImages 在 Canvas 里能无跨域读取像素
   const restored = await inlineAllImagesAsync(raw)
-  return wrapInExportHtml(restored, '文档')
+  // 将 data-crop-* 烧入像素（裁剪后图片作为最终结果输出）
+  const cropped = await applyCropToImages(restored)
+  return wrapInExportHtml(cropped, '文档')
 }
 
 const previewHtml = async () => {
@@ -180,7 +185,8 @@ const previewHtml = async () => {
     return
   }
   const content = editor.value.getHTML()
-  previewContent.value = await restoreBlobImagesFromOriginAsync(content)
+  const restored = await restoreBlobImagesFromOriginAsync(content)
+  previewContent.value = await applyCropToImages(restored)
   previewMode.value = 'preview'
   htmlPreviewVisible.value = true
 }
@@ -223,11 +229,14 @@ const exportWord = async () => {
   if (!editor.value) return
 
   try {
-    const json = editor.value.getJSON()
+    const json = editor.value.getJSON() as unknown as TiptapDoc
+    // 将 Tiptap 节点中的 cropTop/Right/Bottom/Left 烧入图片 src（Canvas 裁剪后的 data URL），
+    // 并剥除 crop attr —— 这样后端 converter 无需理解 crop，按普通图片处理即可。
+    const croppedJson = await applyCropToTiptapImages(json)
     const metaStore = useDocMetadataStore()
     const docId = metaStore.docId ?? ''
     const originalDocx = docId ? await fetchOriginalDocx(docId) : null
-    const blob = await exportDocx(json, metaStore.metadata ?? undefined, {
+    const blob = await exportDocx(croppedJson, metaStore.metadata ?? undefined, {
       originalDocx
     })
     downloadBlob(blob, '文档.docx')
