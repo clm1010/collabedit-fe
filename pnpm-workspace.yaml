@@ -1,0 +1,12 @@
+allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  core-js: true
+  core-js-pure: true
+  es5-ext: true
+  esbuild: true
+  vue-demi: true
+
+# video.js@7.21.5 imports isArrayBufferView, which only exists in vhs-utils>=3.0.5
+overrides:
+  '@videojs/vhs-utils': 3.0.5
